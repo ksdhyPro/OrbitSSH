@@ -2,7 +2,12 @@ import SftpClient from 'ssh2-sftp-client'
 
 import { writeAppLog } from '../logger.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
-import type { RemoteFileNode, SftpInitResult } from '../../shared/sftp.js'
+import type {
+  RemoteFileNode,
+  SftpInitResult,
+  SftpProbeTextResult,
+  SftpReadTextResult
+} from '../../shared/sftp.js'
 
 interface SftpSession {
   tabId: string
@@ -12,6 +17,8 @@ interface SftpSession {
 }
 
 const sftpSessions = new Map<string, SftpSession>()
+const textProbeSampleBytes = 8192
+const maxEditableTextFileSize = 10 * 1024 * 1024
 
 function normalizeRemotePath(path: string): string {
   const trimmedPath = path.trim()
@@ -21,6 +28,16 @@ function normalizeRemotePath(path: string): string {
   }
 
   return trimmedPath.replace(/\/+/g, '/')
+}
+
+function getSftpSession(tabId: string): SftpSession {
+  const session = sftpSessions.get(tabId)
+
+  if (!session) {
+    throw new Error('SFTP 会话不存在')
+  }
+
+  return session
 }
 
 function toRemoteFileNode(item: SftpClient.FileInfo, parentPath: string): RemoteFileNode {
@@ -48,7 +65,75 @@ function sortRemoteNodes(nodes: RemoteFileNode[]): RemoteFileNode[] {
   })
 }
 
-// 为终端 Tab 创建独立 SFTP 会话，默认读取远程 home 目录。
+function readRemoteFileHead(session: SftpSession, remotePath: string, byteCount: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let totalLength = 0
+    let settled = false
+    const finish = (): void => {
+      if (settled) {
+        return
+      }
+
+      settled = true
+      resolve(Buffer.concat(chunks, Math.min(totalLength, byteCount)))
+    }
+    const stream = session.client.createReadStream(remotePath, {
+      start: 0,
+      end: Math.max(byteCount - 1, 0)
+    })
+
+    stream.on('data', (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      chunks.push(buffer)
+      totalLength += buffer.length
+
+      if (totalLength >= byteCount) {
+        stream.destroy()
+      }
+    })
+    stream.on('error', reject)
+    stream.on('close', finish)
+    stream.on('end', finish)
+  })
+}
+
+function isLikelyUtf8(buffer: Buffer): boolean {
+  return !buffer.toString('utf8').includes('\uFFFD')
+}
+
+function detectTextBuffer(buffer: Buffer): Pick<SftpProbeTextResult, 'isText' | 'reason'> {
+  if (buffer.length === 0) {
+    return { isText: true, reason: 'empty' }
+  }
+
+  if (buffer.includes(0)) {
+    return { isText: false, reason: 'binary' }
+  }
+
+  const firstLine = buffer.toString('utf8', 0, Math.min(buffer.length, 256)).split(/\r?\n/, 1)[0]
+
+  if (firstLine.startsWith('#!')) {
+    return { isText: true, reason: 'shebang' }
+  }
+
+  let controlCount = 0
+
+  for (const byte of buffer) {
+    const isAllowedControl = byte === 9 || byte === 10 || byte === 13 || byte === 27
+
+    if (byte < 32 && !isAllowedControl) {
+      controlCount += 1
+    }
+  }
+
+  if (controlCount / buffer.length > 0.02 || !isLikelyUtf8(buffer)) {
+    return { isText: false, reason: 'binary' }
+  }
+
+  return { isText: true, reason: 'text' }
+}
+
 export async function openSftpSession(tabId: string, serverId: string): Promise<SftpInitResult> {
   writeAppLog({
     scope: 'main.sftp',
@@ -119,12 +204,7 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
 }
 
 export async function listRemoteDirectory(tabId: string, path: string): Promise<RemoteFileNode[]> {
-  const session = sftpSessions.get(tabId)
-
-  if (!session) {
-    throw new Error('SFTP 会话不存在')
-  }
-
+  const session = getSftpSession(tabId)
   const normalizedPath = normalizeRemotePath(path)
   writeAppLog({
     scope: 'main.sftp',
@@ -148,6 +228,109 @@ export async function listRemoteDirectory(tabId: string, path: string): Promise<
   })
 
   return sortRemoteNodes(nodes)
+}
+
+export async function probeRemoteTextFile(
+  tabId: string,
+  path: string,
+  size?: number
+): Promise<SftpProbeTextResult> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+
+  if (typeof size === 'number' && size > maxEditableTextFileSize) {
+    return {
+      path: normalizedPath,
+      isText: false,
+      reason: 'too-large',
+      sampleSize: 0
+    }
+  }
+
+  try {
+    const sample = await readRemoteFileHead(session, normalizedPath, textProbeSampleBytes)
+    const detection = detectTextBuffer(sample)
+
+    writeAppLog({
+      scope: 'main.sftp',
+      message: '远程文件文本探测完成',
+      data: {
+        tabId,
+        path: normalizedPath,
+        isText: detection.isText,
+        reason: detection.reason,
+        sampleSize: sample.length
+      }
+    })
+
+    return {
+      path: normalizedPath,
+      ...detection,
+      sampleSize: sample.length
+    }
+  } catch (error) {
+    writeAppLog({
+      scope: 'main.sftp',
+      level: 'warn',
+      message: '远程文件文本探测失败',
+      data: {
+        tabId,
+        path: normalizedPath,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
+
+    return {
+      path: normalizedPath,
+      isText: false,
+      reason: 'read-error',
+      sampleSize: 0
+    }
+  }
+}
+
+export async function readRemoteTextFile(tabId: string, path: string): Promise<SftpReadTextResult> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+  const data = await session.client.get(normalizedPath)
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data))
+
+  if (buffer.length > maxEditableTextFileSize) {
+    throw new Error('文件过大，暂不支持直接编辑')
+  }
+
+  const detection = detectTextBuffer(buffer.subarray(0, textProbeSampleBytes))
+
+  if (!detection.isText) {
+    throw new Error('该文件看起来不是文本文件')
+  }
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '远程文本文件读取完成',
+    data: { tabId, path: normalizedPath, size: buffer.length }
+  })
+
+  return {
+    path: normalizedPath,
+    content: buffer.toString('utf8'),
+    encoding: 'utf8'
+  }
+}
+
+export async function writeRemoteTextFile(tabId: string, path: string, content: string): Promise<boolean> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+  const buffer = Buffer.from(content, 'utf8')
+
+  await session.client.put(buffer, normalizedPath)
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '远程文本文件保存完成',
+    data: { tabId, path: normalizedPath, size: buffer.length }
+  })
+
+  return true
 }
 
 export async function closeSftpSession(tabId: string): Promise<void> {

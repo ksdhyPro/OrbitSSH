@@ -3,7 +3,16 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { LogPayload } from '../shared/logger.js'
 import type { ServerConfig, ServerInput, ServerUpdateInput } from '../shared/server.js'
 import type { AppSettings } from '../shared/settings.js'
-import type { RemoteFileNode, SftpInitResult, SftpListInput } from '../shared/sftp.js'
+import type {
+  RemoteFileNode,
+  SftpInitResult,
+  SftpListInput,
+  SftpProbeTextInput,
+  SftpProbeTextResult,
+  SftpReadTextInput,
+  SftpReadTextResult,
+  SftpWriteTextInput
+} from '../shared/sftp.js'
 import type {
   TerminalDataEvent,
   TerminalOpenResult,
@@ -32,6 +41,12 @@ const dockShellApi = {
     open: (tabId: string, serverId: string) =>
       ipcRenderer.invoke('sftp:open', tabId, serverId) as Promise<SftpInitResult>,
     list: (input: SftpListInput) => ipcRenderer.invoke('sftp:list', input) as Promise<RemoteFileNode[]>,
+    probeText: (input: SftpProbeTextInput) =>
+      ipcRenderer.invoke('sftp:probe-text', input) as Promise<SftpProbeTextResult>,
+    readText: (input: SftpReadTextInput) =>
+      ipcRenderer.invoke('sftp:read-text', input) as Promise<SftpReadTextResult>,
+    writeText: (input: SftpWriteTextInput) =>
+      ipcRenderer.invoke('sftp:write-text', input) as Promise<boolean>,
     close: (tabId: string) => ipcRenderer.invoke('sftp:close', tabId) as Promise<boolean>
   },
   terminals: {

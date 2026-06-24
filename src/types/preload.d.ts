@@ -3,7 +3,16 @@ export {}
 import type { LogPayload } from '../shared/logger'
 import type { ServerConfig, ServerInput, ServerUpdateInput } from '../shared/server'
 import type { AppSettings } from '../shared/settings'
-import type { RemoteFileNode, SftpInitResult, SftpListInput } from '../shared/sftp'
+import type {
+  RemoteFileNode,
+  SftpInitResult,
+  SftpListInput,
+  SftpProbeTextInput,
+  SftpProbeTextResult,
+  SftpReadTextInput,
+  SftpReadTextResult,
+  SftpWriteTextInput
+} from '../shared/sftp'
 import type {
   TerminalDataEvent,
   TerminalOpenResult,
@@ -32,6 +41,9 @@ declare global {
       sftp: {
         open: (tabId: string, serverId: string) => Promise<SftpInitResult>
         list: (input: SftpListInput) => Promise<RemoteFileNode[]>
+        probeText: (input: SftpProbeTextInput) => Promise<SftpProbeTextResult>
+        readText: (input: SftpReadTextInput) => Promise<SftpReadTextResult>
+        writeText: (input: SftpWriteTextInput) => Promise<boolean>
         close: (tabId: string) => Promise<boolean>
       }
       terminals: {

@@ -15,6 +15,7 @@ interface TerminalSession {
 }
 
 const terminalSessions = new Map<string, TerminalSession>()
+const pathIntegrationInstallDelayMs = 120
 
 function sendStatus(session: TerminalSession, status: TerminalStatusEvent['status'], message?: string): void {
   session.status = status
@@ -47,8 +48,10 @@ function createShellPathIntegrationCommand(): string {
   return [
     '__dockshell_emit_pwd(){ printf \'\\033]7;file://%s%s\\007\' "$HOSTNAME" "$PWD"; }',
     'if [ -n "$BASH_VERSION" ]; then PROMPT_COMMAND="__dockshell_emit_pwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi',
-    'if [ -n "$ZSH_VERSION" ]; then precmd_functions+=(__dockshell_emit_pwd); fi',
-    '__dockshell_emit_pwd'
+    'if [ -n "$ZSH_VERSION" ]; then case " ${precmd_functions[*]} " in *" __dockshell_emit_pwd "*) ;; *) precmd_functions+=(__dockshell_emit_pwd);; esac; fi',
+    '__dockshell_emit_pwd',
+    'stty echo 2>/dev/null',
+    'printf \'\\r\\033[K\''
   ].join('; ') + '\n'
 }
 
@@ -57,7 +60,16 @@ function installShellPathIntegration(session: TerminalSession): void {
     return
   }
 
-  session.shellStream.write(createShellPathIntegrationCommand())
+  session.shellStream.write('stty -echo 2>/dev/null\n')
+
+  setTimeout(() => {
+    if (!terminalSessions.has(session.tabId) || !session.shellStream) {
+      return
+    }
+
+    session.shellStream.write(createShellPathIntegrationCommand())
+  }, pathIntegrationInstallDelayMs)
+
   writeAppLog({
     scope: 'main.ssh',
     message: '已注入终端路径同步脚本',
@@ -113,7 +125,6 @@ export function openTerminalSession(webContents: WebContents, serverId: string):
             data: { tabId, serverId }
           })
           sendStatus(session, 'connected')
-          installShellPathIntegration(session)
 
           stream.on('data', (data: Buffer) => {
             webContents.send('terminal:data', {
@@ -126,6 +137,8 @@ export function openTerminalSession(webContents: WebContents, serverId: string):
             sendStatus(session, 'disconnected')
             closeTerminalSession(tabId)
           })
+
+          installShellPathIntegration(session)
         }
       )
     })

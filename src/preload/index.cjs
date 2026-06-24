@@ -22,6 +22,9 @@ const dockShellApi = {
   sftp: {
     open: (tabId, serverId) => ipcRenderer.invoke('sftp:open', tabId, serverId),
     list: (input) => ipcRenderer.invoke('sftp:list', input),
+    probeText: (input) => ipcRenderer.invoke('sftp:probe-text', input),
+    readText: (input) => ipcRenderer.invoke('sftp:read-text', input),
+    writeText: (input) => ipcRenderer.invoke('sftp:write-text', input),
     close: (tabId) => ipcRenderer.invoke('sftp:close', tabId)
   },
   terminals: {
