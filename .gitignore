@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+.vite/
+.cache/
+.codegraph/
+coverage/
+*.log
+*.local
+.env
+.env.*
+!.env.example
+Thumbs.db
+.DS_Store
+.claude
+.agents.md
