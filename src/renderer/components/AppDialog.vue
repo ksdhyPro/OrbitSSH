@@ -21,7 +21,7 @@ const emit = defineEmits<{
 <template>
   <Teleport to="body">
     <Transition name="dialog-fade" appear>
-      <div class="app-dialog-backdrop" @click.self="emit('close')">
+      <div class="app-dialog-backdrop">
         <section
           :class="['app-dialog', `app-dialog-${width}`]"
           role="dialog"

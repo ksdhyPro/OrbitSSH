@@ -1,163 +1,186 @@
-import type { WebContents } from 'electron'
-import { Client, type ClientChannel } from 'ssh2'
+import type { WebContents } from "electron";
+import { Client, type ClientChannel } from "ssh2";
 
-import { writeAppLog } from '../logger.js'
-import { getServerAuthConfig } from '../storage/server-store.js'
-import type { TerminalOpenResult, TerminalResizeInput, TerminalStatusEvent } from '../../shared/terminal.js'
+import { writeAppLog } from "../logger.js";
+import { getServerAuthConfig } from "../storage/server-store.js";
+import type {
+  TerminalOpenResult,
+  TerminalResizeInput,
+  TerminalStatusEvent,
+} from "../../shared/terminal.js";
 
 interface TerminalSession {
-  tabId: string
-  serverId: string
-  webContents: WebContents
-  sshClient: Client
-  shellStream?: ClientChannel
-  status: TerminalStatusEvent['status']
+  tabId: string;
+  serverId: string;
+  webContents: WebContents;
+  sshClient: Client;
+  shellStream?: ClientChannel;
+  status: TerminalStatusEvent["status"];
 }
 
-const terminalSessions = new Map<string, TerminalSession>()
-const pathIntegrationInstallDelayMs = 120
+const terminalSessions = new Map<string, TerminalSession>();
+const pathIntegrationInstallDelayMs = 120;
 
-function sendStatus(session: TerminalSession, status: TerminalStatusEvent['status'], message?: string): void {
-  session.status = status
+function sendStatus(
+  session: TerminalSession,
+  status: TerminalStatusEvent["status"],
+  message?: string,
+): void {
+  session.status = status;
   writeAppLog({
-    scope: 'main.ssh',
-    message: '终端状态变更',
+    scope: "main.ssh",
+    message: "终端状态变更",
     data: {
       tabId: session.tabId,
       serverId: session.serverId,
       status,
-      message
-    }
-  })
-  session.webContents.send('terminal:status', {
+      message,
+    },
+  });
+  session.webContents.send("terminal:status", {
     tabId: session.tabId,
     status,
-    message
-  } satisfies TerminalStatusEvent)
+    message,
+  } satisfies TerminalStatusEvent);
 }
 
 function createSafeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
-    return error.message
+    return error.message;
   }
 
-  return 'SSH 连接失败'
+  return "SSH 连接失败";
 }
 
 function createShellPathIntegrationCommand(): string {
-  return [
-    '__dockshell_emit_pwd(){ printf \'\\033]7;file://%s%s\\007\' "$HOSTNAME" "$PWD"; }',
-    'if [ -n "$BASH_VERSION" ]; then PROMPT_COMMAND="__dockshell_emit_pwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi',
-    'if [ -n "$ZSH_VERSION" ]; then case " ${precmd_functions[*]} " in *" __dockshell_emit_pwd "*) ;; *) precmd_functions+=(__dockshell_emit_pwd);; esac; fi',
-    '__dockshell_emit_pwd',
-    'stty echo 2>/dev/null',
-    'printf \'\\r\\033[K\''
-  ].join('; ') + '\n'
+  return (
+    [
+      // 初始化远端 shell 的 ls 颜色配置，避免不同服务器 alias 差异导致 ls 无颜色。
+      "export CLICOLOR=1",
+      'if command -v dircolors >/dev/null 2>&1; then eval "$(dircolors -b 2>/dev/null)" 2>/dev/null || true; fi',
+      'if ls --color=auto -d . >/dev/null 2>&1; then alias ls="ls --color=auto"; elif ls -G -d . >/dev/null 2>&1; then alias ls="ls -G"; fi',
+      '__orbitssh_emit_pwd(){ printf \'\\033]7;file://%s%s\\007\' "$HOSTNAME" "$PWD"; }',
+      'if [ -n "$BASH_VERSION" ]; then PROMPT_COMMAND="__orbitssh_emit_pwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi',
+      'if [ -n "$ZSH_VERSION" ]; then case " ${precmd_functions[*]} " in *" __orbitssh_emit_pwd "*) ;; *) precmd_functions+=(__orbitssh_emit_pwd);; esac; fi',
+      "__orbitssh_emit_pwd",
+      "stty echo 2>/dev/null",
+      "printf '\\r\\033[K'",
+    ].join("; ") + "\n"
+  );
 }
 
 function installShellPathIntegration(session: TerminalSession): void {
   if (!session.shellStream) {
-    return
+    return;
   }
 
-  session.shellStream.write('stty -echo 2>/dev/null\n')
+  session.shellStream.write("stty -echo 2>/dev/null\n");
 
   setTimeout(() => {
     if (!terminalSessions.has(session.tabId) || !session.shellStream) {
-      return
+      return;
     }
 
-    session.shellStream.write(createShellPathIntegrationCommand())
-  }, pathIntegrationInstallDelayMs)
+    session.shellStream.write(createShellPathIntegrationCommand());
+  }, pathIntegrationInstallDelayMs);
 
   writeAppLog({
-    scope: 'main.ssh',
-    message: '已注入终端路径同步脚本',
-    data: { tabId: session.tabId, serverId: session.serverId }
-  })
+    scope: "main.ssh",
+    message: "已注入终端路径同步脚本",
+    data: { tabId: session.tabId, serverId: session.serverId },
+  });
 }
 
 // 创建 SSH shell session，输入输出统一通过 IPC 转发给对应 Renderer。
-export function openTerminalSession(webContents: WebContents, serverId: string): TerminalOpenResult {
-  const server = getServerAuthConfig(serverId)
-  const tabId = crypto.randomUUID()
-  const sshClient = new Client()
+export function openTerminalSession(
+  webContents: WebContents,
+  serverId: string,
+): TerminalOpenResult {
+  const server = getServerAuthConfig(serverId);
+  const tabId = crypto.randomUUID();
+  const sshClient = new Client();
   const session: TerminalSession = {
     tabId,
     serverId,
     webContents,
     sshClient,
-    status: 'connecting'
-  }
+    status: "connecting",
+  };
 
-  terminalSessions.set(tabId, session)
+  terminalSessions.set(tabId, session);
   writeAppLog({
-    scope: 'main.ssh',
-    message: '开始创建 SSH 会话',
-    data: { tabId, serverId, host: server.host, port: server.port, username: server.username }
-  })
-  sendStatus(session, 'connecting')
+    scope: "main.ssh",
+    message: "开始创建 SSH 会话",
+    data: {
+      tabId,
+      serverId,
+      host: server.host,
+      port: server.port,
+      username: server.username,
+    },
+  });
+  sendStatus(session, "connecting");
 
   sshClient
-    .on('ready', () => {
+    .on("ready", () => {
       writeAppLog({
-        scope: 'main.ssh',
-        message: 'SSH 已 ready，开始打开 shell',
-        data: { tabId, serverId }
-      })
+        scope: "main.ssh",
+        message: "SSH 已 ready，开始打开 shell",
+        data: { tabId, serverId },
+      });
       sshClient.shell(
         {
-          term: 'xterm-256color',
+          term: "xterm-256color",
           cols: 80,
-          rows: 24
+          rows: 24,
         },
         (error, stream) => {
           if (error) {
-            sendStatus(session, 'error', createSafeErrorMessage(error))
-            closeTerminalSession(tabId)
-            return
+            sendStatus(session, "error", createSafeErrorMessage(error));
+            closeTerminalSession(tabId);
+            return;
           }
 
-          session.shellStream = stream
+          session.shellStream = stream;
           writeAppLog({
-            scope: 'main.ssh',
-            message: 'SSH shell 已打开',
-            data: { tabId, serverId }
-          })
-          sendStatus(session, 'connected')
+            scope: "main.ssh",
+            message: "SSH shell 已打开",
+            data: { tabId, serverId },
+          });
+          sendStatus(session, "connected");
 
-          stream.on('data', (data: Buffer) => {
-            webContents.send('terminal:data', {
+          stream.on("data", (data: Buffer) => {
+            webContents.send("terminal:data", {
               tabId,
-              data: data.toString('utf8')
-            })
-          })
+              data: data.toString("utf8"),
+            });
+          });
 
-          stream.on('close', () => {
-            sendStatus(session, 'disconnected')
-            closeTerminalSession(tabId)
-          })
+          stream.on("close", () => {
+            sendStatus(session, "disconnected");
+            closeTerminalSession(tabId);
+          });
 
-          installShellPathIntegration(session)
-        }
-      )
+          installShellPathIntegration(session);
+        },
+      );
     })
-    .on('error', (error) => {
+    .on("error", error => {
       writeAppLog({
-        scope: 'main.ssh',
-        level: 'error',
-        message: 'SSH 会话错误',
-        data: { tabId, serverId, error: createSafeErrorMessage(error) }
-      })
-      sendStatus(session, 'error', createSafeErrorMessage(error))
-      closeTerminalSession(tabId)
+        scope: "main.ssh",
+        level: "error",
+        message: "SSH 会话错误",
+        data: { tabId, serverId, error: createSafeErrorMessage(error) },
+      });
+      sendStatus(session, "error", createSafeErrorMessage(error));
+      closeTerminalSession(tabId);
     })
-    .on('close', () => {
+    .on("close", () => {
       if (terminalSessions.has(tabId)) {
-        sendStatus(session, 'disconnected')
-        terminalSessions.delete(tabId)
+        sendStatus(session, "disconnected");
+        terminalSessions.delete(tabId);
       }
-    })
+    });
 
   sshClient.connect({
     host: server.host,
@@ -165,58 +188,58 @@ export function openTerminalSession(webContents: WebContents, serverId: string):
     username: server.username,
     password: server.password,
     readyTimeout: 15000,
-    keepaliveInterval: 10000
-  })
+    keepaliveInterval: 10000,
+  });
 
   return {
     tabId,
-    serverId
-  }
+    serverId,
+  };
 }
 
 export function writeTerminalInput(tabId: string, data: string): void {
-  const session = terminalSessions.get(tabId)
+  const session = terminalSessions.get(tabId);
 
-  if (!session?.shellStream || typeof data !== 'string') {
-    return
+  if (!session?.shellStream || typeof data !== "string") {
+    return;
   }
 
-  session.shellStream.write(data)
+  session.shellStream.write(data);
 }
 
 export function resizeTerminal(input: TerminalResizeInput): void {
-  const session = terminalSessions.get(input.tabId)
+  const session = terminalSessions.get(input.tabId);
 
   if (!session?.shellStream) {
-    return
+    return;
   }
 
   if (!Number.isInteger(input.cols) || !Number.isInteger(input.rows)) {
-    return
+    return;
   }
 
-  session.shellStream.setWindow(input.rows, input.cols, 0, 0)
+  session.shellStream.setWindow(input.rows, input.cols, 0, 0);
 }
 
 export function closeTerminalSession(tabId: string): void {
-  const session = terminalSessions.get(tabId)
+  const session = terminalSessions.get(tabId);
 
   if (!session) {
-    return
+    return;
   }
 
-  terminalSessions.delete(tabId)
-  session.shellStream?.end()
-  session.sshClient.end()
+  terminalSessions.delete(tabId);
+  session.shellStream?.end();
+  session.sshClient.end();
   writeAppLog({
-    scope: 'main.ssh',
-    message: 'SSH 会话已关闭',
-    data: { tabId, serverId: session.serverId }
-  })
+    scope: "main.ssh",
+    message: "SSH 会话已关闭",
+    data: { tabId, serverId: session.serverId },
+  });
 }
 
 export function closeAllTerminalSessions(): void {
   for (const tabId of terminalSessions.keys()) {
-    closeTerminalSession(tabId)
+    closeTerminalSession(tabId);
   }
 }

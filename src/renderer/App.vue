@@ -1,56 +1,36 @@
 <script setup lang="ts">
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { cpp } from "@codemirror/lang-cpp";
-import { css } from "@codemirror/lang-css";
-import { go } from "@codemirror/lang-go";
-import { html } from "@codemirror/lang-html";
-import { java } from "@codemirror/lang-java";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { markdown } from "@codemirror/lang-markdown";
-import { php } from "@codemirror/lang-php";
-import { python } from "@codemirror/lang-python";
-import { rust } from "@codemirror/lang-rust";
-import { sass } from "@codemirror/lang-sass";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { yaml } from "@codemirror/lang-yaml";
-import { bracketMatching, defaultHighlightStyle, indentOnInput, StreamLanguage, syntaxHighlighting } from "@codemirror/language";
-import { cmake } from "@codemirror/legacy-modes/mode/cmake";
-import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
-import { lua } from "@codemirror/legacy-modes/mode/lua";
-import { perl } from "@codemirror/legacy-modes/mode/perl";
-import { powerShell } from "@codemirror/legacy-modes/mode/powershell";
-import { properties } from "@codemirror/legacy-modes/mode/properties";
-import { r } from "@codemirror/legacy-modes/mode/r";
-import { ruby } from "@codemirror/legacy-modes/mode/ruby";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { swift } from "@codemirror/legacy-modes/mode/swift";
-import { toml } from "@codemirror/legacy-modes/mode/toml";
 import {
   closeSearchPanel,
   findNext,
   findPrevious,
-  getSearchQuery,
-  highlightSelectionMatches,
   openSearchPanel,
   replaceAll,
   replaceNext,
-  search,
-  searchKeymap,
   setSearchQuery,
   SearchQuery,
 } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
+import { Compartment } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
+import { formatFileSize, formatModifyTime } from "./utils/format";
 import {
-  drawSelection,
-  dropCursor,
-  EditorView,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  keymap,
-  lineNumbers,
-} from "@codemirror/view";
+  getStatusText,
+  getDownloadProgressPercent,
+  getDownloadTaskStatusText,
+} from "./utils/status-text";
+import { getRootName, getRemoteParentPath, parseOsc7Path } from "./utils/path";
+import { flattenRemoteTree, updateNodeChildren } from "./utils/file-tree";
+import { copyTextByFallback } from "./utils/clipboard";
+import { isKnownEditableTextFile, isPreviewImageFile } from "./utils/file-kind";
+import { createFileEditorTheme } from "./utils/codemirror/theme";
+import { createFileEditorState } from "./utils/codemirror/state";
+import type { TerminalTab, TerminalSearchMatch } from "./types/terminal";
+import type {
+  VisibleRemoteFileNode,
+  SftpTreeState,
+  FileContextMenuState,
+  FileTextProbeState,
+  ImagePreviewState,
+} from "./types/sftp";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
@@ -71,6 +51,7 @@ import arrowUpIcon from "./assets/icons/arrow-up.svg";
 import caseSensitiveIcon from "./assets/icons/case-sensitive.svg";
 import chevronRightIcon from "./assets/icons/chevron-right.svg";
 import closeIcon from "./assets/icons/close.svg";
+import copyIcon from "./assets/icons/copy.svg";
 import editIcon from "./assets/icons/edit.svg";
 import fileIcon from "./assets/icons/file.svg";
 import folderIcon from "./assets/icons/folder.svg";
@@ -80,53 +61,71 @@ import plusIcon from "./assets/icons/plus.svg";
 import refreshIcon from "./assets/icons/refresh.svg";
 import restoreIcon from "./assets/icons/restore.svg";
 import settingsIcon from "./assets/icons/settings.svg";
-import splitViewIcon from "./assets/icons/split-view.svg";
+import taskIcon from "./assets/icons/task.svg";
+import pauseIcon from "./assets/icons/pause.svg";
+import continueIcon from "./assets/icons/continue.svg";
 import syncPathIcon from "./assets/icons/sync-path.svg";
 import trashIcon from "./assets/icons/trash.svg";
+
 import AppDialog from "./components/AppDialog.vue";
 import type { ServerConfig, ServerInput } from "../shared/server";
 import { defaultAppSettings, type AppSettings } from "../shared/settings";
-import type { RemoteFileNode, SftpProbeTextResult } from "../shared/sftp";
+import type {
+  RemoteFileNode,
+  SftpPreviewImageResult,
+} from "../shared/sftp";
 import type { TerminalStatusEvent } from "../shared/terminal";
+import { storeToRefs } from "pinia";
+import { useCoreStore } from "./stores/useCoreStore";
+import { useSettingsStore } from "./stores/useSettingsStore";
+import { useWindowStore } from "./stores/useWindowStore";
+import { useSidebarStore } from "./stores/useSidebarStore";
+import { useDownloadsStore } from "./stores/useDownloadsStore";
 
-interface TerminalTab {
-  id: string;
-  serverId: string;
-  title: string;
-  status: TerminalStatusEvent["status"];
-  currentPath?: string;
-  message?: string;
-}
+const coreStore = useCoreStore();
+const settingsStore = useSettingsStore();
+const windowStore = useWindowStore();
+const sidebarStore = useSidebarStore();
+const downloadsStore = useDownloadsStore();
 
-interface VisibleRemoteFileNode extends RemoteFileNode {
-  level: number;
-}
+// core：API 代理（响应式）+ 日志（普通函数）
+const { orbitSSHApi } = storeToRefs(coreStore);
+const writeRendererLog = coreStore.writeRendererLog;
 
-interface TerminalSearchMatch {
-  row: number;
-  col: number;
-  size: number;
-}
+// settings：appSettings 是 reactive 对象，直接取引用即保留响应性
+const appSettings = settingsStore.appSettings;
+const selectionBackgroundOptions = settingsStore.selectionBackgroundOptions;
+const {
+  isSettingsDialogOpen,
+  isSelectionBackgroundDropdownOpen,
+  activeSettingsSection,
+} = storeToRefs(settingsStore);
+const {
+  openSettingsDialog,
+  closeSettingsDialog,
+  stepTerminalNumberSetting,
+  selectSelectionBackground,
+} = settingsStore;
 
-interface FileContextMenuState {
-  open: boolean;
-  x: number;
-  y: number;
-  node: RemoteFileNode | null;
-}
+// window
+const { isWindowMaximized } = storeToRefs(windowStore);
+const { minimizeWindow, toggleMaximizeWindow, closeWindow } = windowStore;
 
-interface FileTextProbeState {
-  status: "checking" | "text" | "unsupported" | "error";
-  reason?: SftpProbeTextResult["reason"];
-}
+// sidebar
+const { sidebarWidth, isResizingSidebar } = storeToRefs(sidebarStore);
+const { startSidebarResize } = sidebarStore;
 
-interface SftpTreeState {
-  homePath: string;
-  root: RemoteFileNode;
-  expandedPaths: Set<string>;
-  loadingPaths: Set<string>;
-  error: string;
-}
+// downloads
+const {
+  isTaskListOpen,
+  activeDownloadCount,
+  visibleDownloadTasks,
+} = storeToRefs(downloadsStore);
+const {
+  controlDownloadTask,
+  isDownloadTaskOperating,
+  closeTaskList,
+} = downloadsStore;
 
 const servers = ref<ServerConfig[]>([]);
 
@@ -134,14 +133,13 @@ const tabs = ref<TerminalTab[]>([]);
 const activeTabId = ref("");
 
 const isConnectionDialogOpen = ref(false);
-const isSettingsDialogOpen = ref(false);
 const isFileEditorOpen = ref(false);
 const isFileEditorCloseConfirmOpen = ref(false);
+const isImagePreviewOpen = ref(false);
+const isSftpPathPromptOpen = ref(false);
 const fileEditorContainer = ref<HTMLElement | null>(null);
 const fileEditorSearchInput = ref<HTMLInputElement | null>(null);
 const fileEditorReplaceInput = ref<HTMLInputElement | null>(null);
-const isSelectionBackgroundDropdownOpen = ref(false);
-const activeSettingsSection = ref<"general" | "shortcuts">("general");
 const isTerminalSearchOpen = ref(false);
 const isTerminalSearchCaseSensitive = ref(false);
 const isFileEditorSearchOpen = ref(false);
@@ -157,15 +155,15 @@ const listError = ref("");
 const editingServerId = ref<string | null>(null);
 const isServerListLoading = ref(false);
 const isSubmittingServer = ref(false);
-const isWindowMaximized = ref(false);
 const runtimeError = ref("");
 const fileEditorError = ref("");
 const fileEditorSearchKeyword = ref("");
 const fileEditorReplaceText = ref("");
+const filePathInput = ref("");
+const sftpPathPromptTitle = ref("路径无法访问");
+const sftpPathPromptMessage = ref("");
 const sftpTrees = ref<Record<string, SftpTreeState>>({});
 const fileTreeElement = ref<HTMLElement | null>(null);
-const sidebarWidth = ref(320);
-const isResizingSidebar = ref(false);
 const fileContextMenu = reactive<FileContextMenuState>({
   open: false,
   x: 0,
@@ -184,6 +182,15 @@ const fileEditor = reactive({
   searchIndex: 0,
   searchTotal: 0,
 });
+const imagePreview = reactive<ImagePreviewState>({
+  tabId: "",
+  path: "",
+  name: "",
+  dataUrl: "",
+  mimeType: "",
+  loading: false,
+  error: "",
+});
 const terminalHosts = new Map<string, HTMLElement>();
 const terminalInstances = new Map<
   string,
@@ -200,6 +207,7 @@ let removeTerminalStatusListener: (() => void) | undefined;
 let fitScheduleTimer: number | undefined;
 let lastTerminalSearchKeyword = "";
 let fileEditorView: EditorView | undefined;
+const fileEditorThemeCompartment = new Compartment();
 
 const connectionForm = reactive({
   name: "",
@@ -209,103 +217,11 @@ const connectionForm = reactive({
   password: "",
 });
 
-const appSettings = reactive<AppSettings>(structuredClone(defaultAppSettings));
-const selectionBackgroundOptions = [
-  "#244763",
-  "#365A46",
-  "#5B4B2A",
-  "#543A5F",
-  "#5A2D35",
-];
-const editableTextFileExtensions = new Set([
-  ".txt",
-  ".md",
-  ".markdown",
-  ".log",
-  ".csv",
-  ".tsv",
-  ".json",
-  ".jsonc",
-  ".xml",
-  ".yaml",
-  ".yml",
-  ".toml",
-  ".ini",
-  ".conf",
-  ".config",
-  ".env",
-  ".properties",
-  ".js",
-  ".jsx",
-  ".ts",
-  ".tsx",
-  ".mjs",
-  ".cjs",
-  ".vue",
-  ".svelte",
-  ".html",
-  ".htm",
-  ".css",
-  ".scss",
-  ".sass",
-  ".less",
-  ".py",
-  ".java",
-  ".c",
-  ".h",
-  ".cpp",
-  ".cc",
-  ".cxx",
-  ".hpp",
-  ".cs",
-  ".go",
-  ".rs",
-  ".php",
-  ".rb",
-  ".swift",
-  ".kt",
-  ".kts",
-  ".dart",
-  ".lua",
-  ".pl",
-  ".r",
-  ".sh",
-  ".bash",
-  ".zsh",
-  ".fish",
-  ".bat",
-  ".cmd",
-  ".ps1",
-  ".sql",
-]);
-const editableTextFileNames = new Set([
-  ".config",
-  ".env",
-  ".gitignore",
-  ".gitattributes",
-  ".editorconfig",
-  ".npmrc",
-  ".yarnrc",
-  ".prettierrc",
-  ".eslintrc",
-  ".babelrc",
-  ".dockerignore",
-  "dockerfile",
-  "makefile",
-  "cmakelists.txt",
-  "package.json",
-  "tsconfig.json",
-  "vite.config.ts",
-  "webpack.config.js",
-]);
-
 const hasServers = computed(() => servers.value.length > 0);
 
 const activeTab = computed(() =>
   tabs.value.find(tab => tab.id === activeTabId.value),
 );
-
-const dockShellApi = computed(() => window.dockShell);
 
 const activeSftpTree = computed(() => {
   if (!activeTabId.value) {
@@ -345,17 +261,6 @@ const fileEditorLineNumbers = computed(() => {
   );
 });
 
-function getStatusText(status: TerminalStatusEvent["status"]): string {
-  const statusTextMap: Record<TerminalStatusEvent["status"], string> = {
-    connecting: "连接中",
-    connected: "已连接",
-    disconnected: "已断开",
-    error: "错误",
-  };
-
-  return statusTextMap[status];
-}
-
 function applyTerminalSettings(): void {
   terminalInstances.forEach(({ terminal, fitAddon }) => {
     terminal.options.fontSize = appSettings.terminal.fontSize;
@@ -367,72 +272,6 @@ function applyTerminalSettings(): void {
     fitAddon.fit();
   });
   scheduleTerminalFit();
-}
-
-function toPlainAppSettings(): AppSettings {
-  return {
-    terminal: {
-      fontSize: appSettings.terminal.fontSize,
-      lineHeight: appSettings.terminal.lineHeight,
-      selectionBackground: appSettings.terminal.selectionBackground,
-    },
-  };
-}
-
-async function saveAppSettings(): Promise<void> {
-  try {
-    const savedSettings = await dockShellApi.value?.settings.save(toPlainAppSettings());
-
-    if (savedSettings) {
-      Object.assign(appSettings.terminal, savedSettings.terminal);
-    }
-  } catch (error) {
-    writeRendererLog(
-      "保存设置失败",
-      { error: error instanceof Error ? error.message : String(error) },
-      "error",
-    );
-  }
-}
-
-async function updateTerminalSetting<K extends keyof AppSettings["terminal"]>(
-  key: K,
-  value: AppSettings["terminal"][K],
-): Promise<void> {
-  appSettings.terminal[key] = value;
-  applyTerminalSettings();
-  await saveAppSettings();
-}
-
-async function stepTerminalNumberSetting(
-  key: "fontSize" | "lineHeight",
-  delta: number,
-): Promise<void> {
-  const limits = {
-    fontSize: { min: 10, max: 24, decimals: 0 },
-    lineHeight: { min: 1, max: 2, decimals: 1 },
-  }[key];
-  const nextValue = Math.min(
-    Math.max(Number(appSettings.terminal[key]) + delta, limits.min),
-    limits.max,
-  );
-  const normalizedValue = Number(nextValue.toFixed(limits.decimals));
-
-  await updateTerminalSetting(key, normalizedValue);
-}
-
-function openSettingsDialog(): void {
-  isSettingsDialogOpen.value = true;
-}
-
-function closeSettingsDialog(): void {
-  isSettingsDialogOpen.value = false;
-  isSelectionBackgroundDropdownOpen.value = false;
-}
-
-async function selectSelectionBackground(color: string): Promise<void> {
-  isSelectionBackgroundDropdownOpen.value = false;
-  await updateTerminalSetting("selectionBackground", color);
 }
 
 // 打开终端搜索框后主动聚焦，便于 Ctrl+F 后直接输入关键词。
@@ -512,7 +351,9 @@ function getTerminalSearchMatches(
           ? columns[nextColumnIndex]
           : Math.min(index, terminal.cols - 1);
       const endIndex = index + keyword.length;
-      const nextEndColumnIndex = columns.findIndex(column => column >= endIndex);
+      const nextEndColumnIndex = columns.findIndex(
+        column => column >= endIndex,
+      );
       const endCol =
         nextEndColumnIndex >= 0
           ? columns[nextEndColumnIndex]
@@ -523,7 +364,10 @@ function getTerminalSearchMatches(
         col,
         size: Math.max(endCol - col, 1),
       });
-      index = searchLine.indexOf(searchNeedle, index + Math.max(keyword.length, 1));
+      index = searchLine.indexOf(
+        searchNeedle,
+        index + Math.max(keyword.length, 1),
+      );
     }
   }
 
@@ -541,7 +385,9 @@ function selectTerminalSearchMatch(
     match.row >= terminal.buffer.active.viewportY + terminal.rows
   ) {
     terminal.scrollLines(
-      match.row - terminal.buffer.active.viewportY - Math.floor(terminal.rows / 2),
+      match.row -
+        terminal.buffer.active.viewportY -
+        Math.floor(terminal.rows / 2),
     );
   }
 }
@@ -633,6 +479,13 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
 
   if (isSearchShortcut) {
     event.preventDefault();
+    event.stopPropagation();
+
+    if (isFileEditorOpen.value) {
+      void openFileEditorSearch();
+      return;
+    }
+
     void openTerminalSearch();
     return;
   }
@@ -669,22 +522,6 @@ function handleTerminalKeyEvent(event: KeyboardEvent): boolean {
   return true;
 }
 
-function writeRendererLog(
-  message: string,
-  data?: Record<string, unknown>,
-  level: "debug" | "info" | "warn" | "error" = "info",
-): void {
-  const consoleMethod =
-    level === "error" ? "error" : level === "warn" ? "warn" : "log";
-  console[consoleMethod](`[DockShell renderer] ${message}`, data ?? {});
-  void dockShellApi.value?.logger.write({
-    scope: "renderer",
-    level,
-    message,
-    data,
-  });
-}
-
 function getFilePanelHint(): string {
   if (!activeTab.value) {
     return "打开 SSH 会话后显示远程目录";
@@ -703,332 +540,6 @@ function getFilePanelHint(): string {
   return tree.homePath;
 }
 
-function getRootName(homePath: string): string {
-  const parts = homePath.split("/").filter(Boolean);
-
-  return parts.at(-1) ?? homePath;
-}
-
-function parseOsc7Path(data: string): string {
-  const match = data.match(/^file:\/\/[^/]*(\/.*)$/);
-
-  if (!match?.[1]) {
-    return "";
-  }
-
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
-}
-
-function flattenRemoteTree(
-  node: RemoteFileNode,
-  expandedPaths: Set<string>,
-  level = 0,
-): VisibleRemoteFileNode[] {
-  const currentNode = {
-    ...node,
-    level,
-  };
-
-  if (
-    node.type !== "directory" ||
-    !expandedPaths.has(node.path) ||
-    !node.children
-  ) {
-    return [currentNode];
-  }
-
-  return [
-    currentNode,
-    ...node.children.flatMap(childNode =>
-      flattenRemoteTree(childNode, expandedPaths, level + 1),
-    ),
-  ];
-}
-
-function updateNodeChildren(
-  node: RemoteFileNode,
-  targetPath: string,
-  children: RemoteFileNode[],
-): RemoteFileNode {
-  if (node.path === targetPath) {
-    return {
-      ...node,
-      children,
-      loaded: true,
-    };
-  }
-
-  if (!node.children) {
-    return node;
-  }
-
-  return {
-    ...node,
-    children: node.children.map(childNode =>
-      updateNodeChildren(childNode, targetPath, children),
-    ),
-  };
-}
-
-function formatFileSize(size?: number): string {
-  if (typeof size !== "number") {
-    return "";
-  }
-
-  if (size < 1024) {
-    return `${size} B`;
-  }
-
-  if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatModifyTime(modifyTime?: number): string {
-  if (typeof modifyTime !== "number") {
-    return "";
-  }
-
-  return new Date(modifyTime).toLocaleDateString();
-}
-
-function getFileExtension(fileName: string): string {
-  const dotIndex = fileName.lastIndexOf(".");
-
-  if (dotIndex <= 0) {
-    return "";
-  }
-
-  return fileName.slice(dotIndex).toLowerCase();
-}
-
-function getFileEditorLanguageExtension(fileName: string): Extension {
-  const lowerName = fileName.toLowerCase();
-  const extension = getFileExtension(lowerName);
-
-  if ([".js", ".mjs", ".cjs", ".jsx"].includes(extension)) {
-    return javascript({ jsx: extension === ".jsx" });
-  }
-
-  if ([".ts", ".tsx"].includes(extension)) {
-    return javascript({ typescript: true, jsx: extension === ".tsx" });
-  }
-
-  if ([".json", ".jsonc"].includes(extension)) {
-    return json();
-  }
-
-  if ([".html", ".htm", ".vue", ".svelte"].includes(extension)) {
-    return html();
-  }
-
-  if ([".css", ".scss", ".sass", ".less"].includes(extension)) {
-    if (extension === ".scss") {
-      return sass();
-    }
-
-    if (extension === ".sass") {
-      return sass({ indented: true });
-    }
-
-    return css();
-  }
-
-  if ([".md", ".markdown"].includes(extension)) {
-    return markdown();
-  }
-
-  if (extension === ".py") {
-    return python();
-  }
-
-  if ([".java", ".kt", ".kts"].includes(extension)) {
-    return java();
-  }
-
-  if ([".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".cs"].includes(extension)) {
-    return cpp();
-  }
-
-  if (extension === ".go") {
-    return go();
-  }
-
-  if (extension === ".rs") {
-    return rust();
-  }
-
-  if (extension === ".php") {
-    return php();
-  }
-
-  if (extension === ".rb") {
-    return StreamLanguage.define(ruby);
-  }
-
-  if (extension === ".swift") {
-    return StreamLanguage.define(swift);
-  }
-
-  if (extension === ".lua") {
-    return StreamLanguage.define(lua);
-  }
-
-  if (extension === ".pl") {
-    return StreamLanguage.define(perl);
-  }
-
-  if (extension === ".r") {
-    return StreamLanguage.define(r);
-  }
-
-  if ([".sh", ".bash", ".zsh", ".fish", ".bat", ".cmd"].includes(extension)) {
-    return StreamLanguage.define(shell);
-  }
-
-  if (extension === ".ps1") {
-    return StreamLanguage.define(powerShell);
-  }
-
-  if (extension === ".sql") {
-    return sql();
-  }
-
-  if ([".yaml", ".yml"].includes(extension)) {
-    return yaml();
-  }
-
-  if (extension === ".xml") {
-    return xml();
-  }
-
-  if ([".toml"].includes(extension)) {
-    return StreamLanguage.define(toml);
-  }
-
-  if (extension === ".properties") {
-    return StreamLanguage.define(properties);
-  }
-
-  if (lowerName === "dockerfile" || lowerName.endsWith(".dockerfile")) {
-    return StreamLanguage.define(dockerFile);
-  }
-
-  if (lowerName === "cmakelists.txt") {
-    return StreamLanguage.define(cmake);
-  }
-
-  return [];
-}
-
-const fileEditorTheme = EditorView.theme({
-  "&": {
-    height: "100%",
-    backgroundColor: "#0b0f14",
-    color: "#d8e2f0",
-    caretColor: "#ffffff",
-    fontSize: "13px",
-  },
-  ".cm-scroller": {
-    fontFamily: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
-    lineHeight: "20px",
-  },
-  ".cm-content": {
-    minHeight: "100%",
-    padding: "12px 0",
-  },
-  ".cm-line": {
-    padding: "0 14px",
-  },
-  ".cm-gutters": {
-    backgroundColor: "#0b0f14",
-    borderRight: "1px solid #202633",
-    color: "#59677b",
-  },
-  ".cm-activeLine": {
-    backgroundColor: "rgba(111, 182, 255, 0.08)",
-  },
-  ".cm-activeLineGutter": {
-    backgroundColor: "rgba(111, 182, 255, 0.08)",
-    color: "#9fb3cc",
-  },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    backgroundColor: "#244763",
-  },
-  ".cm-cursor, .cm-dropCursor": {
-    borderLeftColor: "#ffffff",
-  },
-  ".cm-searchMatch": {
-    backgroundColor: "#324152",
-    outline: "1px solid #52637A",
-  },
-  ".cm-searchMatch-selected": {
-    backgroundColor: "#A87922",
-    outline: "1px solid #F0B44C",
-  },
-  ".cm-panels": {
-    display: "none",
-  },
-});
-
-function createFileEditorState(content: string, fileName: string): EditorState {
-  return EditorState.create({
-    doc: content,
-    extensions: [
-      lineNumbers(),
-      highlightActiveLineGutter(),
-      history(),
-      drawSelection(),
-      dropCursor(),
-      indentOnInput(),
-      bracketMatching(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-      highlightActiveLine(),
-      highlightSelectionMatches(),
-      search({ top: true }),
-      getFileEditorLanguageExtension(fileName),
-      keymap.of([
-        {
-          key: "Mod-f",
-          run: () => {
-            void openFileEditorSearch();
-            return true;
-          },
-        },
-        {
-          key: "Escape",
-          run: () => {
-            if (!isFileEditorSearchOpen.value) {
-              return false;
-            }
-
-            void closeFileEditorSearch();
-            return true;
-          },
-        },
-        ...searchKeymap,
-        ...defaultKeymap,
-        ...historyKeymap,
-      ]),
-      fileEditorTheme,
-      EditorView.lineWrapping,
-      EditorView.updateListener.of(update => {
-        if (update.docChanged) {
-          fileEditor.content = update.state.doc.toString();
-          if (fileEditorSearchKeyword.value) {
-            updateFileEditorSearchResultFromView(update.view);
-          }
-        }
-      }),
-    ],
-  });
-}
 
 function destroyFileEditorView(): void {
   fileEditorView?.destroy();
@@ -1045,22 +556,32 @@ async function mountFileEditorView(): Promise<void> {
   destroyFileEditorView();
   fileEditorView = new EditorView({
     parent: fileEditorContainer.value,
-    state: createFileEditorState(fileEditor.content, fileEditor.name),
+    state: createFileEditorState({
+      content: fileEditor.content,
+      fileName: fileEditor.name,
+      themeExtension: fileEditorThemeCompartment.of(
+        createFileEditorTheme(appSettings.terminal.selectionBackground),
+      ),
+      onSearchShortcut: () => {
+        void openFileEditorSearch();
+      },
+      shouldCloseOnEscape: () => isFileEditorSearchOpen.value,
+      onCloseSearch: () => {
+        void closeFileEditorSearch();
+      },
+      onDocChanged: view => {
+        fileEditor.content = view.state.doc.toString();
+        if (fileEditorSearchKeyword.value) {
+          updateFileEditorSearchResultFromView(view);
+        }
+      },
+    }),
   });
   fileEditorView.focus();
 }
 
-function isKnownEditableTextFile(node: RemoteFileNode | null): boolean {
-  if (!node || node.type !== "file") {
-    return false;
-  }
-
-  const fileName = node.name.toLowerCase();
-
-  return (
-    editableTextFileNames.has(fileName) ||
-    editableTextFileExtensions.has(getFileExtension(fileName))
-  );
+function canDownloadRemoteFile(node: RemoteFileNode | null): boolean {
+  return Boolean(node && node.type === "file" && activeTabId.value);
 }
 
 function getFileTextProbeState(
@@ -1091,6 +612,12 @@ function getFileEditMenuLabel(node: RemoteFileNode | null): string {
   return "编辑";
 }
 
+function canDeleteRemoteNode(node: RemoteFileNode | null): boolean {
+  const tree = activeSftpTree.value;
+
+  return Boolean(node && tree && node.path !== tree.root.path);
+}
+
 async function probeFileTextSupport(node: RemoteFileNode): Promise<void> {
   if (
     node.type !== "file" ||
@@ -1104,7 +631,7 @@ async function probeFileTextSupport(node: RemoteFileNode): Promise<void> {
   fileTextProbeStates[node.path] = { status: "checking" };
 
   try {
-    const result = await dockShellApi.value?.sftp.probeText({
+    const result = await orbitSSHApi.value?.sftp.probeText({
       tabId: activeTabId.value,
       path: node.path,
       size: node.size,
@@ -1139,6 +666,19 @@ async function probeFileTextSupport(node: RemoteFileNode): Promise<void> {
   }
 }
 
+async function ensureEditableTextFile(node: RemoteFileNode): Promise<boolean> {
+  if (isEditableTextFile(node)) {
+    return true;
+  }
+
+  if (node.type !== "file" || !activeTabId.value) {
+    return false;
+  }
+
+  await probeFileTextSupport(node);
+  return isEditableTextFile(node);
+}
+
 function closeFileContextMenu(): void {
   fileContextMenu.open = false;
   fileContextMenu.node = null;
@@ -1151,7 +691,10 @@ function openFileContextMenu(event: MouseEvent, node: RemoteFileNode): void {
   fileContextMenu.x = event.clientX;
   fileContextMenu.y = event.clientY;
   fileContextMenu.node = node;
-  void probeFileTextSupport(node);
+
+  if (!isPreviewImageFile(node)) {
+    void probeFileTextSupport(node);
+  }
 }
 
 async function editContextFile(): Promise<void> {
@@ -1162,6 +705,81 @@ async function editContextFile(): Promise<void> {
   }
 
   closeFileContextMenu();
+  await openRemoteFileEditor(node);
+}
+
+function applyImagePreviewResult(
+  result: SftpPreviewImageResult,
+  tabId: string,
+): void {
+  imagePreview.tabId = tabId;
+  imagePreview.path = result.path;
+  imagePreview.name = result.name;
+  imagePreview.dataUrl = result.dataUrl;
+  imagePreview.mimeType = result.mimeType;
+  imagePreview.loading = false;
+  imagePreview.error = "";
+}
+
+async function openRemoteImagePreview(node: RemoteFileNode): Promise<void> {
+  const tabId = activeTabId.value;
+
+  if (!tabId || !orbitSSHApi.value || !isPreviewImageFile(node)) {
+    return;
+  }
+
+  imagePreview.tabId = tabId;
+  imagePreview.path = node.path;
+  imagePreview.name = node.name;
+  imagePreview.dataUrl = "";
+  imagePreview.mimeType = "";
+  imagePreview.loading = true;
+  imagePreview.error = "";
+  isImagePreviewOpen.value = true;
+
+  try {
+    const result = await orbitSSHApi.value.sftp.previewImage({
+      tabId,
+      path: node.path,
+      name: node.name,
+      size: node.size,
+    });
+
+    applyImagePreviewResult(result, tabId);
+  } catch (error) {
+    imagePreview.loading = false;
+    imagePreview.error =
+      error instanceof Error ? error.message : "图片预览失败";
+  }
+}
+
+function closeImagePreview(): void {
+  isImagePreviewOpen.value = false;
+  imagePreview.tabId = "";
+  imagePreview.path = "";
+  imagePreview.name = "";
+  imagePreview.dataUrl = "";
+  imagePreview.mimeType = "";
+  imagePreview.loading = false;
+  imagePreview.error = "";
+}
+
+async function previewContextFile(): Promise<void> {
+  const node = fileContextMenu.node;
+
+  if (!node || !isPreviewImageFile(node)) {
+    return;
+  }
+
+  closeFileContextMenu();
+  await openRemoteImagePreview(node);
+}
+
+async function openRemoteFileEditor(node: RemoteFileNode): Promise<void> {
+  if (!activeTabId.value || !orbitSSHApi.value) {
+    return;
+  }
+
   fileEditor.loading = true;
   fileEditorError.value = "";
   isFileEditorOpen.value = true;
@@ -1177,7 +795,7 @@ async function editContextFile(): Promise<void> {
   fileEditor.searchTotal = 0;
 
   try {
-    const result = await dockShellApi.value.sftp.readText({
+    const result = await orbitSSHApi.value.sftp.readText({
       tabId: activeTabId.value,
       path: node.path,
     });
@@ -1191,6 +809,158 @@ async function editContextFile(): Promise<void> {
     fileEditorError.value =
       error instanceof Error ? error.message : "读取远程文件失败";
     fileEditor.loading = false;
+  }
+}
+
+async function openRemoteFileEditorByDoubleClick(
+  node: RemoteFileNode,
+): Promise<void> {
+  if (node.type !== "file") {
+    return;
+  }
+
+  if (isPreviewImageFile(node)) {
+    await openRemoteImagePreview(node);
+    return;
+  }
+
+  const editable = await ensureEditableTextFile(node);
+
+  if (editable) {
+    await openRemoteFileEditor(node);
+  }
+}
+
+async function downloadRemoteFileNode(node: RemoteFileNode): Promise<void> {
+  const tabId = activeTabId.value;
+
+  if (!tabId || !orbitSSHApi.value || !canDownloadRemoteFile(node)) {
+    return;
+  }
+
+  try {
+    await orbitSSHApi.value.sftp.download({
+      tabId,
+      path: node.path,
+      name: node.name,
+      size: node.size,
+    });
+  } catch (error) {
+    showSftpPathPrompt(
+      error instanceof Error ? error.message : "文件下载失败",
+      "下载失败",
+    );
+  }
+}
+
+async function downloadContextFile(): Promise<void> {
+  const node = fileContextMenu.node;
+
+  if (!node || !canDownloadRemoteFile(node)) {
+    return;
+  }
+
+  closeFileContextMenu();
+  await downloadRemoteFileNode(node);
+}
+
+async function downloadImagePreviewFile(): Promise<void> {
+  if (
+    !imagePreview.tabId ||
+    !imagePreview.path ||
+    !imagePreview.name ||
+    !orbitSSHApi.value
+  ) {
+    return;
+  }
+
+  try {
+    await orbitSSHApi.value.sftp.download({
+      tabId: imagePreview.tabId,
+      path: imagePreview.path,
+      name: imagePreview.name,
+    });
+  } catch (error) {
+    imagePreview.error =
+      error instanceof Error ? error.message : "文件下载失败";
+  }
+}
+
+async function deleteContextFile(): Promise<void> {
+  const node = fileContextMenu.node;
+  const tabId = activeTabId.value;
+  const typeLabel = node?.type === "directory" ? "文件夹" : "文件";
+
+  if (!node || !tabId || !orbitSSHApi.value || !canDeleteRemoteNode(node)) {
+    return;
+  }
+
+  const confirmMessage =
+    node.type === "directory"
+      ? `确认删除文件夹“${node.name}”？\n\n该操作会递归删除其中的所有文件和子文件夹。`
+      : `确认删除文件“${node.name}”？`;
+
+  if (!window.confirm(confirmMessage)) {
+    closeFileContextMenu();
+    return;
+  }
+
+  closeFileContextMenu();
+
+  try {
+    await orbitSSHApi.value.sftp.delete({
+      tabId,
+      path: node.path,
+      type: node.type,
+    });
+
+    // 删除后清理本地探测状态，避免同路径新文件复用旧结论。
+    delete fileTextProbeStates[node.path];
+
+    if (fileEditor.path === node.path) {
+      closeFileEditor();
+    }
+
+    const parentPath = getRemoteParentPath(node.path);
+    const children = await orbitSSHApi.value.sftp.list({
+      tabId,
+      path: parentPath,
+    });
+    const latestTree = sftpTrees.value[tabId];
+
+    if (!latestTree) {
+      return;
+    }
+
+    const nextExpandedPaths = new Set(latestTree.expandedPaths);
+    nextExpandedPaths.delete(node.path);
+
+    setSftpTree(tabId, {
+      ...latestTree,
+      root: updateNodeChildren(latestTree.root, parentPath, children),
+      expandedPaths: nextExpandedPaths,
+      error: "",
+    });
+  } catch (error) {
+    const latestTree = sftpTrees.value[tabId];
+
+    if (latestTree) {
+      setSftpTree(tabId, {
+        ...latestTree,
+        error: error instanceof Error ? error.message : `删除${typeLabel}失败`,
+      });
+    }
+
+    writeRendererLog(
+      "远程文件节点删除失败",
+      {
+        tabId,
+        path: node.path,
+        type: node.type,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "error",
+    );
   }
 }
 
@@ -1229,8 +999,9 @@ async function saveFileEditor(): Promise<boolean> {
   fileEditorError.value = "";
 
   try {
-    fileEditor.content = fileEditorView?.state.doc.toString() ?? fileEditor.content;
-    await dockShellApi.value.sftp.writeText({
+    fileEditor.content =
+      fileEditorView?.state.doc.toString() ?? fileEditor.content;
+    await orbitSSHApi.value.sftp.writeText({
       tabId: fileEditor.tabId,
       path: fileEditor.path,
       content: fileEditor.content,
@@ -1274,7 +1045,10 @@ function updateFileEditorSearchResult(index: number, total: number): void {
   fileEditor.searchTotal = total;
 }
 
-function getFileEditorSearchMatches(view: EditorView, keyword: string): number[] {
+function getFileEditorSearchMatches(
+  view: EditorView,
+  keyword: string,
+): number[] {
   if (!keyword) {
     return [];
   }
@@ -1302,7 +1076,10 @@ function updateFileEditorSearchResultFromView(view = fileEditorView): void {
     return;
   }
 
-  const matches = getFileEditorSearchMatches(view, fileEditorSearchKeyword.value);
+  const matches = getFileEditorSearchMatches(
+    view,
+    fileEditorSearchKeyword.value,
+  );
 
   if (matches.length === 0) {
     updateFileEditorSearchResult(0, 0);
@@ -1311,10 +1088,15 @@ function updateFileEditorSearchResultFromView(view = fileEditorView): void {
 
   const selectionFrom = view.state.selection.main.from;
   const activeIndex = matches.findIndex(
-    match => match <= selectionFrom && selectionFrom <= match + fileEditorSearchKeyword.value.length,
+    match =>
+      match <= selectionFrom &&
+      selectionFrom <= match + fileEditorSearchKeyword.value.length,
   );
 
-  updateFileEditorSearchResult(activeIndex >= 0 ? activeIndex + 1 : 1, matches.length);
+  updateFileEditorSearchResult(
+    activeIndex >= 0 ? activeIndex + 1 : 1,
+    matches.length,
+  );
 }
 
 function applyFileEditorSearchQuery(): void {
@@ -1361,7 +1143,8 @@ async function closeFileEditorSearch(): Promise<void> {
 }
 
 function toggleFileEditorSearchCaseSensitive(): void {
-  isFileEditorSearchCaseSensitive.value = !isFileEditorSearchCaseSensitive.value;
+  isFileEditorSearchCaseSensitive.value =
+    !isFileEditorSearchCaseSensitive.value;
   applyFileEditorSearchQuery();
   searchFileEditor();
 }
@@ -1485,12 +1268,12 @@ async function submitConnectionForm(): Promise<void> {
   formError.value = "";
 
   try {
-    if (!dockShellApi.value) {
+    if (!orbitSSHApi.value) {
       throw new Error("请通过 Electron 窗口启动应用");
     }
 
     if (editingServerId.value) {
-      const updatedServer = await dockShellApi.value.servers.update({
+      const updatedServer = await orbitSSHApi.value.servers.update({
         id: editingServerId.value,
         ...nextServer,
       });
@@ -1498,7 +1281,7 @@ async function submitConnectionForm(): Promise<void> {
         server.id === updatedServer.id ? updatedServer : server,
       );
     } else {
-      const createdServer = await dockShellApi.value.servers.create(nextServer);
+      const createdServer = await orbitSSHApi.value.servers.create(nextServer);
       servers.value = [createdServer, ...servers.value];
     }
 
@@ -1531,11 +1314,11 @@ async function deleteServer(serverId: string): Promise<void> {
   }
 
   try {
-    if (!dockShellApi.value) {
+    if (!orbitSSHApi.value) {
       throw new Error("请通过 Electron 窗口启动应用");
     }
 
-    await dockShellApi.value.servers.delete(serverId);
+    await orbitSSHApi.value.servers.delete(serverId);
     servers.value = servers.value.filter(server => server.id !== serverId);
   } catch (error) {
     listError.value = error instanceof Error ? error.message : "删除服务器失败";
@@ -1562,7 +1345,7 @@ function fitTerminal(tabId: string): void {
 
   const { cols, rows } = terminalEntry.terminal;
   if (cols > 0 && rows > 0) {
-    void dockShellApi.value?.terminals.resize({
+    void orbitSSHApi.value?.terminals.resize({
       tabId,
       cols,
       rows,
@@ -1605,6 +1388,24 @@ function createTerminalInstance(tab: TerminalTab): void {
       foreground: "#d8e2f0",
       cursor: "#ffffff",
       selectionBackground: appSettings.terminal.selectionBackground,
+      // Canvas 渲染器不会回退到 xterm 内置默认色板，必须显式给出 ANSI 16 色，
+      // 否则 ls 的目录/可执行/软链等 ANSI 颜色码会被当成普通前景色渲染（全白）。
+      black: "#0b0f14",
+      red: "#ff6b6b",
+      green: "#89dcae",
+      yellow: "#f0b44c",
+      blue: "#6fb6ff",
+      magenta: "#c891d8",
+      cyan: "#5fcabe",
+      white: "#d8e2f0",
+      brightBlack: "#59677b",
+      brightRed: "#ff9a9a",
+      brightGreen: "#aeebc4",
+      brightYellow: "#f5cb7d",
+      brightBlue: "#9bc9ff",
+      brightMagenta: "#dab0e4",
+      brightCyan: "#8eecd9",
+      brightWhite: "#ffffff",
     },
   });
   const fitAddon = new FitAddon();
@@ -1657,11 +1458,11 @@ function createTerminalInstance(tab: TerminalTab): void {
   });
 
   terminal.onData(data => {
-    void dockShellApi.value?.terminals.write(tab.id, data);
+    void orbitSSHApi.value?.terminals.write(tab.id, data);
   });
 
   terminal.onResize(({ cols, rows }) => {
-    void dockShellApi.value?.terminals.resize({
+    void orbitSSHApi.value?.terminals.resize({
       tabId: tab.id,
       cols,
       rows,
@@ -1679,11 +1480,11 @@ function createTerminalInstance(tab: TerminalTab): void {
 
 async function openServerTerminal(server: ServerConfig): Promise<void> {
   try {
-    if (!dockShellApi.value) {
+    if (!orbitSSHApi.value) {
       throw new Error("请通过 Electron 窗口启动应用");
     }
 
-    const result = await dockShellApi.value.terminals.open(server.id);
+    const result = await orbitSSHApi.value.terminals.open(server.id);
     writeRendererLog("终端打开请求成功", {
       tabId: result.tabId,
       serverId: server.id,
@@ -1714,8 +1515,8 @@ async function activateTerminalTab(tabId: string): Promise<void> {
 }
 
 async function closeTerminalTab(tabId: string): Promise<void> {
-  await dockShellApi.value?.sftp.close(tabId);
-  await dockShellApi.value?.terminals.close(tabId);
+  await orbitSSHApi.value?.sftp.close(tabId);
+  await orbitSSHApi.value?.terminals.close(tabId);
   const terminalEntry = terminalInstances.get(tabId);
   terminalEntry?.searchResultsDisposable.dispose();
   terminalEntry?.terminal.dispose();
@@ -1775,7 +1576,7 @@ async function loadSftpHome(tab: TerminalTab): Promise<void> {
     serverId: tab.serverId,
   });
 
-  if (!dockShellApi.value) {
+  if (!orbitSSHApi.value) {
     writeRendererLog(
       "加载 SFTP home 失败：Preload API 不存在",
       { tabId: tab.id },
@@ -1801,7 +1602,7 @@ async function loadSftpHome(tab: TerminalTab): Promise<void> {
   });
 
   try {
-    const result = await dockShellApi.value.sftp.open(tab.id, tab.serverId);
+    const result = await orbitSSHApi.value.sftp.open(tab.id, tab.serverId);
     writeRendererLog("SFTP home 返回成功", {
       tabId: tab.id,
       homePath: result.homePath,
@@ -1890,7 +1691,7 @@ async function toggleRemoteDirectory(node: RemoteFileNode): Promise<void> {
   });
 
   try {
-    const children = await dockShellApi.value?.sftp.list({
+    const children = await orbitSSHApi.value?.sftp.list({
       tabId,
       path: node.path,
     });
@@ -1953,6 +1754,125 @@ async function refreshActiveDirectory(): Promise<void> {
   await loadSftpHome(tab);
 }
 
+function showSftpPathPrompt(message: string, title = "路径无法访问"): void {
+  sftpPathPromptTitle.value = title;
+  sftpPathPromptMessage.value = message;
+  isSftpPathPromptOpen.value = true;
+}
+
+function closeSftpPathPrompt(): void {
+  isSftpPathPromptOpen.value = false;
+  sftpPathPromptTitle.value = "路径无法访问";
+  sftpPathPromptMessage.value = "";
+  filePathInput.value = activeSftpTree.value?.homePath ?? "";
+}
+
+async function openSftpDirectoryPath(
+  tab: TerminalTab,
+  path: string,
+  fallbackError: string,
+): Promise<boolean> {
+  const targetPath = path.trim();
+
+  if (!targetPath) {
+    const tree = sftpTrees.value[tab.id];
+
+    if (tree) {
+      setSftpTree(tab.id, {
+        ...tree,
+        error: "请输入远程路径",
+      });
+    }
+
+    return false;
+  }
+
+  try {
+    const nodes = await orbitSSHApi.value?.sftp.list({
+      tabId: tab.id,
+      path: targetPath,
+    });
+
+    if (!nodes) {
+      throw new Error(fallbackError);
+    }
+
+    const root: RemoteFileNode = {
+      path: targetPath,
+      name: getRootName(targetPath),
+      type: "directory",
+      loaded: true,
+      children: nodes,
+    };
+
+    setSftpTree(tab.id, {
+      homePath: targetPath,
+      root,
+      expandedPaths: new Set<string>([targetPath]),
+      loadingPaths: new Set<string>(),
+      error: "",
+    });
+    return true;
+  } catch (error) {
+    const tree = sftpTrees.value[tab.id];
+
+    if (tree) {
+      setSftpTree(tab.id, {
+        ...tree,
+        error: "",
+      });
+    }
+
+    showSftpPathPrompt(fallbackError);
+    writeRendererLog(
+      "SFTP 路径跳转失败",
+      {
+        tabId: tab.id,
+        path: targetPath,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "warn",
+    );
+    return false;
+  }
+}
+
+async function submitFilePathInput(): Promise<void> {
+  const tab = activeTab.value;
+
+  if (!tab || !orbitSSHApi.value) {
+    return;
+  }
+
+  await openSftpDirectoryPath(tab, filePathInput.value, "路径不存在或无法访问");
+}
+
+async function copyActiveSftpPath(): Promise<void> {
+  const tree = activeSftpTree.value;
+
+  if (!tree?.homePath) {
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(tree.homePath);
+    } else if (!copyTextByFallback(tree.homePath)) {
+      throw new Error("复制失败");
+    }
+
+    setSftpTree(activeTabId.value, {
+      ...tree,
+      error: "",
+    });
+  } catch (error) {
+    setSftpTree(activeTabId.value, {
+      ...tree,
+      error: error instanceof Error ? error.message : "复制路径失败",
+    });
+  }
+}
+
 async function syncFileTreeToTerminalPath(): Promise<void> {
   const tab = activeTab.value;
   const terminalPath = tab?.currentPath;
@@ -1966,7 +1886,7 @@ async function syncFileTreeToTerminalPath(): Promise<void> {
     return;
   }
 
-  if (!dockShellApi.value) {
+  if (!orbitSSHApi.value) {
     return;
   }
 
@@ -1975,103 +1895,12 @@ async function syncFileTreeToTerminalPath(): Promise<void> {
     path: terminalPath,
   });
 
-  try {
-    const nodes = await dockShellApi.value.sftp.list({
-      tabId: tab.id,
-      path: terminalPath,
-    });
-    const root: RemoteFileNode = {
-      path: terminalPath,
-      name: getRootName(terminalPath),
-      type: "directory",
-      loaded: true,
-      children: nodes,
-    };
-
-    setSftpTree(tab.id, {
-      homePath: terminalPath,
-      root,
-      expandedPaths: new Set<string>([terminalPath]),
-      loadingPaths: new Set<string>(),
-      error: "",
-    });
-  } catch (error) {
-    const tree = activeSftpTree.value;
-
-    if (tree) {
-      setSftpTree(tab.id, {
-        ...tree,
-        error: error instanceof Error ? error.message : "同步终端路径失败",
-      });
-    }
-
-    writeRendererLog(
-      "同步终端路径失败",
-      {
-        tabId: tab.id,
-        path: terminalPath,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "error",
-    );
-  }
+  await openSftpDirectoryPath(tab, terminalPath, "同步终端路径失败");
 }
 
+// 窗口尺寸变化（含最大化/还原）后重新 fit 终端。
 function handleWindowResize(): void {
   scheduleTerminalFit();
-}
-
-async function minimizeWindow(): Promise<void> {
-  await dockShellApi.value?.windowControls.minimize();
-  scheduleTerminalFit();
-}
-
-async function toggleMaximizeWindow(): Promise<void> {
-  const isMaximized = await dockShellApi.value?.windowControls.toggleMaximize();
-  isWindowMaximized.value = Boolean(isMaximized);
-  await nextTick();
-  scheduleTerminalFit();
-}
-
-async function closeWindow(): Promise<void> {
-  await dockShellApi.value?.windowControls.close();
-}
-
-function clampSidebarWidth(width: number): number {
-  return Math.min(Math.max(width, 260), 520);
-}
-
-function handleSidebarResizeMove(event: MouseEvent): void {
-  if (!isResizingSidebar.value) {
-    return;
-  }
-
-  sidebarWidth.value = clampSidebarWidth(event.clientX);
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-  scheduleTerminalFit();
-}
-
-function stopSidebarResize(): void {
-  if (!isResizingSidebar.value) {
-    return;
-  }
-
-  isResizingSidebar.value = false;
-  document.body.style.cursor = "";
-  document.body.style.userSelect = "";
-  window.removeEventListener("mousemove", handleSidebarResizeMove);
-  window.removeEventListener("mouseup", stopSidebarResize);
-  scheduleTerminalFit();
-}
-
-function startSidebarResize(event: MouseEvent): void {
-  event.preventDefault();
-  isResizingSidebar.value = true;
-  document.body.style.cursor = "col-resize";
-  document.body.style.userSelect = "none";
-  window.addEventListener("mousemove", handleSidebarResizeMove);
-  window.addEventListener("mouseup", stopSidebarResize);
 }
 
 // 启动时从主进程读取服务器配置，Renderer 不直接接触本地文件。
@@ -2081,14 +1910,14 @@ async function loadServers(): Promise<void> {
   writeRendererLog("开始加载服务器列表");
 
   try {
-    if (!dockShellApi.value) {
+    if (!orbitSSHApi.value) {
       runtimeError.value =
         "未检测到 Electron Preload API，请通过 Electron 窗口启动应用";
       servers.value = [];
       return;
     }
 
-    servers.value = await dockShellApi.value.servers.list();
+    servers.value = await orbitSSHApi.value.servers.list();
     writeRendererLog("服务器列表加载完成", {
       serverCount: servers.value.length,
     });
@@ -2100,50 +1929,58 @@ async function loadServers(): Promise<void> {
   }
 }
 
-async function loadAppSettings(): Promise<void> {
-  try {
-    const savedSettings = await dockShellApi.value?.settings.get();
-
-    if (!savedSettings) {
-      return;
-    }
-
-    Object.assign(appSettings.terminal, savedSettings.terminal);
+// 设置变更（含初始加载）后应用到终端；选区色变化时同步刷新 CodeMirror 主题。
+// 原 updateTerminalSetting/loadAppSettings 内联的副作用改由这里统一协调。
+watch(
+  () => ({ ...appSettings.terminal }),
+  (cur, prev) => {
     applyTerminalSettings();
-    writeRendererLog("应用设置加载完成", {
-      terminal: savedSettings.terminal,
-    });
-  } catch (error) {
-    writeRendererLog(
-      "应用设置加载失败",
-      { error: error instanceof Error ? error.message : String(error) },
-      "error",
-    );
-  }
-}
+
+    if (cur.selectionBackground !== prev?.selectionBackground && fileEditorView) {
+      fileEditorView.dispatch({
+        effects: fileEditorThemeCompartment.reconfigure(
+          createFileEditorTheme(cur.selectionBackground),
+        ),
+      });
+    }
+  },
+);
+
+// 侧边栏拖动改变终端区宽度，需重新 fit（store 内不反向依赖终端域）。
+watch(sidebarWidth, () => {
+  scheduleTerminalFit();
+});
 
 onMounted(() => {
   writeRendererLog("Renderer mounted", {
-    hasDockShellApi: Boolean(dockShellApi.value),
+    hasOrbitSSHApi: Boolean(orbitSSHApi.value),
   });
   void loadServers();
-  void loadAppSettings();
+  void settingsStore.loadAppSettings();
+  void windowStore.initMaximized();
+  downloadsStore.startListeners();
 
-  if (dockShellApi.value) {
-    void dockShellApi.value.windowControls.isMaximized().then(value => {
-      isWindowMaximized.value = value;
-    });
+  if (orbitSSHApi.value) {
     removeTerminalDataListener =
-      dockShellApi.value.terminals.onData(handleTerminalData);
+      orbitSSHApi.value.terminals.onData(handleTerminalData);
     removeTerminalStatusListener =
-      dockShellApi.value.terminals.onStatus(handleTerminalStatus);
+      orbitSSHApi.value.terminals.onStatus(handleTerminalStatus);
   }
 
   window.addEventListener("resize", handleWindowResize);
   window.addEventListener("keydown", handleGlobalKeydown);
   window.addEventListener("click", closeFileContextMenu);
+  window.addEventListener("click", closeTaskList);
   window.addEventListener("contextmenu", closeFileContextMenu);
 });
+
+watch(
+  () => activeSftpTree.value?.homePath,
+  homePath => {
+    filePathInput.value = homePath ?? "";
+  },
+  { immediate: true },
+);
 
 watch(
   visibleFileTree,
@@ -2167,12 +2004,14 @@ watch(
 onUnmounted(() => {
   removeTerminalDataListener?.();
   removeTerminalStatusListener?.();
+  downloadsStore.stopListeners();
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
   window.removeEventListener("click", closeFileContextMenu);
+  window.removeEventListener("click", closeTaskList);
   window.removeEventListener("contextmenu", closeFileContextMenu);
   window.clearTimeout(fitScheduleTimer);
-  stopSidebarResize();
+  sidebarStore.stopSidebarResize();
   terminalInstances.forEach(({ terminal, searchResultsDisposable }) => {
     searchResultsDisposable.dispose();
     terminal.dispose();
@@ -2185,9 +2024,9 @@ onUnmounted(() => {
   <main class="app-shell">
     <header class="topbar">
       <section class="header-brand">
-        <div class="brand-mark">DS</div>
+        <div class="brand-mark">OSSH</div>
         <div>
-          <h1>DockShell</h1>
+          <h1>OrbitSSH</h1>
           <p>SSH Terminal Client</p>
         </div>
       </section>
@@ -2212,6 +2051,88 @@ onUnmounted(() => {
       </nav>
       <div class="titlebar-drag-zone" aria-hidden="true"></div>
       <div class="window-actions">
+        <div class="tasklist" @click.stop>
+          <button
+            type="button"
+            class="tasklist-trigger"
+            aria-label="下载任务"
+            title="下载任务"
+            @click="isTaskListOpen = !isTaskListOpen">
+            <img :src="taskIcon" alt="" />
+            <strong v-if="activeDownloadCount > 0">{{
+              activeDownloadCount
+            }}</strong>
+          </button>
+          <section v-if="isTaskListOpen" class="tasklist-panel">
+            <header>
+              <span>下载任务</span>
+              <small>{{ visibleDownloadTasks.length }} 项</small>
+            </header>
+            <div
+              v-if="visibleDownloadTasks.length === 0"
+              class="tasklist-empty">
+              暂无下载任务
+            </div>
+            <template v-else>
+              <article
+                v-for="task in visibleDownloadTasks"
+                :key="task.taskId"
+                class="tasklist-item">
+                <div class="tasklist-item-head">
+                  <strong>{{ task.name }}</strong>
+                  <small>{{ getDownloadTaskStatusText(task) }}</small>
+                </div>
+                <div class="tasklist-progress">
+                  <span
+                    :style="{
+                      width: `${getDownloadProgressPercent(task)}%`,
+                    }"></span>
+                </div>
+
+                <div class="tasklist-info">
+                  <p v-if="task.status === 'error'">{{ task.error }}</p>
+                  <p v-else>
+                    {{ formatFileSize(task.transferredBytes) }}
+                    <template v-if="task.totalBytes > 0">
+                      / {{ formatFileSize(task.totalBytes) }}
+                    </template>
+                  </p>
+                  <div class="tasklist-actions">
+                    <template
+                      v-if="
+                        ['started', 'progress', 'paused'].includes(task.status)
+                      ">
+                      <button
+                        title="继续"
+                        v-if="task.status === 'paused'"
+                        type="button"
+                        :disabled="isDownloadTaskOperating(task.taskId)"
+                        @click="controlDownloadTask(task, 'resume')">
+                        <img :src="continueIcon" alt="继续" />
+                      </button>
+                      <button
+                        v-else
+                        title="暂停"
+                        type="button"
+                        :disabled="isDownloadTaskOperating(task.taskId)"
+                        @click="controlDownloadTask(task, 'pause')">
+                        <img :src="pauseIcon" alt="暂停" />
+                      </button>
+                      <button
+                        title="删除"
+                        type="button"
+                        class="danger"
+                        :disabled="isDownloadTaskOperating(task.taskId)"
+                        @click="controlDownloadTask(task, 'cancel')">
+                        <img :src="trashIcon" alt="删除" />
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </article>
+            </template>
+          </section>
+        </div>
         <button type="button" aria-label="设置" @click="openSettingsDialog">
           <img :src="settingsIcon" alt="" />
         </button>
@@ -2284,6 +2205,7 @@ onUnmounted(() => {
                     type="button"
                     class="server-action"
                     aria-label="编辑服务器"
+                    title="编辑"
                     @click.stop="editServer(server)">
                     <img :src="editIcon" alt="" />
                   </button>
@@ -2291,6 +2213,7 @@ onUnmounted(() => {
                     type="button"
                     class="server-action danger"
                     aria-label="删除服务器"
+                    title="删除"
                     @click.stop="deleteServer(server.id)">
                     <img :src="trashIcon" alt="" />
                   </button>
@@ -2314,12 +2237,27 @@ onUnmounted(() => {
           </div>
 
           <div class="file-path-row">
-            <div :class="['empty-hint', { error: activeSftpTree?.error }]">
-              <span>{{ getFilePanelHint() }}</span>
-            </div>
+            <input
+              v-model="filePathInput"
+              class="file-path-input"
+              type="text"
+              spellcheck="false"
+              :disabled="!activeTab || !activeSftpTree"
+              :placeholder="getFilePanelHint()"
+              aria-label="远程路径"
+              @keydown.enter.prevent="submitFilePathInput" />
             <button
               type="button"
-              class="path-sync-button"
+              class="path-action-button"
+              :disabled="!activeSftpTree?.homePath"
+              title="复制当前路径"
+              aria-label="复制当前路径"
+              @click="copyActiveSftpPath">
+              <img :src="copyIcon" alt="" />
+            </button>
+            <button
+              type="button"
+              class="path-action-button"
               :disabled="!activeTab?.currentPath"
               title="同步到当前终端路径"
               aria-label="同步到当前终端路径"
@@ -2344,7 +2282,8 @@ onUnmounted(() => {
               ]"
               :style="{ paddingLeft: `${12 + node.level * 18}px` }"
               @contextmenu="openFileContextMenu($event, node)"
-              @click="toggleRemoteDirectory(node)">
+              @click="toggleRemoteDirectory(node)"
+              @dblclick="openRemoteFileEditorByDoubleClick(node)">
               <img
                 v-if="node.type === 'directory'"
                 :class="[
@@ -2379,6 +2318,15 @@ onUnmounted(() => {
             @click.stop
             @contextmenu.prevent.stop>
             <button
+              v-if="isPreviewImageFile(fileContextMenu.node)"
+              type="button"
+              role="menuitem"
+              @click="previewContextFile">
+              <img :src="fileIcon" alt="" />
+              <span>预览</span>
+            </button>
+            <button
+              v-else
               type="button"
               role="menuitem"
               :disabled="!isEditableTextFile(fileContextMenu.node)"
@@ -2386,6 +2334,26 @@ onUnmounted(() => {
               @click="editContextFile">
               <img :src="editIcon" alt="" />
               <span>{{ getFileEditMenuLabel(fileContextMenu.node) }}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              :disabled="!canDownloadRemoteFile(fileContextMenu.node)"
+              :class="{
+                disabled: !canDownloadRemoteFile(fileContextMenu.node),
+              }"
+              @click="downloadContextFile">
+              <img :src="arrowDownIcon" alt="" />
+              <span>下载</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              :disabled="!canDeleteRemoteNode(fileContextMenu.node)"
+              :class="{ disabled: !canDeleteRemoteNode(fileContextMenu.node) }"
+              @click="deleteContextFile">
+              <img :src="trashIcon" alt="" />
+              <span>删除</span>
             </button>
           </div>
         </section>
@@ -2479,73 +2447,111 @@ onUnmounted(() => {
       description="填写 SSH 连接信息，当前仅保存到页面预览。"
       width="medium"
       @close="closeConnectionDialog">
-        <form class="connection-form" @submit.prevent="submitConnectionForm">
+      <form class="connection-form" @submit.prevent="submitConnectionForm">
+        <label>
+          <span>名称</span>
+          <input
+            v-model="connectionForm.name"
+            type="text"
+            placeholder="Production Gateway" />
+        </label>
+        <label>
+          <span>Host</span>
+          <input
+            v-model="connectionForm.host"
+            type="text"
+            placeholder="192.168.1.10" />
+        </label>
+        <div class="form-row">
           <label>
-            <span>名称</span>
+            <span>Port</span>
             <input
-              v-model="connectionForm.name"
+              v-model.number="connectionForm.port"
+              type="number"
+              min="1"
+              max="65535" />
+          </label>
+          <label>
+            <span>Username</span>
+            <input
+              v-model="connectionForm.username"
               type="text"
-              placeholder="Production Gateway" />
+              placeholder="root" />
           </label>
-          <label>
-            <span>Host</span>
-            <input
-              v-model="connectionForm.host"
-              type="text"
-              placeholder="192.168.1.10" />
-          </label>
-          <div class="form-row">
-            <label>
-              <span>Port</span>
-              <input
-                v-model.number="connectionForm.port"
-                type="number"
-                min="1"
-                max="65535" />
-            </label>
-            <label>
-              <span>Username</span>
-              <input
-                v-model="connectionForm.username"
-                type="text"
-                placeholder="root" />
-            </label>
-          </div>
-          <label>
-            <span>Password</span>
-            <input
-              v-model="connectionForm.password"
-              type="password"
-              :placeholder="
-                editingServerId
-                  ? '留空表示不修改密码'
-                  : '密码会通过 safeStorage 加密保存'
-              " />
-          </label>
+        </div>
+        <label>
+          <span>Password</span>
+          <input
+            v-model="connectionForm.password"
+            type="password"
+            :placeholder="
+              editingServerId
+                ? '留空表示不修改密码'
+                : '密码会通过 safeStorage 加密保存'
+            " />
+        </label>
 
-          <p v-if="formError" class="form-error">{{ formError }}</p>
+        <p v-if="formError" class="form-error">{{ formError }}</p>
 
-          <footer class="dialog-actions">
+        <footer class="dialog-actions">
+          <button
+            type="button"
+            class="ghost-button"
+            @click="closeConnectionDialog">
+            取消
+          </button>
+          <button
+            type="submit"
+            class="primary-button"
+            :disabled="isSubmittingServer">
+            {{
+              isSubmittingServer
+                ? "保存中..."
+                : editingServerId
+                  ? "保存修改"
+                  : "添加到列表"
+            }}
+          </button>
+        </footer>
+      </form>
+    </AppDialog>
+
+    <AppDialog
+      v-if="isImagePreviewOpen"
+      :title="imagePreview.name || '图片预览'"
+      :description="imagePreview.path"
+      width="large"
+      @close="closeImagePreview">
+      <section class="image-preview-shell">
+        <div v-if="imagePreview.loading" class="image-preview-state">
+          正在加载图片...
+        </div>
+        <div v-else-if="imagePreview.error" class="image-preview-state error">
+          {{ imagePreview.error }}
+        </div>
+        <div v-else class="image-preview-body">
+          <img :src="imagePreview.dataUrl" :alt="imagePreview.name" />
+        </div>
+
+        <footer class="file-editor-footer">
+          <span>{{ imagePreview.mimeType || "图片文件" }}</span>
+          <div class="dialog-actions">
             <button
               type="button"
               class="ghost-button"
-              @click="closeConnectionDialog">
-              取消
+              @click="closeImagePreview">
+              关闭
             </button>
             <button
-              type="submit"
+              type="button"
               class="primary-button"
-              :disabled="isSubmittingServer">
-              {{
-                isSubmittingServer
-                  ? "保存中..."
-                  : editingServerId
-                    ? "保存修改"
-                    : "添加到列表"
-              }}
+              :disabled="imagePreview.loading || !imagePreview.path"
+              @click="downloadImagePreviewFile">
+              下载
             </button>
-          </footer>
-        </form>
+          </div>
+        </footer>
+      </section>
     </AppDialog>
 
     <AppDialog
@@ -2575,7 +2581,9 @@ onUnmounted(() => {
               @input="applyFileEditorSearchQuery"
               @keydown.enter.prevent="replaceCurrentFileEditorMatch"
               @keydown.esc.prevent="closeFileEditorSearch" />
-            <span>{{ fileEditor.searchIndex }}/{{ fileEditor.searchTotal }}</span>
+            <span
+              >{{ fileEditor.searchIndex }}/{{ fileEditor.searchTotal }}</span
+            >
             <button
               type="button"
               :class="[
@@ -2606,14 +2614,18 @@ onUnmounted(() => {
             <button
               type="button"
               class="file-editor-replace-button"
-              :disabled="!fileEditorSearchKeyword || fileEditor.searchTotal === 0"
+              :disabled="
+                !fileEditorSearchKeyword || fileEditor.searchTotal === 0
+              "
               @click="replaceCurrentFileEditorMatch">
               替换
             </button>
             <button
               type="button"
               class="file-editor-replace-button"
-              :disabled="!fileEditorSearchKeyword || fileEditor.searchTotal === 0"
+              :disabled="
+                !fileEditorSearchKeyword || fileEditor.searchTotal === 0
+              "
               @click="replaceAllFileEditorMatches">
               全部
             </button>
@@ -2647,7 +2659,9 @@ onUnmounted(() => {
             <button
               type="button"
               class="primary-button"
-              :disabled="fileEditor.loading || fileEditor.saving || !isFileEditorDirty"
+              :disabled="
+                fileEditor.loading || fileEditor.saving || !isFileEditorDirty
+              "
               @click="saveFileEditor">
               {{ fileEditor.saving ? "保存中..." : "保存" }}
             </button>
@@ -2688,108 +2702,144 @@ onUnmounted(() => {
     </AppDialog>
 
     <AppDialog
+      v-if="isSftpPathPromptOpen"
+      :title="sftpPathPromptTitle"
+      :description="sftpPathPromptMessage"
+      width="medium"
+      @close="closeSftpPathPrompt">
+      <section class="confirm-dialog-content">
+        <footer class="dialog-actions">
+          <button
+            type="button"
+            class="primary-button"
+            @click="closeSftpPathPrompt">
+            知道了
+          </button>
+        </footer>
+      </section>
+    </AppDialog>
+
+    <AppDialog
       v-if="isSettingsDialogOpen"
       title="设置"
       description="调整应用常规选项。"
       width="large"
       @close="closeSettingsDialog">
-        <div class="settings-layout">
-          <aside class="settings-nav" aria-label="设置分类">
-            <button
-              type="button"
-              :class="[
-                'settings-nav-item',
-                { active: activeSettingsSection === 'general' },
-              ]"
-              @click="activeSettingsSection = 'general'">
-              常规设置
-            </button>
-            <button
-              type="button"
-              :class="[
-                'settings-nav-item',
-                { active: activeSettingsSection === 'shortcuts' },
-              ]"
-              @click="activeSettingsSection = 'shortcuts'">
-              快捷键
-            </button>
-          </aside>
+      <div class="settings-layout">
+        <aside class="settings-nav" aria-label="设置分类">
+          <button
+            type="button"
+            :class="[
+              'settings-nav-item',
+              { active: activeSettingsSection === 'general' },
+            ]"
+            @click="activeSettingsSection = 'general'">
+            常规设置
+          </button>
+          <button
+            type="button"
+            :class="[
+              'settings-nav-item',
+              { active: activeSettingsSection === 'shortcuts' },
+            ]"
+            @click="activeSettingsSection = 'shortcuts'">
+            快捷键
+          </button>
+        </aside>
 
-          <section v-if="activeSettingsSection === 'general'" class="settings-content">
-            <div class="settings-field">
-              <div>
-                <h3>终端文字字号</h3>
-                <p>控制当前和后续终端的字体大小。</p>
-              </div>
-              <div class="stepper-control">
-                <button type="button" @click="stepTerminalNumberSetting('fontSize', -1)">-</button>
-                <output>{{ appSettings.terminal.fontSize }}</output>
-                <button type="button" @click="stepTerminalNumberSetting('fontSize', 1)">+</button>
-              </div>
+        <section
+          v-if="activeSettingsSection === 'general'"
+          class="settings-content">
+          <div class="settings-field">
+            <div>
+              <h3>终端文字字号</h3>
+              <p>控制当前和后续终端的字体大小。</p>
             </div>
-
-            <div class="settings-field">
-              <div>
-                <h3>终端行高</h3>
-                <p>调整终端每行文字的垂直间距。</p>
-              </div>
-              <div class="stepper-control">
-                <button type="button" @click="stepTerminalNumberSetting('lineHeight', -0.1)">-</button>
-                <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
-                <button type="button" @click="stepTerminalNumberSetting('lineHeight', 0.1)">+</button>
-              </div>
+            <div class="stepper-control">
+              <button
+                type="button"
+                @click="stepTerminalNumberSetting('fontSize', -1)">
+                -
+              </button>
+              <output>{{ appSettings.terminal.fontSize }}</output>
+              <button
+                type="button"
+                @click="stepTerminalNumberSetting('fontSize', 1)">
+                +
+              </button>
             </div>
+          </div>
 
-            <div class="settings-field">
-              <div>
-                <h3>终端选区背景</h3>
-                <p>选择终端文本选中时的背景颜色。</p>
-              </div>
-              <div class="color-select">
+          <div class="settings-field">
+            <div>
+              <h3>终端行高</h3>
+              <p>调整终端每行文字的垂直间距。</p>
+            </div>
+            <div class="stepper-control">
+              <button
+                type="button"
+                @click="stepTerminalNumberSetting('lineHeight', -0.1)">
+                -
+              </button>
+              <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
+              <button
+                type="button"
+                @click="stepTerminalNumberSetting('lineHeight', 0.1)">
+                +
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-field">
+            <div>
+              <h3>终端选区背景</h3>
+              <p>选择终端文本选中时的背景颜色。</p>
+            </div>
+            <div class="color-select">
+              <button
+                type="button"
+                class="color-select-trigger"
+                @click="
+                  isSelectionBackgroundDropdownOpen =
+                    !isSelectionBackgroundDropdownOpen
+                ">
+                <span
+                  class="color-swatch"
+                  :style="{
+                    background: appSettings.terminal.selectionBackground,
+                  }"></span>
+                <span>{{ appSettings.terminal.selectionBackground }}</span>
+              </button>
+
+              <div
+                v-if="isSelectionBackgroundDropdownOpen"
+                class="color-select-menu">
                 <button
+                  v-for="color in selectionBackgroundOptions"
+                  :key="color"
                   type="button"
-                  class="color-select-trigger"
-                  @click="
-                    isSelectionBackgroundDropdownOpen =
-                      !isSelectionBackgroundDropdownOpen
-                  ">
+                  class="color-select-option"
+                  @click="selectSelectionBackground(color)">
                   <span
                     class="color-swatch"
-                    :style="{
-                      background: appSettings.terminal.selectionBackground,
-                    }"></span>
-                  <span>{{ appSettings.terminal.selectionBackground }}</span>
+                    :style="{ background: color }"></span>
+                  <span>{{ color }}</span>
                 </button>
-
-                <div
-                  v-if="isSelectionBackgroundDropdownOpen"
-                  class="color-select-menu">
-                  <button
-                    v-for="color in selectionBackgroundOptions"
-                    :key="color"
-                    type="button"
-                    class="color-select-option"
-                    @click="selectSelectionBackground(color)">
-                    <span
-                      class="color-swatch"
-                      :style="{ background: color }"></span>
-                    <span>{{ color }}</span>
-                  </button>
-                </div>
               </div>
             </div>
-          </section>
+          </div>
+        </section>
 
-          <section v-else class="settings-content">
-            <div class="settings-field">
-              <div>
-                <h3>终端搜索</h3>
-                <p>在当前终端右上角打开搜索框，Esc 或关闭按钮可退出。</p>
-              </div>
-              <kbd class="shortcut-key">Ctrl + F</kbd>
+        <section v-else class="settings-content">
+          <div class="settings-field">
+            <div>
+              <h3>终端搜索</h3>
+              <p>在当前终端右上角打开搜索框，Esc 或关闭按钮可退出。</p>
             </div>
-          </section>
-        </div>
+            <kbd class="shortcut-key">Ctrl + F</kbd>
+          </div>
+        </section>
+      </div>
     </AppDialog>
   </main>
 </template>

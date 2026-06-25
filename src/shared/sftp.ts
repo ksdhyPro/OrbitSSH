@@ -13,6 +13,47 @@ export interface SftpListInput {
   path: string
 }
 
+export interface SftpDeleteInput {
+  tabId: string
+  path: string
+  type: RemoteFileNode['type']
+}
+
+export interface SftpDownloadInput {
+  tabId: string
+  path: string
+  name: string
+  size?: number
+  taskId?: string
+  localPath?: string
+  transferredBytes?: number
+}
+
+export interface SftpDownloadResult {
+  saved: boolean
+  taskId?: string
+  filePath?: string
+}
+
+export interface SftpDownloadProgressEvent {
+  taskId: string
+  tabId: string
+  name: string
+  path: string
+  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  filePath?: string
+  error?: string
+}
+
+export interface SftpDownloadControlInput {
+  taskId: string
+  action: 'pause' | 'resume' | 'cancel'
+  localPath?: string
+}
+
 export interface SftpProbeTextInput {
   tabId: string
   path: string
@@ -35,6 +76,20 @@ export interface SftpReadTextResult {
   path: string
   content: string
   encoding: 'utf8'
+}
+
+export interface SftpPreviewImageInput {
+  tabId: string
+  path: string
+  name: string
+  size?: number
+}
+
+export interface SftpPreviewImageResult {
+  path: string
+  name: string
+  mimeType: string
+  dataUrl: string
 }
 
 export interface SftpWriteTextInput {

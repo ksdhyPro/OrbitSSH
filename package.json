@@ -1,7 +1,7 @@
 {
-  "name": "dockshell",
+  "name": "orbitssh",
   "version": "0.1.0",
-  "description": "DockShell Electron SSH client",
+  "description": "OrbitSSH Electron SSH client",
   "main": "dist-electron/main/index.js",
   "private": true,
   "type": "module",
@@ -14,8 +14,8 @@
     "dist": "npm run build && electron-builder"
   },
   "build": {
-    "appId": "com.dockshell.app",
-    "productName": "DockShell",
+    "appId": "com.orbitssh.app",
+    "productName": "OrbitSSH",
     "directories": {
       "output": "release"
     },
@@ -73,6 +73,7 @@
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",
     "electron-store": "^11.0.2",
+    "pinia": "^3.0.4",
     "ssh2": "^1.17.0",
     "ssh2-sftp-client": "^12.1.1",
     "vue": "^3.5.17"
