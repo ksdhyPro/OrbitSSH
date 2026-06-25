@@ -9,17 +9,13 @@ import settingsIcon from "../assets/icons/settings.svg";
 import taskIcon from "../assets/icons/task.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { DownloadTask } from "../types/download";
-import type { TerminalTab } from "../types/terminal";
 import { formatFileSize } from "../utils/format";
 import {
   getDownloadProgressPercent,
   getDownloadTaskStatusText,
-  getStatusText,
 } from "../utils/status-text";
 
 defineProps<{
-  tabs: TerminalTab[];
-  activeTabId: string;
   isWindowMaximized: boolean;
   isTaskListOpen: boolean;
   activeDownloadCount: number;
@@ -28,8 +24,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  activateTab: [tabId: string];
-  closeTab: [tabId: string];
   updateTaskListOpen: [open: boolean];
   controlDownloadTask: [
     task: DownloadTask,
@@ -51,25 +45,6 @@ const emit = defineEmits<{
         <p>SSH Terminal Client</p>
       </div>
     </section>
-    <nav class="tabs" aria-label="终端标签">
-      <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        :class="['tab', { active: tab.id === activeTabId }]"
-        role="button"
-        tabindex="0"
-        @click="emit('activateTab', tab.id)">
-        <span>{{ tab.title }}</span>
-        <small>{{ getStatusText(tab.status) }}</small>
-        <button
-          type="button"
-          class="tab-close"
-          aria-label="关闭终端"
-          @click.stop="emit('closeTab', tab.id)">
-          <img :src="closeIcon" alt="" />
-        </button>
-      </div>
-    </nav>
     <div class="titlebar-drag-zone" aria-hidden="true"></div>
     <div class="window-actions">
       <div class="tasklist" @click.stop>

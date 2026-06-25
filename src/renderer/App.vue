@@ -43,6 +43,9 @@ const sftpStore = useSftpStore();
 const fileEditorStore = useFileEditorStore();
 const serversStore = useServersStore();
 
+const SERVER_OPEN_DEBOUNCE_MS = 3000;
+const serverOpenAllowedAt = new Map<string, number>();
+
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
 const writeRendererLog = coreStore.writeRendererLog;
@@ -378,6 +381,16 @@ async function deleteServer(serverId: string): Promise<void> {
 }
 
 async function openServerTerminal(server: ServerConfig): Promise<void> {
+  const now = Date.now();
+  const allowedAt = serverOpenAllowedAt.get(server.id) ?? 0;
+
+  // 同一服务器 3 秒内重复点击只响应第一次，避免并发创建重复会话。
+  if (allowedAt > now) {
+    return;
+  }
+
+  serverOpenAllowedAt.set(server.id, now + SERVER_OPEN_DEBOUNCE_MS);
+
   try {
     await openTerminalFromStore(server, {
       afterOpen: tab => {
@@ -385,6 +398,7 @@ async function openServerTerminal(server: ServerConfig): Promise<void> {
       },
     });
   } catch (error) {
+    serverOpenAllowedAt.delete(server.id);
     setListError(error instanceof Error ? error.message : "打开终端失败");
   }
 }
@@ -490,15 +504,11 @@ onUnmounted(() => {
 <template>
   <main class="app-shell">
     <TitleBarTabs
-      :tabs="tabs"
-      :active-tab-id="activeTabId"
       :is-window-maximized="isWindowMaximized"
       :is-task-list-open="isTaskListOpen"
       :active-download-count="activeDownloadCount"
       :visible-download-tasks="visibleDownloadTasks"
       :is-download-task-operating="isDownloadTaskOperating"
-      @activate-tab="activateTerminalTab"
-      @close-tab="closeTerminalTab"
       @update-task-list-open="isTaskListOpen = $event"
       @control-download-task="controlDownloadTask"
       @open-settings="openSettingsDialog"
@@ -566,6 +576,8 @@ onUnmounted(() => {
         :has-clipboard-text="hasClipboardText"
         :copy-active-terminal-selection="copyActiveTerminalSelection"
         :paste-clipboard-text-to-active-terminal="pasteClipboardTextToActiveTerminal"
+        @activate-tab="activateTerminalTab"
+        @close-tab="closeTerminalTab"
         @update:terminal-search-keyword="terminalSearchKeyword = $event"
         @search="searchActiveTerminal"
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"

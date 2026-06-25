@@ -16,6 +16,7 @@ import copyIcon from "../assets/icons/copy.svg";
 import pasteIcon from "../assets/icons/paste.svg";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { TerminalTab } from "../types/terminal";
+import { getStatusText } from "../utils/status-text";
 import ContextMenu from "./ContextMenu.vue";
 
 const props = defineProps<{
@@ -40,6 +41,8 @@ const emit = defineEmits<{
   search: [direction?: "current" | "next" | "previous"];
   toggleCaseSensitive: [];
   closeSearch: [];
+  activateTab: [tabId: string];
+  closeTab: [tabId: string];
   openConnectionDialog: [];
 }>();
 
@@ -130,6 +133,28 @@ watch(
 <template>
   <section class="workspace">
     <section class="terminal-area">
+      <nav class="session-tabs" aria-label="终端标签">
+        <div
+          v-for="tab in tabs"
+          :key="tab.id"
+          :class="['session-tab', { active: tab.id === activeTabId }]"
+          role="button"
+          tabindex="0"
+          @click="emit('activateTab', tab.id)"
+          @keydown.enter.prevent="emit('activateTab', tab.id)"
+          @keydown.space.prevent="emit('activateTab', tab.id)">
+          <span>{{ tab.title }}</span>
+          <small>{{ getStatusText(tab.status) }}</small>
+          <button
+            type="button"
+            class="session-tab-close"
+            aria-label="关闭终端"
+            @click.stop="emit('closeTab', tab.id)">
+            <img :src="closeIcon" alt="" />
+          </button>
+        </div>
+      </nav>
+
       <div v-if="isTerminalSearchOpen" class="terminal-search">
         <input
           ref="searchInput"
