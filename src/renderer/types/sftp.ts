@@ -2,6 +2,7 @@ import type { RemoteFileNode, SftpProbeTextResult } from "../../shared/sftp";
 
 export interface VisibleRemoteFileNode extends RemoteFileNode {
   level: number;
+  isVirtualParent?: boolean;
 }
 
 export interface SftpTreeState {
@@ -9,6 +10,7 @@ export interface SftpTreeState {
   root: RemoteFileNode;
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
+  deletingPaths: Set<string>;
   error: string;
 }
 

@@ -78,6 +78,7 @@ function registerBaseIpc(): void {
   ipcMain.handle("app:get-info", () => ({
     name: app.getName(),
     version: app.getVersion(),
+    platform: process.platform,
   }));
 
   registerServerIpc();

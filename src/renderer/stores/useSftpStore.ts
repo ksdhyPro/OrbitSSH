@@ -19,7 +19,7 @@ import { isKnownEditableTextFile, isPreviewImageFile } from "../utils/file-kind"
 import { useCoreStore } from "./useCoreStore";
 
 export interface DeleteRemoteNodeCallbacks {
-  shouldDelete: (message: string) => boolean;
+  shouldDelete: (message: string) => boolean | Promise<boolean>;
   onDeleted?: (node: RemoteFileNode) => void;
 }
 
@@ -101,6 +101,7 @@ export const useSftpStore = defineStore("sftp", () => {
       root: pendingRoot,
       expandedPaths: new Set<string>(),
       loadingPaths: new Set<string>([pendingRoot.path]),
+      deletingPaths: new Set<string>(),
       error: "",
     });
 
@@ -126,6 +127,7 @@ export const useSftpStore = defineStore("sftp", () => {
         root,
         expandedPaths: new Set<string>([root.path]),
         loadingPaths: new Set<string>(),
+        deletingPaths: new Set<string>(),
         error: "",
       });
     } catch (error) {
@@ -142,6 +144,7 @@ export const useSftpStore = defineStore("sftp", () => {
         root: pendingRoot,
         expandedPaths: new Set<string>(),
         loadingPaths: new Set<string>(),
+        deletingPaths: new Set<string>(),
         error: error instanceof Error ? error.message : "SFTP 文件树加载失败",
       });
     }
@@ -325,6 +328,7 @@ export const useSftpStore = defineStore("sftp", () => {
         root,
         expandedPaths: new Set<string>([targetPath]),
         loadingPaths: new Set<string>(),
+        deletingPaths: new Set<string>(),
         error: "",
       });
       return true;
@@ -452,7 +456,16 @@ export const useSftpStore = defineStore("sftp", () => {
     tree: SftpTreeState | undefined,
     node: RemoteFileNode | null,
   ): boolean {
-    return Boolean(node && tree && node.path !== tree.root.path);
+    return Boolean(
+      node &&
+        tree &&
+        node.path !== tree.root.path &&
+        !tree.deletingPaths.has(node.path),
+    );
+  }
+
+  function canUploadRemoteNode(node: RemoteFileNode | null): boolean {
+    return Boolean(node && node.type === "directory");
   }
 
   async function probeFileTextSupport(
@@ -657,6 +670,70 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
+  async function uploadToContextDirectory(
+    tabId: string,
+    sourceType: "file" | "directory",
+  ): Promise<void> {
+    const node = fileContextMenu.node;
+
+    if (!node || !tabId || !core.orbitSSHApi || !canUploadRemoteNode(node)) {
+      return;
+    }
+
+    closeFileContextMenu();
+
+    try {
+      const result = await core.orbitSSHApi.sftp.upload({
+        tabId,
+        remoteDirectoryPath: node.path,
+        sourceType,
+      });
+
+      if (!result.uploaded) {
+        return;
+      }
+    } catch (error) {
+      showSftpPathPrompt(
+        error instanceof Error ? error.message : "文件上传失败",
+        "上传失败",
+      );
+      core.writeRendererLog(
+        "远程目录上传失败",
+        {
+          tabId,
+          path: node.path,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "error",
+      );
+    }
+  }
+
+  async function refreshRemoteDirectoryPath(
+    tabId: string,
+    path: string,
+  ): Promise<void> {
+    if (!tabId || !path || !core.orbitSSHApi) {
+      return;
+    }
+
+    const children = await core.orbitSSHApi.sftp.list({
+      tabId,
+      path,
+    });
+    const latestTree = getSftpTree(tabId);
+
+    if (!latestTree) {
+      return;
+    }
+
+    setSftpTree(tabId, {
+      ...latestTree,
+      root: updateNodeChildren(latestTree.root, path, children),
+      error: "",
+    });
+  }
+
   async function deleteContextFile(
     tabId: string,
     tree: SftpTreeState | undefined,
@@ -665,7 +742,13 @@ export const useSftpStore = defineStore("sftp", () => {
     const node = fileContextMenu.node;
     const typeLabel = node?.type === "directory" ? "文件夹" : "文件";
 
-    if (!node || !tabId || !core.orbitSSHApi || !canDeleteRemoteNode(tree, node)) {
+    if (
+      !node ||
+      !tabId ||
+      !core.orbitSSHApi ||
+      !tree ||
+      !canDeleteRemoteNode(tree, node)
+    ) {
       return;
     }
 
@@ -674,12 +757,19 @@ export const useSftpStore = defineStore("sftp", () => {
         ? `确认删除文件夹“${node.name}”？\n\n该操作会递归删除其中的所有文件和子文件夹。`
         : `确认删除文件“${node.name}”？`;
 
-    if (!callbacks.shouldDelete(confirmMessage)) {
+    if (!(await callbacks.shouldDelete(confirmMessage))) {
       closeFileContextMenu();
       return;
     }
 
     closeFileContextMenu();
+    const deletingPaths = new Set(tree.deletingPaths);
+    deletingPaths.add(node.path);
+    setSftpTree(tabId, {
+      ...tree,
+      deletingPaths,
+      error: "",
+    });
 
     try {
       await core.orbitSSHApi.sftp.delete({
@@ -705,19 +795,26 @@ export const useSftpStore = defineStore("sftp", () => {
 
       const nextExpandedPaths = new Set(latestTree.expandedPaths);
       nextExpandedPaths.delete(node.path);
+      const nextDeletingPaths = new Set(latestTree.deletingPaths);
+      nextDeletingPaths.delete(node.path);
 
       setSftpTree(tabId, {
         ...latestTree,
         root: updateNodeChildren(latestTree.root, parentPath, children),
         expandedPaths: nextExpandedPaths,
+        deletingPaths: nextDeletingPaths,
         error: "",
       });
     } catch (error) {
       const latestTree = getSftpTree(tabId);
 
       if (latestTree) {
+        const nextDeletingPaths = new Set(latestTree.deletingPaths);
+        nextDeletingPaths.delete(node.path);
+
         setSftpTree(tabId, {
           ...latestTree,
+          deletingPaths: nextDeletingPaths,
           error:
             error instanceof Error ? error.message : `删除${typeLabel}失败`,
         });
@@ -765,6 +862,7 @@ export const useSftpStore = defineStore("sftp", () => {
     isEditableTextFile,
     getFileEditMenuLabel,
     canDeleteRemoteNode,
+    canUploadRemoteNode,
     probeFileTextSupport,
     ensureEditableTextFile,
     closeFileContextMenu,
@@ -774,6 +872,8 @@ export const useSftpStore = defineStore("sftp", () => {
     downloadRemoteFileNode,
     downloadContextFile,
     downloadImagePreviewFile,
+    uploadToContextDirectory,
+    refreshRemoteDirectoryPath,
     deleteContextFile,
   };
 });

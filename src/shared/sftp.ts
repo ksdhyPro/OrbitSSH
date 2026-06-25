@@ -35,6 +35,25 @@ export interface SftpDownloadResult {
   filePath?: string
 }
 
+export interface SftpUploadInput {
+  tabId: string
+  remoteDirectoryPath: string
+  sourceType?: 'file' | 'directory'
+  taskId?: string
+}
+
+export interface SftpUploadResult {
+  uploaded: boolean
+  taskId?: string
+  remoteDirectoryPath?: string
+  uploadedCount?: number
+}
+
+export interface SftpUploadControlInput {
+  taskId: string
+  action: 'pause' | 'resume' | 'cancel'
+}
+
 export interface SftpDownloadProgressEvent {
   taskId: string
   tabId: string
@@ -45,6 +64,20 @@ export interface SftpDownloadProgressEvent {
   totalBytes: number
   speedBytesPerSecond: number
   filePath?: string
+  error?: string
+}
+
+export interface SftpUploadProgressEvent {
+  taskId: string
+  tabId: string
+  name: string
+  path: string
+  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  localPaths: string[]
+  remoteDirectoryPath: string
   error?: string
 }
 

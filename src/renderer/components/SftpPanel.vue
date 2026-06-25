@@ -6,6 +6,7 @@ import folderIcon from "../assets/icons/folder.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
+import type { SftpFileTreeViewMode } from "../../shared/settings";
 import type { TerminalTab } from "../types/terminal";
 import type {
   FileContextMenuState,
@@ -19,6 +20,7 @@ import FileContextMenu from "./FileContextMenu.vue";
 defineProps<{
   activeTab: TerminalTab | undefined;
   activeSftpTree: SftpTreeState | undefined;
+  fileTreeViewMode: SftpFileTreeViewMode;
   visibleFileTree: VisibleRemoteFileNode[];
   fileContextMenu: FileContextMenuState;
   filePathInput: string;
@@ -27,6 +29,7 @@ defineProps<{
   isEditableTextFile: (node: RemoteFileNode | null) => boolean;
   getFileEditMenuLabel: (node: RemoteFileNode | null) => string;
   canDownloadRemoteFile: (node: RemoteFileNode | null) => boolean;
+  canUploadRemoteNode: (node: RemoteFileNode | null) => boolean;
   canDeleteRemoteNode: (node: RemoteFileNode | null) => boolean;
 }>();
 
@@ -42,6 +45,7 @@ const emit = defineEmits<{
   previewContextFile: [];
   editContextFile: [];
   downloadContextFile: [];
+  uploadContextFile: [sourceType: "file" | "directory"];
   deleteContextFile: [];
 }>();
 </script>
@@ -96,7 +100,9 @@ const emit = defineEmits<{
     <ul
       :ref="fileTreeElementRef"
       class="file-tree"
-      aria-label="远程文件树预览">
+      :aria-label="
+        fileTreeViewMode === 'tree' ? '远程文件树预览' : '远程文件列表'
+      ">
       <li
         v-for="node in visibleFileTree"
         :key="node.path"
@@ -105,14 +111,29 @@ const emit = defineEmits<{
           {
             'is-folder': node.type === 'directory',
             'is-loading': activeSftpTree?.loadingPaths.has(node.path),
+            'is-deleting': activeSftpTree?.deletingPaths.has(node.path),
           },
         ]"
-        :style="{ paddingLeft: `${12 + node.level * 18}px` }"
-        @contextmenu="emit('openContextMenu', $event, node)"
-        @click="emit('toggleDirectory', node)"
-        @dblclick="emit('openFileByDoubleClick', node)">
+        :style="{
+          paddingLeft:
+            fileTreeViewMode === 'tree' ? `${12 + node.level * 18}px` : '12px',
+        }"
+        @contextmenu="
+          node.isVirtualParent || activeSftpTree?.deletingPaths.has(node.path)
+            ? $event.preventDefault()
+            : emit('openContextMenu', $event, node)
+        "
+        @click="
+          fileTreeViewMode === 'tree' &&
+            !activeSftpTree?.deletingPaths.has(node.path) &&
+            emit('toggleDirectory', node)
+        "
+        @dblclick="
+          !activeSftpTree?.deletingPaths.has(node.path) &&
+            emit('openFileByDoubleClick', node)
+        ">
         <img
-          v-if="node.type === 'directory'"
+          v-if="fileTreeViewMode === 'tree' && node.type === 'directory'"
           :class="[
             'chevron-icon',
             { open: activeSftpTree?.expandedPaths.has(node.path) },
@@ -129,6 +150,10 @@ const emit = defineEmits<{
           {{ node.type === "directory" ? "目录" : formatFileSize(node.size) }}
           {{ formatModifyTime(node.modifyTime) }}
         </span>
+        <span
+          v-if="activeSftpTree?.deletingPaths.has(node.path)"
+          class="file-node-spinner"
+          aria-label="删除中"></span>
       </li>
     </ul>
 
@@ -138,10 +163,12 @@ const emit = defineEmits<{
       :is-editable-text-file="isEditableTextFile"
       :get-file-edit-menu-label="getFileEditMenuLabel"
       :can-download-remote-file="canDownloadRemoteFile"
+      :can-upload-remote-node="canUploadRemoteNode"
       :can-delete-remote-node="canDeleteRemoteNode"
       @preview="emit('previewContextFile')"
       @edit="emit('editContextFile')"
       @download="emit('downloadContextFile')"
+      @upload="emit('uploadContextFile', $event)"
       @delete="emit('deleteContextFile')" />
   </section>
 </template>

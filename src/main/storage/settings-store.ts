@@ -1,6 +1,10 @@
 import Store from 'electron-store'
 
-import { defaultAppSettings, type AppSettings } from '../../shared/settings.js'
+import {
+  defaultAppSettings,
+  type AppSettings,
+  type SftpFileTreeViewMode
+} from '../../shared/settings.js'
 
 const store = new Store<{ settings: AppSettings }>({
   name: 'settings',
@@ -13,8 +17,13 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
+function normalizeSftpFileTreeViewMode(value: unknown): SftpFileTreeViewMode {
+  return value === 'tree' ? 'tree' : defaultAppSettings.sftp.fileTreeViewMode
+}
+
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
+  const sftpSettings = settings?.sftp ?? defaultAppSettings.sftp
 
   return {
     terminal: {
@@ -24,6 +33,9 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
         typeof terminalSettings.selectionBackground === 'string'
           ? terminalSettings.selectionBackground
           : defaultAppSettings.terminal.selectionBackground
+    },
+    sftp: {
+      fileTreeViewMode: normalizeSftpFileTreeViewMode(sftpSettings.fileTreeViewMode)
     }
   }
 }

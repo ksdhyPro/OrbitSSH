@@ -1,7 +1,7 @@
 import SftpClient from 'ssh2-sftp-client'
 
-import { open as openLocalFile, rm, stat as statLocalFile } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { open as openLocalFile, readdir, rm, stat as statLocalFile } from 'node:fs/promises'
+import { basename, dirname, extname, join as joinLocalPath, relative } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
@@ -13,7 +13,9 @@ import type {
   SftpInitResult,
   SftpPreviewImageResult,
   SftpProbeTextResult,
-  SftpReadTextResult
+  SftpReadTextResult,
+  SftpUploadProgressEvent,
+  SftpUploadResult
 } from '../../shared/sftp.js'
 
 interface SftpSession {
@@ -44,9 +46,39 @@ interface DownloadRuntimeTask {
   emitProgress: (status: SftpDownloadProgressEvent['status'], error?: string) => void
 }
 
+interface UploadFileEntry {
+  localPath: string
+  remotePath: string
+  size: number
+}
+
+interface UploadRuntimeTask {
+  client: SftpClient
+  tabId: string
+  name: string
+  localPaths: string[]
+  remoteDirectoryPath: string
+  paused: boolean
+  canceled: boolean
+  transferredBytes: number
+  totalBytes: number
+  emitProgress: (status: SftpUploadProgressEvent['status'], error?: string) => void
+}
+
+interface PausedUploadTask {
+  tabId: string
+  name: string
+  localPaths: string[]
+  remoteDirectoryPath: string
+  transferredBytes: number
+  totalBytes: number
+}
+
 const sftpSessions = new Map<string, SftpSession>()
 const { maxEditableFileSizeBytes, textProbeSampleBytes } = appConfig.sftp.textEditor
 const activeDownloadTasks = new Map<string, DownloadRuntimeTask>()
+const activeUploadTasks = new Map<string, UploadRuntimeTask>()
+const pausedUploadTasks = new Map<string, PausedUploadTask>()
 const imageMimeTypes: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -133,6 +165,74 @@ function normalizeRemotePath(path: string): string {
   }
 
   return trimmedPath.replace(/\/+/g, '/')
+}
+
+function joinRemotePath(parentPath: string, childName: string): string {
+  const normalizedParentPath = normalizeRemotePath(parentPath)
+  const pathPrefix = normalizedParentPath.endsWith('/') ? normalizedParentPath : `${normalizedParentPath}/`
+
+  return `${pathPrefix}${childName.replace(/\\/g, '/')}`.replace(/\/+/g, '/')
+}
+
+function getUploadDisplayName(localPaths: string[]): string {
+  if (localPaths.length === 1) {
+    return basename(localPaths[0])
+  }
+
+  return `${localPaths.length} 个项目`
+}
+
+async function collectUploadFileEntries(
+  localPath: string,
+  remoteDirectoryPath: string,
+  rootLocalPath = localPath
+): Promise<UploadFileEntry[]> {
+  const localStat = await statLocalFile(localPath)
+  const rootName = basename(rootLocalPath)
+
+  if (localStat.isFile()) {
+    const relativePath = localPath === rootLocalPath ? basename(localPath) : relative(dirname(rootLocalPath), localPath)
+
+    return [
+      {
+        localPath,
+        remotePath: joinRemotePath(remoteDirectoryPath, relativePath),
+        size: localStat.size
+      }
+    ]
+  }
+
+  if (!localStat.isDirectory()) {
+    return []
+  }
+
+  const entries = await readdir(localPath, { withFileTypes: true })
+  const files = await Promise.all(
+    entries.map((entry) =>
+      collectUploadFileEntries(joinLocalPath(localPath, entry.name), remoteDirectoryPath, rootLocalPath)
+    )
+  )
+
+  // 空目录没有文件进度，但需要在远程侧保留目录本身。
+  if (entries.length === 0) {
+    return [
+      {
+        localPath,
+        remotePath: joinRemotePath(remoteDirectoryPath, rootName),
+        size: 0
+      }
+    ]
+  }
+
+  return files.flat()
+}
+
+async function collectUploadEntries(localPaths: string[], remoteDirectoryPath: string): Promise<UploadFileEntry[]> {
+  const entries = await Promise.all(
+    localPaths.map((localPath) => collectUploadFileEntries(localPath, remoteDirectoryPath))
+  )
+
+  return entries.flat()
 }
 
 function getSftpSession(tabId: string): SftpSession {
@@ -497,6 +597,266 @@ export async function writeRemoteTextFile(tabId: string, path: string, content: 
     scope: 'main.sftp',
     message: '远程文本文件保存完成',
     data: { tabId, path: normalizedPath, size: buffer.length }
+  })
+
+  return true
+}
+
+export async function uploadLocalPathsToRemoteDirectory(
+  tabId: string,
+  remoteDirectoryPath: string,
+  localPaths: string[],
+  task: Pick<SftpUploadProgressEvent, 'taskId'>,
+  onProgress?: (event: SftpUploadProgressEvent) => void
+): Promise<SftpUploadResult> {
+  const session = getSftpSession(tabId)
+  const normalizedRemoteDirectoryPath = normalizeRemotePath(remoteDirectoryPath)
+  const normalizedLocalPaths = localPaths.filter(Boolean)
+  const server = getServerAuthConfig(session.serverId)
+  const uploadClient = new SftpClient(`upload-${task.taskId}`)
+  const name = getUploadDisplayName(normalizedLocalPaths)
+  const entries = await collectUploadEntries(normalizedLocalPaths, normalizedRemoteDirectoryPath)
+  const totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
+  let transferredBytes = 0
+  let lastProgressAt = 0
+  let lastSpeedAt = Date.now()
+  let lastSpeedBytes = 0
+  let currentSpeedBytesPerSecond = 0
+  let wasCanceled = false
+  let wasPaused = false
+
+  if (normalizedLocalPaths.length === 0) {
+    return {
+      uploaded: false,
+      remoteDirectoryPath: normalizedRemoteDirectoryPath,
+      uploadedCount: 0
+    }
+  }
+
+  const emitProgress = (status: SftpUploadProgressEvent['status'], error?: string): void => {
+    const now = Date.now()
+
+    if (status === 'progress') {
+      const elapsedSeconds = Math.max((now - lastSpeedAt) / 1000, 0.001)
+      currentSpeedBytesPerSecond = Math.max((transferredBytes - lastSpeedBytes) / elapsedSeconds, 0)
+      lastSpeedAt = now
+      lastSpeedBytes = transferredBytes
+    }
+
+    onProgress?.({
+      taskId: task.taskId,
+      tabId,
+      name,
+      path: normalizedRemoteDirectoryPath,
+      status,
+      transferredBytes,
+      totalBytes,
+      speedBytesPerSecond: status === 'started' ? 0 : currentSpeedBytesPerSecond,
+      localPaths: normalizedLocalPaths,
+      remoteDirectoryPath: normalizedRemoteDirectoryPath,
+      error
+    })
+  }
+  const uploadTask: UploadRuntimeTask = {
+    client: uploadClient,
+    tabId,
+    name,
+    localPaths: normalizedLocalPaths,
+    remoteDirectoryPath: normalizedRemoteDirectoryPath,
+    paused: false,
+    canceled: false,
+    transferredBytes,
+    totalBytes,
+    emitProgress
+  }
+
+  activeUploadTasks.set(task.taskId, uploadTask)
+  emitProgress('started')
+
+  try {
+    await uploadClient.connect({
+      ...createServerConnectOptions(server),
+      readyTimeout: 15000
+    })
+    await uploadClient.mkdir(normalizedRemoteDirectoryPath, true)
+
+    for (const entry of entries) {
+      if (uploadTask.paused || uploadTask.canceled) {
+        break
+      }
+
+      const localStat = await statLocalFile(entry.localPath)
+
+      if (localStat.isDirectory()) {
+        await uploadClient.mkdir(entry.remotePath, true)
+        continue
+      }
+
+      await uploadClient.mkdir(dirname(entry.remotePath).replace(/\\/g, '/'), true)
+      let entryBaseTransferred = transferredBytes
+
+      await uploadClient.fastPut(entry.localPath, entry.remotePath, {
+        concurrency: appConfig.sftp.download.fastGetConcurrency,
+        chunkSize: appConfig.sftp.download.fastGetChunkSizeBytes,
+        step: (totalTransferred) => {
+          const now = Date.now()
+          transferredBytes = entryBaseTransferred + totalTransferred
+          uploadTask.transferredBytes = transferredBytes
+
+          if (now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
+            lastProgressAt = now
+            emitProgress('progress')
+          }
+        }
+      })
+
+      transferredBytes = entryBaseTransferred + entry.size
+      uploadTask.transferredBytes = transferredBytes
+    }
+
+    if (uploadTask.canceled) {
+      wasCanceled = true
+    } else if (uploadTask.paused) {
+      wasPaused = true
+    } else {
+      transferredBytes = totalBytes
+      uploadTask.transferredBytes = transferredBytes
+      emitProgress('completed')
+    }
+  } catch (error) {
+    if (uploadTask.canceled) {
+      wasCanceled = true
+    } else if (uploadTask.paused) {
+      wasPaused = true
+    } else {
+      emitProgress('error', error instanceof Error ? error.message : String(error))
+      throw error
+    }
+  } finally {
+    const isCurrentTask = activeUploadTasks.get(task.taskId) === uploadTask
+
+    if (isCurrentTask) {
+      activeUploadTasks.delete(task.taskId)
+    }
+    await uploadClient.end().catch(() => undefined)
+
+    if (isCurrentTask && wasPaused) {
+      pausedUploadTasks.set(task.taskId, {
+        tabId,
+        name,
+        localPaths: normalizedLocalPaths,
+        remoteDirectoryPath: normalizedRemoteDirectoryPath,
+        transferredBytes,
+        totalBytes
+      })
+      emitProgress('paused')
+    } else if (isCurrentTask && wasCanceled) {
+      pausedUploadTasks.delete(task.taskId)
+      emitProgress('canceled')
+    } else if (isCurrentTask) {
+      pausedUploadTasks.delete(task.taskId)
+    }
+  }
+
+  if (wasPaused || wasCanceled) {
+    return {
+      uploaded: false,
+      taskId: task.taskId,
+      remoteDirectoryPath: normalizedRemoteDirectoryPath,
+      uploadedCount: transferredBytes > 0 ? entries.length : 0
+    }
+  }
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '本地文件上传完成',
+    data: {
+      tabId,
+      remoteDirectoryPath: normalizedRemoteDirectoryPath,
+      selectedCount: normalizedLocalPaths.length,
+      uploadedCount: entries.length
+    }
+  })
+
+  return {
+    uploaded: entries.length > 0,
+    taskId: task.taskId,
+    remoteDirectoryPath: normalizedRemoteDirectoryPath,
+    uploadedCount: entries.length
+  }
+}
+
+export async function controlRemoteUploadTask(
+  taskId: string,
+  action: 'pause' | 'resume' | 'cancel',
+  onProgress?: (event: SftpUploadProgressEvent) => void
+): Promise<boolean> {
+  const task = activeUploadTasks.get(taskId)
+
+  if (task) {
+    if (action === 'pause') {
+      task.paused = true
+      await task.client.end().catch(() => undefined)
+      return true
+    }
+
+    if (action === 'cancel') {
+      task.canceled = true
+      await task.client.end().catch(() => undefined)
+      return true
+    }
+
+    return false
+  }
+
+  const pausedTask = pausedUploadTasks.get(taskId)
+
+  if (!pausedTask) {
+    return false
+  }
+
+  if (action === 'cancel') {
+    pausedUploadTasks.delete(taskId)
+    onProgress?.({
+      taskId,
+      tabId: pausedTask.tabId,
+      name: pausedTask.name,
+      path: pausedTask.remoteDirectoryPath,
+      status: 'canceled',
+      transferredBytes: pausedTask.transferredBytes,
+      totalBytes: pausedTask.totalBytes,
+      speedBytesPerSecond: 0,
+      localPaths: pausedTask.localPaths,
+      remoteDirectoryPath: pausedTask.remoteDirectoryPath
+    })
+    return true
+  }
+
+  if (action !== 'resume') {
+    return false
+  }
+
+  pausedUploadTasks.delete(taskId)
+  void uploadLocalPathsToRemoteDirectory(
+    pausedTask.tabId,
+    pausedTask.remoteDirectoryPath,
+    pausedTask.localPaths,
+    { taskId },
+    onProgress
+  ).catch((error) => {
+    onProgress?.({
+      taskId,
+      tabId: pausedTask.tabId,
+      name: pausedTask.name,
+      path: pausedTask.remoteDirectoryPath,
+      status: 'error',
+      transferredBytes: pausedTask.transferredBytes,
+      totalBytes: pausedTask.totalBytes,
+      speedBytesPerSecond: 0,
+      localPaths: pausedTask.localPaths,
+      remoteDirectoryPath: pausedTask.remoteDirectoryPath,
+      error: error instanceof Error ? error.message : String(error)
+    })
   })
 
   return true

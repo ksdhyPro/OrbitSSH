@@ -1,11 +1,14 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
-import type { SftpDownloadProgressEvent } from "../../shared/sftp";
+import type {
+  SftpDownloadProgressEvent,
+  SftpUploadProgressEvent,
+} from "../../shared/sftp";
 import type { DownloadTask } from "../types/download";
 import { useCoreStore } from "./useCoreStore";
+import { useSftpStore } from "./useSftpStore";
 
-// 下载任务列表 store：管理任务状态、进度事件与暂停/继续/取消控制。
-// 发起下载（downloadRemoteFileNode）属 SFTP 域，由 useSftpStore 调用 sftp.download。
+// 传输任务列表 store：统一管理上传/下载状态、进度事件与暂停/继续/取消控制。
 export const useDownloadsStore = defineStore("downloads", () => {
   const core = useCoreStore();
   const downloadTasks = ref<DownloadTask[]>([]);
@@ -19,9 +22,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
       ).length,
   );
 
-  const visibleDownloadTasks = computed(() =>
-    downloadTasks.value.filter(task => task.status !== "completed"),
-  );
+  const visibleDownloadTasks = computed(() => downloadTasks.value);
 
   function isDownloadTaskOperating(taskId: string): boolean {
     return downloadTaskOperationIds.value.has(taskId);
@@ -31,28 +32,9 @@ export const useDownloadsStore = defineStore("downloads", () => {
     isTaskListOpen.value = false;
   }
 
-  function handleSftpDownloadProgress(event: SftpDownloadProgressEvent): void {
-    if (event.status === "completed") {
-      downloadTasks.value = downloadTasks.value.filter(
-        item => item.taskId !== event.taskId,
-      );
-      return;
-    }
-
-    const task: DownloadTask = {
-      taskId: event.taskId,
-      tabId: event.tabId,
-      name: event.name,
-      path: event.path,
-      status: event.status,
-      transferredBytes: event.transferredBytes,
-      totalBytes: event.totalBytes,
-      speedBytesPerSecond: event.speedBytesPerSecond,
-      filePath: event.filePath,
-      error: event.error,
-    };
+  function upsertDownloadTask(task: DownloadTask): void {
     const existingIndex = downloadTasks.value.findIndex(
-      item => item.taskId === event.taskId,
+      item => item.taskId === task.taskId,
     );
 
     if (existingIndex >= 0) {
@@ -62,7 +44,47 @@ export const useDownloadsStore = defineStore("downloads", () => {
       return;
     }
 
-    downloadTasks.value = [task, ...downloadTasks.value].slice(0, 20);
+    downloadTasks.value = [task, ...downloadTasks.value].slice(0, 50);
+  }
+
+  function handleSftpDownloadProgress(event: SftpDownloadProgressEvent): void {
+    upsertDownloadTask({
+      taskId: event.taskId,
+      tabId: event.tabId,
+      direction: "download",
+      name: event.name,
+      path: event.path,
+      status: event.status,
+      transferredBytes: event.transferredBytes,
+      totalBytes: event.totalBytes,
+      speedBytesPerSecond: event.speedBytesPerSecond,
+      filePath: event.filePath,
+      error: event.error,
+    });
+  }
+
+  function handleSftpUploadProgress(event: SftpUploadProgressEvent): void {
+    upsertDownloadTask({
+      taskId: event.taskId,
+      tabId: event.tabId,
+      direction: "upload",
+      name: event.name,
+      path: event.path,
+      status: event.status,
+      transferredBytes: event.transferredBytes,
+      totalBytes: event.totalBytes,
+      speedBytesPerSecond: event.speedBytesPerSecond,
+      localPaths: event.localPaths,
+      remoteDirectoryPath: event.remoteDirectoryPath,
+      error: event.error,
+    });
+
+    if (event.status === "completed") {
+      void useSftpStore().refreshRemoteDirectoryPath(
+        event.tabId,
+        event.remoteDirectoryPath,
+      );
+    }
   }
 
   function removeDownloadTask(taskId: string): void {
@@ -85,7 +107,12 @@ export const useDownloadsStore = defineStore("downloads", () => {
     ]);
 
     try {
-      if (action === "resume") {
+      if (task.direction === "upload") {
+        await core.orbitSSHApi?.sftp.controlUpload({
+          taskId: task.taskId,
+          action,
+        });
+      } else if (action === "resume") {
         await core.orbitSSHApi?.sftp.download({
           tabId: task.tabId,
           path: task.path,
@@ -95,20 +122,18 @@ export const useDownloadsStore = defineStore("downloads", () => {
           localPath: task.filePath,
           transferredBytes: task.transferredBytes,
         });
-        return;
+      } else {
+        await core.orbitSSHApi?.sftp.controlDownload({
+          taskId: task.taskId,
+          action,
+          localPath: task.filePath,
+        });
       }
-
-      await core.orbitSSHApi?.sftp.controlDownload({
-        taskId: task.taskId,
-        action,
-        localPath: task.filePath,
-      });
 
       if (action === "cancel") {
         downloadTasks.value = downloadTasks.value.map(item =>
           item.taskId === task.taskId ? { ...item, status: "canceled" } : item,
         );
-        removeDownloadTask(task.taskId);
       }
     } catch (error) {
       downloadTasks.value = downloadTasks.value.map(item =>
@@ -116,7 +141,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
           ? {
               ...item,
               status: "error",
-              error: error instanceof Error ? error.message : "下载任务操作失败",
+              error: error instanceof Error ? error.message : "传输任务操作失败",
             }
           : item,
       );
@@ -128,19 +153,25 @@ export const useDownloadsStore = defineStore("downloads", () => {
   }
 
   let removeSftpDownloadProgressListener: (() => void) | undefined;
+  let removeSftpUploadProgressListener: (() => void) | undefined;
 
   function startListeners(): void {
     if (core.orbitSSHApi && !removeSftpDownloadProgressListener) {
       removeSftpDownloadProgressListener =
-        core.orbitSSHApi.sftp.onDownloadProgress(
-          handleSftpDownloadProgress,
-        );
+        core.orbitSSHApi.sftp.onDownloadProgress(handleSftpDownloadProgress);
+    }
+
+    if (core.orbitSSHApi && !removeSftpUploadProgressListener) {
+      removeSftpUploadProgressListener =
+        core.orbitSSHApi.sftp.onUploadProgress(handleSftpUploadProgress);
     }
   }
 
   function stopListeners(): void {
     removeSftpDownloadProgressListener?.();
     removeSftpDownloadProgressListener = undefined;
+    removeSftpUploadProgressListener?.();
+    removeSftpUploadProgressListener = undefined;
   }
 
   return {
@@ -152,6 +183,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     isDownloadTaskOperating,
     closeTaskList,
     handleSftpDownloadProgress,
+    handleSftpUploadProgress,
     controlDownloadTask,
     removeDownloadTask,
     startListeners,

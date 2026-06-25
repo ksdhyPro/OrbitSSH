@@ -1,4 +1,8 @@
 export const appConfig = {
+  terminal: {
+    // xterm 历史输出保留行数，限制缓冲区避免长时间日志输出导致内存持续增长。
+    scrollbackRows: 2000,
+  },
   sftp: {
     textEditor: {
       // 大于该体积的远程文件不允许直接编辑，避免一次性读取导致卡顿或内存压力。

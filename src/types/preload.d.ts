@@ -22,6 +22,10 @@ import type {
   SftpProbeTextResult,
   SftpReadTextInput,
   SftpReadTextResult,
+  SftpUploadControlInput,
+  SftpUploadInput,
+  SftpUploadProgressEvent,
+  SftpUploadResult,
   SftpWriteTextInput,
 } from "../shared/sftp";
 import type {
@@ -66,10 +70,15 @@ declare global {
         ) => Promise<SftpPreviewImageResult>;
         writeText: (input: SftpWriteTextInput) => Promise<boolean>;
         download: (input: SftpDownloadInput) => Promise<SftpDownloadResult>;
+        upload: (input: SftpUploadInput) => Promise<SftpUploadResult>;
+        controlUpload: (input: SftpUploadControlInput) => Promise<boolean>;
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
         delete: (input: SftpDeleteInput) => Promise<boolean>;
         onDownloadProgress: (
           callback: (event: SftpDownloadProgressEvent) => void,
+        ) => () => void;
+        onUploadProgress: (
+          callback: (event: SftpUploadProgressEvent) => void,
         ) => () => void;
         close: (tabId: string) => Promise<boolean>;
       };

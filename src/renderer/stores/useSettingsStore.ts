@@ -1,6 +1,10 @@
 import { defineStore } from "pinia";
 import { reactive, ref } from "vue";
-import { defaultAppSettings, type AppSettings } from "../../shared/settings";
+import {
+  defaultAppSettings,
+  type AppSettings,
+  type SftpFileTreeViewMode,
+} from "../../shared/settings";
 import { useCoreStore } from "./useCoreStore";
 
 export const selectionBackgroundOptions = [
@@ -30,6 +34,9 @@ export const useSettingsStore = defineStore("settings", () => {
         lineHeight: appSettings.terminal.lineHeight,
         selectionBackground: appSettings.terminal.selectionBackground,
       },
+      sftp: {
+        fileTreeViewMode: appSettings.sftp.fileTreeViewMode,
+      },
     };
   }
 
@@ -41,6 +48,7 @@ export const useSettingsStore = defineStore("settings", () => {
 
       if (savedSettings) {
         Object.assign(appSettings.terminal, savedSettings.terminal);
+        Object.assign(appSettings.sftp, savedSettings.sftp);
       }
     } catch (error) {
       core.writeRendererLog(
@@ -56,6 +64,13 @@ export const useSettingsStore = defineStore("settings", () => {
     value: AppSettings["terminal"][K],
   ): Promise<void> {
     appSettings.terminal[key] = value;
+    await saveAppSettings();
+  }
+
+  async function updateSftpFileTreeViewMode(
+    mode: SftpFileTreeViewMode,
+  ): Promise<void> {
+    appSettings.sftp.fileTreeViewMode = mode;
     await saveAppSettings();
   }
 
@@ -99,8 +114,10 @@ export const useSettingsStore = defineStore("settings", () => {
       }
 
       Object.assign(appSettings.terminal, savedSettings.terminal);
+      Object.assign(appSettings.sftp, savedSettings.sftp);
       core.writeRendererLog("应用设置加载完成", {
         terminal: savedSettings.terminal,
+        sftp: savedSettings.sftp,
       });
     } catch (error) {
       core.writeRendererLog(
@@ -120,6 +137,7 @@ export const useSettingsStore = defineStore("settings", () => {
     toPlainAppSettings,
     saveAppSettings,
     updateTerminalSetting,
+    updateSftpFileTreeViewMode,
     stepTerminalNumberSetting,
     openSettingsDialog,
     closeSettingsDialog,

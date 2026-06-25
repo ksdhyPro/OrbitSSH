@@ -51,8 +51,8 @@ const emit = defineEmits<{
         <button
           type="button"
           class="tasklist-trigger"
-          aria-label="下载任务"
-          title="下载任务"
+          aria-label="传输任务"
+          title="传输任务"
           @click="emit('updateTaskListOpen', !isTaskListOpen)">
           <img :src="taskIcon" alt="" />
           <strong v-if="activeDownloadCount > 0">
@@ -61,11 +61,11 @@ const emit = defineEmits<{
         </button>
         <section v-if="isTaskListOpen" class="tasklist-panel">
           <header>
-            <span>下载任务</span>
+            <span>传输任务</span>
             <small>{{ visibleDownloadTasks.length }} 项</small>
           </header>
           <div v-if="visibleDownloadTasks.length === 0" class="tasklist-empty">
-            暂无下载任务
+            暂无传输任务
           </div>
           <template v-else>
             <article
@@ -73,7 +73,12 @@ const emit = defineEmits<{
               :key="task.taskId"
               class="tasklist-item">
               <div class="tasklist-item-head">
-                <strong>{{ task.name }}</strong>
+                <strong>
+                  <span class="tasklist-direction">
+                    {{ task.direction === "upload" ? "上传" : "下载" }}
+                  </span>
+                  {{ task.name }}
+                </strong>
                 <small>{{ getDownloadTaskStatusText(task) }}</small>
               </div>
               <div class="tasklist-progress">

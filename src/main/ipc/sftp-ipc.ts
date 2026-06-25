@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import {
   closeSftpSession,
   controlRemoteDownloadTask,
+  controlRemoteUploadTask,
   deleteRemoteNode,
   downloadRemoteFile,
   listRemoteDirectory,
@@ -11,6 +12,7 @@ import {
   previewRemoteImageFile,
   probeRemoteTextFile,
   readRemoteTextFile,
+  uploadLocalPathsToRemoteDirectory,
   writeRemoteTextFile
 } from '../sftp/sftp-manager.js'
 import type {
@@ -21,6 +23,8 @@ import type {
   SftpPreviewImageInput,
   SftpProbeTextInput,
   SftpReadTextInput,
+  SftpUploadControlInput,
+  SftpUploadInput,
   SftpWriteTextInput
 } from '../../shared/sftp.js'
 
@@ -105,6 +109,70 @@ export function registerSftpIpc(): void {
 
   ipcMain.handle('sftp:download-control', (_event, input: SftpDownloadControlInput) =>
     controlRemoteDownloadTask(input.taskId, input.action, input.localPath)
+  )
+
+  ipcMain.handle('sftp:upload', async (event, input: SftpUploadInput) => {
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const sourceType = input.sourceType ?? 'file'
+    const openDialogOptions: Electron.OpenDialogOptions = {
+      title: sourceType === 'directory' ? '上传文件夹' : '上传文件',
+      buttonLabel: '上传',
+      properties:
+        sourceType === 'directory'
+          ? ['openDirectory', 'multiSelections', 'showHiddenFiles']
+          : ['openFile', 'multiSelections', 'showHiddenFiles']
+    }
+    const result = ownerWindow
+      ? await dialog.showOpenDialog(ownerWindow, openDialogOptions)
+      : await dialog.showOpenDialog(openDialogOptions)
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { uploaded: false }
+    }
+
+    const taskId = input.taskId ?? randomUUID()
+    const baseEvent = {
+      taskId,
+      tabId: input.tabId,
+      name: result.filePaths.length === 1 ? result.filePaths[0].split(/[\\/]/).at(-1) ?? '上传任务' : `${result.filePaths.length} 个项目`,
+      path: input.remoteDirectoryPath,
+      transferredBytes: 0,
+      totalBytes: 0,
+      speedBytesPerSecond: 0,
+      localPaths: result.filePaths,
+      remoteDirectoryPath: input.remoteDirectoryPath
+    }
+    event.sender.send('sftp:upload-progress', {
+      ...baseEvent,
+      status: 'started'
+    })
+
+    void uploadLocalPathsToRemoteDirectory(
+      input.tabId,
+      input.remoteDirectoryPath,
+      result.filePaths,
+      { taskId },
+      (progressEvent) => event.sender.send('sftp:upload-progress', progressEvent)
+    ).catch((error) => {
+      event.sender.send('sftp:upload-progress', {
+        ...baseEvent,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+
+    return {
+      uploaded: true,
+      taskId,
+      remoteDirectoryPath: input.remoteDirectoryPath,
+      uploadedCount: result.filePaths.length
+    }
+  })
+
+  ipcMain.handle('sftp:upload-control', (event, input: SftpUploadControlInput) =>
+    controlRemoteUploadTask(input.taskId, input.action, (progressEvent) =>
+      event.sender.send('sftp:upload-progress', progressEvent)
+    )
   )
 
   ipcMain.handle('sftp:delete', (_event, input: SftpDeleteInput) =>

@@ -34,6 +34,8 @@ const orbitSSHApi = {
     previewImage: input => ipcRenderer.invoke("sftp:preview-image", input),
     writeText: input => ipcRenderer.invoke("sftp:write-text", input),
     download: input => ipcRenderer.invoke("sftp:download", input),
+    upload: input => ipcRenderer.invoke("sftp:upload", input),
+    controlUpload: input => ipcRenderer.invoke("sftp:upload-control", input),
     controlDownload: input =>
       ipcRenderer.invoke("sftp:download-control", input),
     delete: input => ipcRenderer.invoke("sftp:delete", input),
@@ -42,6 +44,12 @@ const orbitSSHApi = {
       ipcRenderer.on("sftp:download-progress", listener);
       return () =>
         ipcRenderer.removeListener("sftp:download-progress", listener);
+    },
+    onUploadProgress: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("sftp:upload-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("sftp:upload-progress", listener);
     },
     close: tabId => ipcRenderer.invoke("sftp:close", tabId),
   },

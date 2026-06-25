@@ -5,6 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import { defineStore } from "pinia";
 import { computed, nextTick, reactive, ref } from "vue";
 
+import { appConfig } from "../../shared/config";
 import type { ServerConfig } from "../../shared/server";
 import type { TerminalStatusEvent } from "../../shared/terminal";
 import type {
@@ -16,6 +17,9 @@ import { copyTextByFallback } from "../utils/clipboard";
 import { parseOsc7Path } from "../utils/path";
 import { useCoreStore } from "./useCoreStore";
 import { useSettingsStore } from "./useSettingsStore";
+
+const TERMINAL_FIT_DEBOUNCE_MS = 120;
+const TERMINAL_RESIZE_THROTTLE_MS = 150;
 
 export interface TerminalStoreCallbacks {
   afterOpen?: (tab: TerminalTab) => void | Promise<void>;
@@ -41,6 +45,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
   const terminalHosts = new Map<string, HTMLElement>();
   const terminalInstances = new Map<string, TerminalInstance>();
+  const lastSentTerminalSizes = new Map<string, { cols: number; rows: number }>();
+  const pendingTerminalSizes = new Map<string, { cols: number; rows: number }>();
+  const terminalResizeTimers = new Map<string, number>();
   let removeTerminalDataListener: (() => void) | undefined;
   let removeTerminalStatusListener: (() => void) | undefined;
   let fitScheduleTimer: number | undefined;
@@ -382,6 +389,51 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalHosts.delete(tabId);
   }
 
+  function sendTerminalResize(tabId: string, cols: number, rows: number): void {
+    const lastSize = lastSentTerminalSizes.get(tabId);
+
+    if (lastSize?.cols === cols && lastSize.rows === rows) {
+      return;
+    }
+
+    lastSentTerminalSizes.set(tabId, { cols, rows });
+    void core.orbitSSHApi?.terminals.resize({
+      tabId,
+      cols,
+      rows,
+    });
+  }
+
+  function scheduleTerminalResize(
+    tabId: string,
+    cols: number,
+    rows: number,
+  ): void {
+    if (cols <= 0 || rows <= 0) {
+      return;
+    }
+
+    pendingTerminalSizes.set(tabId, { cols, rows });
+
+    if (terminalResizeTimers.has(tabId)) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      terminalResizeTimers.delete(tabId);
+      const nextSize = pendingTerminalSizes.get(tabId);
+      pendingTerminalSizes.delete(tabId);
+
+      if (!nextSize) {
+        return;
+      }
+
+      sendTerminalResize(tabId, nextSize.cols, nextSize.rows);
+    }, TERMINAL_RESIZE_THROTTLE_MS);
+
+    terminalResizeTimers.set(tabId, timer);
+  }
+
   function fitTerminal(tabId: string): void {
     const terminalEntry = terminalInstances.get(tabId);
 
@@ -393,11 +445,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
     const { cols, rows } = terminalEntry.terminal;
     if (cols > 0 && rows > 0) {
-      void core.orbitSSHApi?.terminals.resize({
-        tabId,
-        cols,
-        rows,
-      });
+      scheduleTerminalResize(tabId, cols, rows);
     }
   }
 
@@ -409,13 +457,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
   function scheduleTerminalFit(): void {
     window.clearTimeout(fitScheduleTimer);
-    window.requestAnimationFrame(() => {
-      fitActiveTerminal();
-    });
     fitScheduleTimer = window.setTimeout(() => {
-      fitActiveTerminal();
       window.requestAnimationFrame(fitActiveTerminal);
-    }, 120);
+    }, TERMINAL_FIT_DEBOUNCE_MS);
   }
 
   // 为每个 Tab 创建独立 xterm 实例，并把输入通过 IPC 写入 SSH shell。
@@ -429,6 +473,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
     const terminal = new Terminal({
       cursorBlink: true,
+      scrollback: appConfig.terminal.scrollbackRows,
       fontFamily: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
       fontSize: settingsStore.appSettings.terminal.fontSize,
       lineHeight: settingsStore.appSettings.terminal.lineHeight,
@@ -515,11 +560,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     });
 
     terminal.onResize(({ cols, rows }) => {
-      void core.orbitSSHApi?.terminals.resize({
-        tabId: tab.id,
-        cols,
-        rows,
-      });
+      scheduleTerminalResize(tab.id, cols, rows);
     });
 
     terminalInstances.set(tab.id, {
@@ -598,6 +639,13 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalEntry?.searchResultsDisposable.dispose();
     terminalEntry?.terminal.dispose();
     terminalInstances.delete(tabId);
+    lastSentTerminalSizes.delete(tabId);
+    pendingTerminalSizes.delete(tabId);
+    const resizeTimer = terminalResizeTimers.get(tabId);
+    if (resizeTimer) {
+      window.clearTimeout(resizeTimer);
+      terminalResizeTimers.delete(tabId);
+    }
     await callbacks.afterClose?.(tabId);
     tabs.value = tabs.value.filter(tab => tab.id !== tabId);
 
@@ -664,6 +712,10 @@ export const useTerminalsStore = defineStore("terminals", () => {
   function cleanup(): void {
     stopListeners();
     window.clearTimeout(fitScheduleTimer);
+    terminalResizeTimers.forEach(timer => window.clearTimeout(timer));
+    terminalResizeTimers.clear();
+    pendingTerminalSizes.clear();
+    lastSentTerminalSizes.clear();
     disposeAllTerminals();
   }
 

@@ -471,6 +471,15 @@ input::placeholder {
   opacity: 0.66;
 }
 
+.file-node.is-deleting {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.file-node.is-deleting:hover {
+  background: transparent;
+}
+
 .file-icon {
   flex: 0 0 auto;
   color: #6fb6ff;
@@ -493,6 +502,22 @@ input::placeholder {
   white-space: nowrap;
   color: #647187;
   font-size: 11px;
+}
+
+.file-node-spinner {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(111, 182, 255, 0.22);
+  border-top-color: #6fb6ff;
+  border-radius: 999px;
+  animation: file-node-spin 0.8s linear infinite;
+}
+
+@keyframes file-node-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .is-folder {
@@ -582,6 +607,7 @@ input::placeholder {
 
 .topbar {
   position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -701,6 +727,19 @@ input::placeholder {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tasklist-direction {
+  display: inline-grid;
+  place-items: center;
+  height: 18px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: #263241;
+  color: #aebbd0;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .tasklist-item p {
@@ -1008,7 +1047,7 @@ input::placeholder {
 
 .app-dialog-backdrop {
   position: fixed;
-  inset: 0;
+  inset: 58px 0 0;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -1018,6 +1057,8 @@ input::placeholder {
 }
 
 .app-dialog {
+  max-height: calc(100vh - 106px);
+  overflow: hidden;
   border: 1px solid #303847;
   border-radius: 8px;
   background: #181d27;
@@ -1035,7 +1076,7 @@ input::placeholder {
 
 .app-dialog-editor {
   width: min(1080px, 96vw);
-  height: min(760px, 92vh);
+  height: min(760px, calc(100vh - 106px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -1189,6 +1230,64 @@ input::placeholder {
   background: #111722;
   color: #e7edf7;
   font-variant-numeric: tabular-nums;
+}
+
+.file-view-mode-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 104px));
+  justify-content: end;
+  gap: 8px;
+}
+
+.file-view-mode-option {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-height: 58px;
+  padding: 0 12px;
+  border: 1px solid #303847;
+  border-radius: 8px;
+  background: #111722;
+  color: #9aa7ba;
+  text-align: left;
+}
+
+.file-view-mode-option:hover {
+  border-color: #3b4658;
+  background: #18202d;
+}
+
+.file-view-mode-option.active {
+  border-color: #4b8fd8;
+  background: rgba(75, 143, 216, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(75, 143, 216, 0.18);
+}
+
+.file-view-mode-option.active::after {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #6fb6ff;
+  content: "";
+}
+
+.file-view-mode-title {
+  color: #e7edf7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.file-view-mode-desc {
+  overflow: hidden;
+  color: #7f8da3;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .color-select {
@@ -1497,8 +1596,17 @@ input::placeholder {
   padding: 18px;
 }
 
+.delete-confirm-message {
+  margin: 0 0 18px;
+  color: #c6d0df;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+
 .ghost-button,
-.primary-button {
+.primary-button,
+.danger-button {
   height: 38px;
   border-radius: 7px;
   padding: 0 16px;
@@ -1513,4 +1621,9 @@ input::placeholder {
 .primary-button {
   background: #22a06b;
   color: #07120d;
+}
+
+.danger-button {
+  background: #d84d42;
+  color: #fff4f2;
 }

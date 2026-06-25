@@ -7,11 +7,14 @@ import {
   nextTick,
   onMounted,
   onUnmounted,
+  reactive,
+  ref,
   watch,
 } from "vue";
 import "@xterm/xterm/css/xterm.css";
 
 import ConnectionDialog from "./components/ConnectionDialog.vue";
+import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
@@ -22,6 +25,7 @@ import TerminalPanel from "./components/TerminalPanel.vue";
 import TitleBarTabs from "./components/TitleBarTabs.vue";
 import type { ServerConfig } from "../shared/server";
 import type { RemoteFileNode } from "../shared/sftp";
+import { getRemoteParentPath } from "./utils/path";
 import { storeToRefs } from "pinia";
 import { useCoreStore } from "./stores/useCoreStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
@@ -45,6 +49,11 @@ const serversStore = useServersStore();
 
 const SERVER_OPEN_DEBOUNCE_MS = 3000;
 const serverOpenAllowedAt = new Map<string, number>();
+const deleteConfirmDialog = reactive({
+  open: false,
+  message: "",
+});
+const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -62,6 +71,7 @@ const {
   openSettingsDialog,
   closeSettingsDialog,
   stepTerminalNumberSetting,
+  updateSftpFileTreeViewMode,
   selectSelectionBackground,
 } = settingsStore;
 
@@ -160,6 +170,7 @@ const {
   openRemoteImagePreview: openRemoteImagePreviewFromStore,
   downloadContextFile: downloadContextFileFromStore,
   downloadImagePreviewFile,
+  uploadToContextDirectory,
   deleteContextFile: deleteContextFileFromStore,
   closeImagePreview,
 } = sftpStore;
@@ -212,8 +223,41 @@ const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
     return [];
   }
 
-  return flattenRemoteTree(tree.root, tree.expandedPaths);
+  const parentNode = createParentDirectoryNode(tree.root.path);
+
+  if (appSettings.sftp.fileTreeViewMode === "current-directory") {
+    const currentLevelNodes = (tree.root.children ?? []).map(node => ({
+      ...node,
+      level: 0,
+    }));
+
+    return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
+  }
+
+  const treeNodes = flattenRemoteTree(tree.root, tree.expandedPaths);
+
+  return parentNode ? [parentNode, ...treeNodes] : treeNodes;
 });
+
+function createParentDirectoryNode(
+  currentPath: string,
+): VisibleRemoteFileNode | null {
+  const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
+
+  if (!normalizedPath || normalizedPath === "/") {
+    return null;
+  }
+
+  return {
+    path: getRemoteParentPath(currentPath),
+    name: "..",
+    type: "directory",
+    loaded: true,
+    children: [],
+    level: 0,
+    isVirtualParent: true,
+  };
+}
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
   const isSearchShortcut =
@@ -260,6 +304,10 @@ function canDownloadRemoteFile(node: RemoteFileNode | null): boolean {
   return sftpStore.canDownloadRemoteFile(activeTabId.value, node);
 }
 
+function canUploadRemoteNode(node: RemoteFileNode | null): boolean {
+  return sftpStore.canUploadRemoteNode(node);
+}
+
 function getFileEditMenuLabel(node: RemoteFileNode | null): string {
   return sftpStore.getFileEditMenuLabel(node);
 }
@@ -268,11 +316,28 @@ function isEditableTextFile(node: RemoteFileNode | null): boolean {
   return sftpStore.isEditableTextFile(node);
 }
 
-function canDeleteRemoteNode(node: RemoteFileNode | null): boolean {
+function canDeleteRemoteNode(
+  node: (RemoteFileNode & { isVirtualParent?: boolean }) | null,
+): boolean {
+  if (node?.isVirtualParent) {
+    return false;
+  }
+
   return sftpStore.canDeleteRemoteNode(activeSftpTree.value, node);
 }
 
-function openFileContextMenu(event: MouseEvent, node: RemoteFileNode): void {
+function isRemoteNodeDeleting(node: RemoteFileNode | null): boolean {
+  return Boolean(node && activeSftpTree.value?.deletingPaths.has(node.path));
+}
+
+function openFileContextMenu(
+  event: MouseEvent,
+  node: RemoteFileNode & { isVirtualParent?: boolean },
+): void {
+  if (node.isVirtualParent || isRemoteNodeDeleting(node)) {
+    return;
+  }
+
   sftpStore.openFileContextMenu(activeTabId.value, event, node);
 }
 
@@ -280,8 +345,22 @@ async function downloadContextFile(): Promise<void> {
   await downloadContextFileFromStore(activeTabId.value);
 }
 
+async function uploadContextFile(
+  sourceType: "file" | "directory",
+): Promise<void> {
+  await uploadToContextDirectory(activeTabId.value, sourceType);
+}
+
 async function refreshActiveDirectory(): Promise<void> {
-  await refreshSftpDirectory(activeTab.value);
+  const tab = activeTab.value;
+  const tree = activeSftpTree.value;
+
+  if (!tab || !tree?.homePath) {
+    await refreshSftpDirectory(tab);
+    return;
+  }
+
+  await sftpStore.openSftpDirectoryPath(tab, tree.homePath, "刷新目录失败");
 }
 
 function closeSftpPathPrompt(): void {
@@ -363,15 +442,56 @@ async function openRemoteFileEditorByDoubleClick(
   }
 }
 
+async function openRemoteNodeByDoubleClick(node: RemoteFileNode): Promise<void> {
+  const tab = activeTab.value;
+
+  if (isRemoteNodeDeleting(node)) {
+    return;
+  }
+
+  if ("isVirtualParent" in node && node.isVirtualParent && tab) {
+    await sftpStore.openSftpDirectoryPath(tab, node.path, "路径不存在或无法访问");
+    return;
+  }
+
+  if (
+    node.type === "directory" &&
+    tab &&
+    appSettings.sftp.fileTreeViewMode === "current-directory"
+  ) {
+    // 当前层模式复用路径跳转逻辑，进入目录后仅展示该目录直属内容。
+    await sftpStore.openSftpDirectoryPath(tab, node.path, "路径不存在或无法访问");
+    return;
+  }
+
+  await openRemoteFileEditorByDoubleClick(node);
+}
+
 async function deleteContextFile(): Promise<void> {
   await deleteContextFileFromStore(activeTabId.value, activeSftpTree.value, {
-    shouldDelete: message => window.confirm(message),
+    shouldDelete: requestDeleteConfirm,
     onDeleted: node => {
       if (fileEditor.value.path === node.path) {
         closeFileEditor();
       }
     },
   });
+}
+
+function requestDeleteConfirm(message: string): Promise<boolean> {
+  deleteConfirmDialog.message = message;
+  deleteConfirmDialog.open = true;
+
+  return new Promise(resolve => {
+    deleteConfirmResolver.value = resolve;
+  });
+}
+
+function resolveDeleteConfirm(confirmed: boolean): void {
+  deleteConfirmDialog.open = false;
+  deleteConfirmDialog.message = "";
+  deleteConfirmResolver.value?.(confirmed);
+  deleteConfirmResolver.value = null;
 }
 
 async function deleteServer(serverId: string): Promise<void> {
@@ -416,6 +536,10 @@ async function closeTerminalTab(tabId: string): Promise<void> {
 
 async function toggleRemoteDirectory(node: RemoteFileNode): Promise<void> {
   if (!activeTabId.value) {
+    return;
+  }
+
+  if (isRemoteNodeDeleting(node)) {
     return;
   }
 
@@ -534,6 +658,7 @@ onUnmounted(() => {
         <SftpPanel
           :active-tab="activeTab"
           :active-sftp-tree="activeSftpTree"
+          :file-tree-view-mode="appSettings.sftp.fileTreeViewMode"
           :visible-file-tree="visibleFileTree"
           :file-context-menu="fileContextMenu"
           :file-path-input="filePathInput"
@@ -542,6 +667,7 @@ onUnmounted(() => {
           :is-editable-text-file="isEditableTextFile"
           :get-file-edit-menu-label="getFileEditMenuLabel"
           :can-download-remote-file="canDownloadRemoteFile"
+          :can-upload-remote-node="canUploadRemoteNode"
           :can-delete-remote-node="canDeleteRemoteNode"
           @update:file-path-input="filePathInput = $event"
           @refresh="refreshActiveDirectory"
@@ -550,10 +676,11 @@ onUnmounted(() => {
           @sync-path="syncFileTreeToTerminalPath"
           @open-context-menu="openFileContextMenu"
           @toggle-directory="toggleRemoteDirectory"
-          @open-file-by-double-click="openRemoteFileEditorByDoubleClick"
+          @open-file-by-double-click="openRemoteNodeByDoubleClick"
           @preview-context-file="previewContextFile"
           @edit-context-file="editContextFile"
           @download-context-file="downloadContextFile"
+          @upload-context-file="uploadContextFile"
           @delete-context-file="deleteContextFile" />
       </aside>
 
@@ -635,6 +762,12 @@ onUnmounted(() => {
       :message="sftpPathPromptMessage"
       @close="closeSftpPathPrompt" />
 
+    <DeleteConfirmDialog
+      :open="deleteConfirmDialog.open"
+      :message="deleteConfirmDialog.message"
+      @cancel="resolveDeleteConfirm(false)"
+      @confirm="resolveDeleteConfirm(true)" />
+
     <SettingsDialog
       :open="isSettingsDialogOpen"
       :app-settings="appSettings"
@@ -649,6 +782,7 @@ onUnmounted(() => {
         isSelectionBackgroundDropdownOpen = $event
       "
       @step-terminal-number-setting="stepTerminalNumberSetting"
+      @update-sftp-file-tree-view-mode="updateSftpFileTreeViewMode"
       @select-selection-background="selectSelectionBackground" />
   </main>
 </template>
