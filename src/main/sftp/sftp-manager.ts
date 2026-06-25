@@ -4,6 +4,7 @@ import { open as openLocalFile, rm, stat as statLocalFile } from 'node:fs/promis
 import { extname } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
+import { createServerConnectOptions } from '../ssh/auth-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
 import type {
@@ -239,6 +240,7 @@ function detectTextBuffer(buffer: Buffer): Pick<SftpProbeTextResult, 'isText' | 
 }
 
 export async function openSftpSession(tabId: string, serverId: string): Promise<SftpInitResult> {
+  const startedAt = Date.now()
   writeAppLog({
     scope: 'main.sftp',
     message: '开始创建 SFTP 会话',
@@ -255,14 +257,12 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
   }
 
   const server = getServerAuthConfig(serverId)
+  const authLoadedAt = Date.now()
   const client = new SftpClient(`sftp-${tabId}`)
 
   try {
     await client.connect({
-      host: server.host,
-      port: server.port,
-      username: server.username,
-      password: server.password,
+      ...createServerConnectOptions(server),
       readyTimeout: 15000
     })
   } catch (error) {
@@ -279,7 +279,9 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
     throw error
   }
 
+  const connectedAt = Date.now()
   const homePath = normalizeRemotePath(await client.cwd())
+  const cwdLoadedAt = Date.now()
   const session: SftpSession = {
     tabId,
     serverId,
@@ -291,14 +293,29 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
   writeAppLog({
     scope: 'main.sftp',
     message: 'SFTP 会话创建成功',
-    data: { tabId, serverId, homePath }
+    data: {
+      tabId,
+      serverId,
+      homePath,
+      authLoadMs: authLoadedAt - startedAt,
+      connectMs: connectedAt - authLoadedAt,
+      cwdMs: cwdLoadedAt - connectedAt,
+      totalBeforeListMs: cwdLoadedAt - startedAt
+    }
   })
 
   const nodes = await listRemoteDirectory(tabId, homePath)
+  const listedAt = Date.now()
   writeAppLog({
     scope: 'main.sftp',
     message: 'home 目录读取完成',
-    data: { tabId, path: homePath, nodeCount: nodes.length }
+    data: {
+      tabId,
+      path: homePath,
+      nodeCount: nodes.length,
+      listMs: listedAt - cwdLoadedAt,
+      totalMs: listedAt - startedAt
+    }
   })
 
   return {
@@ -620,10 +637,7 @@ export async function downloadRemoteFile(
     lastSpeedBytes = resumeOffset
 
     await downloadClient.connect({
-      host: server.host,
-      port: server.port,
-      username: server.username,
-      password: server.password,
+      ...createServerConnectOptions(server),
       readyTimeout: 15000
     })
 

@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { registerLoggerIpc } from "./ipc/logger-ipc.js";
+import { registerClipboardIpc } from "./ipc/clipboard-ipc.js";
+import { registerDialogIpc } from "./ipc/dialog-ipc.js";
 import { registerServerIpc } from "./ipc/server-ipc.js";
 import { registerSettingsIpc } from "./ipc/settings-ipc.js";
 import { registerSftpIpc } from "./ipc/sftp-ipc.js";
@@ -70,6 +72,8 @@ function createMainWindow(): BrowserWindow {
 // 注册基础 IPC，后续 SSH/SFTP 能力只能通过这里扩展。
 function registerBaseIpc(): void {
   registerLoggerIpc();
+  registerClipboardIpc();
+  registerDialogIpc();
 
   ipcMain.handle("app:get-info", () => ({
     name: app.getName(),

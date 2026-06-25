@@ -1,0 +1,150 @@
+<script setup lang="ts">
+import type { AppSettings } from "../../shared/settings";
+import AppDialog from "./AppDialog.vue";
+
+defineProps<{
+  open: boolean;
+  appSettings: AppSettings;
+  activeSettingsSection: "general" | "shortcuts";
+  isSelectionBackgroundDropdownOpen: boolean;
+  selectionBackgroundOptions: string[];
+}>();
+
+const emit = defineEmits<{
+  close: [];
+  updateActiveSection: [section: "general" | "shortcuts"];
+  updateSelectionDropdownOpen: [open: boolean];
+  stepTerminalNumberSetting: [
+    key: "fontSize" | "lineHeight",
+    delta: number,
+  ];
+  selectSelectionBackground: [color: string];
+}>();
+</script>
+
+<template>
+  <AppDialog
+    v-if="open"
+    title="设置"
+    description="调整应用常规选项。"
+    width="large"
+    @close="emit('close')">
+    <div class="settings-layout">
+      <aside class="settings-nav" aria-label="设置分类">
+        <button
+          type="button"
+          :class="[
+            'settings-nav-item',
+            { active: activeSettingsSection === 'general' },
+          ]"
+          @click="emit('updateActiveSection', 'general')">
+          常规设置
+        </button>
+        <button
+          type="button"
+          :class="[
+            'settings-nav-item',
+            { active: activeSettingsSection === 'shortcuts' },
+          ]"
+          @click="emit('updateActiveSection', 'shortcuts')">
+          快捷键
+        </button>
+      </aside>
+
+      <section
+        v-if="activeSettingsSection === 'general'"
+        class="settings-content">
+        <div class="settings-field">
+          <div>
+            <h3>终端文字字号</h3>
+            <p>控制当前和后续终端的字体大小。</p>
+          </div>
+          <div class="stepper-control">
+            <button
+              type="button"
+              @click="emit('stepTerminalNumberSetting', 'fontSize', -1)">
+              -
+            </button>
+            <output>{{ appSettings.terminal.fontSize }}</output>
+            <button
+              type="button"
+              @click="emit('stepTerminalNumberSetting', 'fontSize', 1)">
+              +
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>终端行高</h3>
+            <p>调整终端每行文字的垂直间距。</p>
+          </div>
+          <div class="stepper-control">
+            <button
+              type="button"
+              @click="emit('stepTerminalNumberSetting', 'lineHeight', -0.1)">
+              -
+            </button>
+            <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
+            <button
+              type="button"
+              @click="emit('stepTerminalNumberSetting', 'lineHeight', 0.1)">
+              +
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>终端选区背景</h3>
+            <p>选择终端文本选中时的背景颜色。</p>
+          </div>
+          <div class="color-select">
+            <button
+              type="button"
+              class="color-select-trigger"
+              @click="
+                emit(
+                  'updateSelectionDropdownOpen',
+                  !isSelectionBackgroundDropdownOpen,
+                )
+              ">
+              <span
+                class="color-swatch"
+                :style="{
+                  background: appSettings.terminal.selectionBackground,
+                }"></span>
+              <span>{{ appSettings.terminal.selectionBackground }}</span>
+            </button>
+
+            <div
+              v-if="isSelectionBackgroundDropdownOpen"
+              class="color-select-menu">
+              <button
+                v-for="color in selectionBackgroundOptions"
+                :key="color"
+                type="button"
+                class="color-select-option"
+                @click="emit('selectSelectionBackground', color)">
+                <span
+                  class="color-swatch"
+                  :style="{ background: color }"></span>
+                <span>{{ color }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section v-else class="settings-content">
+        <div class="settings-field">
+          <div>
+            <h3>终端搜索</h3>
+            <p>在当前终端右上角打开搜索框，Esc 或关闭按钮可退出。</p>
+          </div>
+          <kbd class="shortcut-key">Ctrl + F</kbd>
+        </div>
+      </section>
+    </div>
+  </AppDialog>
+</template>

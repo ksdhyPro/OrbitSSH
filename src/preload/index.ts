@@ -43,6 +43,16 @@ const orbitSSHApi = {
       ipcRenderer.invoke("logger:write", payload) as Promise<boolean>,
     getPath: () => ipcRenderer.invoke("logger:get-path") as Promise<string>,
   },
+  dialogs: {
+    selectPrivateKey: () =>
+      ipcRenderer.invoke("dialog:select-private-key") as Promise<string | null>,
+  },
+  clipboard: {
+    readText: () =>
+      ipcRenderer.invoke("clipboard:read-text") as Promise<string>,
+    writeText: (text: string) =>
+      ipcRenderer.invoke("clipboard:write-text", text) as Promise<boolean>,
+  },
   servers: {
     list: () => ipcRenderer.invoke("server:list") as Promise<ServerConfig[]>,
     create: (input: ServerInput) =>

@@ -39,6 +39,13 @@ declare global {
         write: (payload: LogPayload) => Promise<boolean>;
         getPath: () => Promise<string>;
       };
+      dialogs: {
+        selectPrivateKey: () => Promise<string | null>;
+      };
+      clipboard: {
+        readText: () => Promise<string>;
+        writeText: (text: string) => Promise<boolean>;
+      };
       servers: {
         list: () => Promise<ServerConfig[]>;
         create: (input: ServerInput) => Promise<ServerConfig>;

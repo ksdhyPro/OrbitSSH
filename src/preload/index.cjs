@@ -9,6 +9,13 @@ const orbitSSHApi = {
     write: payload => ipcRenderer.invoke("logger:write", payload),
     getPath: () => ipcRenderer.invoke("logger:get-path"),
   },
+  dialogs: {
+    selectPrivateKey: () => ipcRenderer.invoke("dialog:select-private-key"),
+  },
+  clipboard: {
+    readText: () => ipcRenderer.invoke("clipboard:read-text"),
+    writeText: text => ipcRenderer.invoke("clipboard:write-text", text),
+  },
   servers: {
     list: () => ipcRenderer.invoke("server:list"),
     create: input => ipcRenderer.invoke("server:create", input),

@@ -1,11 +1,15 @@
+export type ServerAuthType = 'password' | 'privateKey'
+
 export interface ServerConfig {
   id: string
   name: string
   host: string
   port: number
   username: string
-  authType: 'password'
-  passwordKey: string
+  authType: ServerAuthType
+  passwordKey?: string
+  privateKeyPath?: string
+  passphraseKey?: string
   createdAt: number
   updatedAt: number
 }
@@ -15,9 +19,23 @@ export interface ServerInput {
   host: string
   port: number
   username: string
+  authType?: ServerAuthType
   password?: string
+  privateKeyPath?: string
+  passphrase?: string
 }
 
 export interface ServerUpdateInput extends ServerInput {
   id: string
 }
+
+export type ServerAuthConfig =
+  | (ServerConfig & {
+      authType: 'password'
+      password: string
+    })
+  | (ServerConfig & {
+      authType: 'privateKey'
+      privateKey: string
+      passphrase?: string
+    })

@@ -2,6 +2,7 @@ import type { WebContents } from "electron";
 import { Client, type ClientChannel } from "ssh2";
 
 import { writeAppLog } from "../logger.js";
+import { createServerConnectOptions } from "./auth-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
 import type {
   TerminalOpenResult,
@@ -96,7 +97,9 @@ export function openTerminalSession(
   webContents: WebContents,
   serverId: string,
 ): TerminalOpenResult {
+  const startedAt = Date.now();
   const server = getServerAuthConfig(serverId);
+  const authLoadedAt = Date.now();
   const tabId = crypto.randomUUID();
   const sshClient = new Client();
   const session: TerminalSession = {
@@ -117,16 +120,24 @@ export function openTerminalSession(
       host: server.host,
       port: server.port,
       username: server.username,
+      authType: server.authType,
+      authLoadMs: authLoadedAt - startedAt,
     },
   });
   sendStatus(session, "connecting");
 
   sshClient
     .on("ready", () => {
+      const readyAt = Date.now();
       writeAppLog({
         scope: "main.ssh",
         message: "SSH 已 ready，开始打开 shell",
-        data: { tabId, serverId },
+        data: {
+          tabId,
+          serverId,
+          connectReadyMs: readyAt - startedAt,
+          afterConnectCallMs: readyAt - authLoadedAt,
+        },
       });
       sshClient.shell(
         {
@@ -142,10 +153,16 @@ export function openTerminalSession(
           }
 
           session.shellStream = stream;
+          const shellOpenedAt = Date.now();
           writeAppLog({
             scope: "main.ssh",
             message: "SSH shell 已打开",
-            data: { tabId, serverId },
+            data: {
+              tabId,
+              serverId,
+              shellOpenMs: shellOpenedAt - readyAt,
+              totalMs: shellOpenedAt - startedAt,
+            },
           });
           sendStatus(session, "connected");
 
@@ -182,13 +199,29 @@ export function openTerminalSession(
       }
     });
 
-  sshClient.connect({
-    host: server.host,
-    port: server.port,
-    username: server.username,
-    password: server.password,
-    readyTimeout: 15000,
-    keepaliveInterval: 10000,
+  writeAppLog({
+    scope: "main.ssh",
+    message: "SSH connect 已调度",
+    data: { tabId, serverId, scheduleMs: Date.now() - startedAt },
+  });
+
+  setImmediate(() => {
+    const connectStartedAt = Date.now();
+    writeAppLog({
+      scope: "main.ssh",
+      message: "开始执行 SSH connect",
+      data: {
+        tabId,
+        serverId,
+        delayAfterScheduleMs: connectStartedAt - startedAt,
+      },
+    });
+
+    sshClient.connect({
+      ...createServerConnectOptions(server),
+      readyTimeout: 15000,
+      keepaliveInterval: 10000,
+    });
   });
 
   return {

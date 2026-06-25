@@ -499,7 +499,7 @@ input::placeholder {
   color: #b8c2d1;
 }
 
-.file-context-menu {
+.context-menu {
   position: fixed;
   z-index: 80;
   min-width: 136px;
@@ -514,7 +514,7 @@ input::placeholder {
     0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
-.file-context-menu button {
+.context-menu button {
   appearance: none;
   display: flex;
   align-items: center;
@@ -529,24 +529,24 @@ input::placeholder {
   text-align: left;
 }
 
-.file-context-menu button:hover:not(:disabled) {
+.context-menu button:hover:not(:disabled) {
   background: #202838;
   color: #e7edf7;
 }
 
-.file-context-menu button:last-child:hover:not(:disabled) {
+.context-menu button.danger:hover:not(:disabled) {
   background: rgba(255, 143, 130, 0.12);
   color: #ffb3aa;
 }
 
-.file-context-menu button:disabled {
+.context-menu button:disabled {
   background: transparent;
   color: #5f6b7e;
   cursor: not-allowed;
   opacity: 0.58;
 }
 
-.file-context-menu img {
+.context-menu img {
   width: 14px;
   height: 14px;
   opacity: 0.82;
@@ -1255,6 +1255,52 @@ input::placeholder {
   display: grid;
   grid-template-columns: 140px 1fr;
   gap: 12px;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #303847;
+  border-radius: 7px;
+  background: #111722;
+}
+
+.auth-tabs button {
+  height: 32px;
+  border-radius: 5px;
+  background: transparent;
+  color: #9aa7ba;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auth-tabs button.active,
+.auth-tabs button:hover {
+  background: #222936;
+  color: #e7edf7;
+}
+
+.key-file-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.key-file-picker input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.key-file-picker input[readonly] {
+  color: #c6d0df;
+}
+
+.browse-button {
+  flex: 0 0 auto;
+  min-width: 74px;
 }
 
 .form-error {
