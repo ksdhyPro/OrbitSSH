@@ -41,6 +41,7 @@ const orbitSSHApi = {
     ipcRenderer.invoke("app:get-info") as Promise<{
       name: string;
       version: string;
+      platform: string;
     }>,
   logger: {
     write: (payload: LogPayload) =>

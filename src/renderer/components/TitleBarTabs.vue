@@ -16,6 +16,7 @@ import {
 } from "../utils/status-text";
 
 defineProps<{
+  isWindows: boolean;
   isWindowMaximized: boolean;
   isTaskListOpen: boolean;
   activeDownloadCount: number;
@@ -135,26 +136,28 @@ const emit = defineEmits<{
       <button type="button" aria-label="设置" @click="emit('openSettings')">
         <img :src="settingsIcon" alt="" />
       </button>
-      <span class="window-action-divider"></span>
-      <button
-        type="button"
-        aria-label="最小化窗口"
-        @click="emit('minimizeWindow')">
-        <img :src="minimizeIcon" alt="" />
-      </button>
-      <button
-        type="button"
-        :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
-        @click="emit('toggleMaximizeWindow')">
-        <img :src="isWindowMaximized ? restoreIcon : maximizeIcon" alt="" />
-      </button>
-      <button
-        type="button"
-        class="window-close"
-        aria-label="关闭窗口"
-        @click="emit('closeWindow')">
-        <img :src="closeIcon" alt="" />
-      </button>
+      <template v-if="isWindows">
+        <span class="window-action-divider"></span>
+        <button
+          type="button"
+          aria-label="最小化窗口"
+          @click="emit('minimizeWindow')">
+          <img :src="minimizeIcon" alt="" />
+        </button>
+        <button
+          type="button"
+          :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
+          @click="emit('toggleMaximizeWindow')">
+          <img :src="isWindowMaximized ? restoreIcon : maximizeIcon" alt="" />
+        </button>
+        <button
+          type="button"
+          class="window-close"
+          aria-label="关闭窗口"
+          @click="emit('closeWindow')">
+          <img :src="closeIcon" alt="" />
+        </button>
+      </template>
     </div>
   </header>
 </template>

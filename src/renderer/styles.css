@@ -82,7 +82,7 @@ input::placeholder {
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-rows: 58px minmax(0, 1fr);
+  grid-template-rows: 44px minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   background:
@@ -138,20 +138,21 @@ input::placeholder {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  width: 260px;
-  min-width: 220px;
+  gap: 10px;
+  width: 240px;
+  min-width: 210px;
   -webkit-app-region: no-drag;
 }
 
 .brand-mark {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
   background: #22a06b;
   color: #07120d;
+  font-size: 11px;
   font-weight: 800;
 }
 
@@ -164,14 +165,14 @@ input::placeholder {
 }
 
 .header-brand h1 {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.1;
 }
 
 .header-brand p {
-  margin-top: 4px;
+  margin-top: 2px;
   color: #8f9bad;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .panel {
@@ -212,14 +213,23 @@ input::placeholder {
   font-weight: 700;
 }
 
-.icon-button,
-.window-actions button {
+.icon-button {
   display: grid;
   place-items: center;
   width: 30px;
   height: 30px;
   border-radius: 6px;
   background: #222936;
+  color: #b8c2d1;
+}
+
+.window-actions button {
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  height: 44px;
+  border-radius: 0;
+  background: transparent;
   color: #b8c2d1;
 }
 
@@ -612,7 +622,8 @@ input::placeholder {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 18px;
+  height: 44px;
+  padding: 0 0 0 14px;
   border-bottom: 1px solid #252a33;
   background: rgba(18, 21, 28, 0.92);
   -webkit-app-region: drag;
@@ -627,13 +638,15 @@ input::placeholder {
 .window-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
   flex: 0 0 auto;
+  height: 100%;
   -webkit-app-region: no-drag;
 }
 
 .tasklist {
   position: relative;
+  height: 100%;
 }
 
 .tasklist-trigger {
@@ -641,8 +654,9 @@ input::placeholder {
   align-items: center;
   gap: 7px;
   width: auto;
+  min-width: 42px;
   /* min-width: 104px; */
-  padding: 0 9px;
+  padding: 0 10px;
   font-size: 12px;
 }
 
@@ -667,7 +681,7 @@ input::placeholder {
 
 .tasklist-panel {
   position: absolute;
-  top: 38px;
+  top: 44px;
   right: 0;
   z-index: 60;
   width: 320px;
@@ -784,6 +798,8 @@ input::placeholder {
 }
 
 .tasklist-actions button {
+  min-width: 24px;
+  width: 24px;
   height: 24px;
   border-radius: 5px;
   color: #c6d0df;
@@ -1047,7 +1063,7 @@ input::placeholder {
 
 .app-dialog-backdrop {
   position: fixed;
-  inset: 58px 0 0;
+  inset: 44px 0 0;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -1057,7 +1073,7 @@ input::placeholder {
 }
 
 .app-dialog {
-  max-height: calc(100vh - 106px);
+  max-height: calc(100vh - 92px);
   overflow: hidden;
   border: 1px solid #303847;
   border-radius: 8px;
@@ -1076,7 +1092,7 @@ input::placeholder {
 
 .app-dialog-editor {
   width: min(1080px, 96vw);
-  height: min(760px, calc(100vh - 106px));
+  height: min(760px, calc(100vh - 92px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }

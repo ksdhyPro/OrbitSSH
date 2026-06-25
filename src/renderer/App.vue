@@ -54,6 +54,7 @@ const deleteConfirmDialog = reactive({
   message: "",
 });
 const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
+const appPlatform = ref("");
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -239,6 +240,8 @@ const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
   return parentNode ? [parentNode, ...treeNodes] : treeNodes;
 });
 
+const isWindows = computed(() => appPlatform.value === "win32");
+
 function createParentDirectoryNode(
   currentPath: string,
 ): VisibleRemoteFileNode | null {
@@ -298,6 +301,17 @@ function getFilePanelHint(): string {
   }
 
   return tree.homePath;
+}
+
+async function loadAppInfo(): Promise<void> {
+  try {
+    const info = await orbitSSHApi.value?.getAppInfo();
+    appPlatform.value = info?.platform ?? "";
+  } catch (error) {
+    writeRendererLog("读取应用平台信息失败", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 function canDownloadRemoteFile(node: RemoteFileNode | null): boolean {
@@ -575,6 +589,7 @@ onMounted(() => {
   });
   void loadServers();
   void settingsStore.loadAppSettings();
+  void loadAppInfo();
   void windowStore.initMaximized();
   downloadsStore.startListeners();
   terminalsStore.startListeners();
@@ -629,6 +644,7 @@ onUnmounted(() => {
   <main class="app-shell">
     <TitleBarTabs
       :is-window-maximized="isWindowMaximized"
+      :is-windows="isWindows"
       :is-task-list-open="isTaskListOpen"
       :active-download-count="activeDownloadCount"
       :visible-download-tasks="visibleDownloadTasks"

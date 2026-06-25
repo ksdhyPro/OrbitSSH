@@ -38,7 +38,11 @@ import type {
 declare global {
   interface Window {
     orbitSSH: {
-      getAppInfo: () => Promise<{ name: string; version: string }>;
+      getAppInfo: () => Promise<{
+        name: string;
+        version: string;
+        platform: string;
+      }>;
       logger: {
         write: (payload: LogPayload) => Promise<boolean>;
         getPath: () => Promise<string>;
