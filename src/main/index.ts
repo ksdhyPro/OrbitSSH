@@ -19,6 +19,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
+// Windows: 确保任务栏图标正确、通知分组正确（需在 app.whenReady 之前设置）
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.orbitssh.app");
+}
+
 // 创建主窗口，并统一约束 Renderer 的系统访问能力。
 function createMainWindow(): BrowserWindow {
   const preloadPath = path.join(__dirname, "../preload/index.cjs");

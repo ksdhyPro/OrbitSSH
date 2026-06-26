@@ -10,6 +10,7 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src/renderer', import.meta.url))
     }
   },
+  base: './',
   build: {
     outDir: 'dist',
     emptyOutDir: true
