@@ -15,6 +15,10 @@ import type {
 } from "../types/terminal";
 import { copyTextByFallback } from "../utils/clipboard";
 import { parseOsc7Path } from "../utils/path";
+import {
+  getTerminalSearchDecorations,
+  getTerminalTheme,
+} from "../utils/theme";
 import { useCoreStore } from "./useCoreStore";
 import { useSettingsStore } from "./useSettingsStore";
 
@@ -62,15 +66,28 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalSearchResult.total = 0;
   }
 
+  function getTerminalSearchOptions(incremental = false): ISearchOptions {
+    return {
+      caseSensitive: isTerminalSearchCaseSensitive.value,
+      incremental,
+      decorations: getTerminalSearchDecorations(
+        settingsStore.appSettings.appearance.themeMode,
+      ),
+    };
+  }
+
+  function getCurrentTerminalTheme() {
+    return getTerminalTheme(
+      settingsStore.appSettings.appearance.themeMode,
+      settingsStore.appSettings.terminal.selectionBackground,
+    );
+  }
+
   function applyTerminalSettings(): void {
     terminalInstances.forEach(({ terminal, fitAddon }) => {
       terminal.options.fontSize = settingsStore.appSettings.terminal.fontSize;
       terminal.options.lineHeight = settingsStore.appSettings.terminal.lineHeight;
-      terminal.options.theme = {
-        ...terminal.options.theme,
-        selectionBackground:
-          settingsStore.appSettings.terminal.selectionBackground,
-      };
+      terminal.options.theme = getCurrentTerminalTheme();
       fitAddon.fit();
     });
     scheduleTerminalFit();
@@ -187,21 +204,6 @@ export const useTerminalsStore = defineStore("terminals", () => {
           Math.floor(terminal.rows / 2),
       );
     }
-  }
-
-  function getTerminalSearchOptions(incremental = false): ISearchOptions {
-    return {
-      caseSensitive: isTerminalSearchCaseSensitive.value,
-      incremental,
-      decorations: {
-        matchBackground: "#324152",
-        matchBorder: "#52637A",
-        matchOverviewRuler: "#52637A",
-        activeMatchBackground: "#A87922",
-        activeMatchBorder: "#F0B44C",
-        activeMatchColorOverviewRuler: "#F0B44C",
-      },
-    };
   }
 
   // 使用 xterm SearchAddon 在当前激活终端中搜索关键词。
@@ -477,31 +479,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       fontFamily: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
       fontSize: settingsStore.appSettings.terminal.fontSize,
       lineHeight: settingsStore.appSettings.terminal.lineHeight,
-      theme: {
-        background: "#0b0f14",
-        foreground: "#d8e2f0",
-        cursor: "#ffffff",
-        selectionBackground:
-          settingsStore.appSettings.terminal.selectionBackground,
-        // Canvas 渲染器不会回退到 xterm 内置默认色板，必须显式给出 ANSI 16 色，
-        // 否则 ls 的目录/可执行/软链等 ANSI 颜色码会被当成普通前景色渲染（全白）。
-        black: "#0b0f14",
-        red: "#ff6b6b",
-        green: "#89dcae",
-        yellow: "#f0b44c",
-        blue: "#6fb6ff",
-        magenta: "#c891d8",
-        cyan: "#5fcabe",
-        white: "#d8e2f0",
-        brightBlack: "#59677b",
-        brightRed: "#ff9a9a",
-        brightGreen: "#aeebc4",
-        brightYellow: "#f5cb7d",
-        brightBlue: "#9bc9ff",
-        brightMagenta: "#dab0e4",
-        brightCyan: "#8eecd9",
-        brightWhite: "#ffffff",
-      },
+      theme: getCurrentTerminalTheme(),
     });
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();

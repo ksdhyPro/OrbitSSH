@@ -3,6 +3,7 @@ import { reactive, ref } from "vue";
 import {
   defaultAppSettings,
   type AppSettings,
+  type AppThemeMode,
   type SftpFileTreeViewMode,
 } from "../../shared/settings";
 import { useCoreStore } from "./useCoreStore";
@@ -29,6 +30,9 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function toPlainAppSettings(): AppSettings {
     return {
+      appearance: {
+        themeMode: appSettings.appearance.themeMode,
+      },
       terminal: {
         fontSize: appSettings.terminal.fontSize,
         lineHeight: appSettings.terminal.lineHeight,
@@ -47,6 +51,7 @@ export const useSettingsStore = defineStore("settings", () => {
       );
 
       if (savedSettings) {
+        Object.assign(appSettings.appearance, savedSettings.appearance);
         Object.assign(appSettings.terminal, savedSettings.terminal);
         Object.assign(appSettings.sftp, savedSettings.sftp);
       }
@@ -71,6 +76,11 @@ export const useSettingsStore = defineStore("settings", () => {
     mode: SftpFileTreeViewMode,
   ): Promise<void> {
     appSettings.sftp.fileTreeViewMode = mode;
+    await saveAppSettings();
+  }
+
+  async function updateThemeMode(mode: AppThemeMode): Promise<void> {
+    appSettings.appearance.themeMode = mode;
     await saveAppSettings();
   }
 
@@ -113,9 +123,11 @@ export const useSettingsStore = defineStore("settings", () => {
         return;
       }
 
+      Object.assign(appSettings.appearance, savedSettings.appearance);
       Object.assign(appSettings.terminal, savedSettings.terminal);
       Object.assign(appSettings.sftp, savedSettings.sftp);
       core.writeRendererLog("应用设置加载完成", {
+        appearance: savedSettings.appearance,
         terminal: savedSettings.terminal,
         sftp: savedSettings.sftp,
       });
@@ -138,6 +150,7 @@ export const useSettingsStore = defineStore("settings", () => {
     saveAppSettings,
     updateTerminalSetting,
     updateSftpFileTreeViewMode,
+    updateThemeMode,
     stepTerminalNumberSetting,
     openSettingsDialog,
     closeSettingsDialog,

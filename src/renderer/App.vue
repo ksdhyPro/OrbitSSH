@@ -75,6 +75,7 @@ const {
   closeSettingsDialog,
   stepTerminalNumberSetting,
   updateSftpFileTreeViewMode,
+  updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
 
@@ -227,6 +228,10 @@ const activeSftpTree = computed(() => {
 
   return sftpTrees.value[activeTabId.value];
 });
+
+function applyAppThemeMode(): void {
+  document.documentElement.dataset.theme = appSettings.appearance.themeMode;
+}
 
 const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
   const tree = activeSftpTree.value;
@@ -659,6 +664,16 @@ watch(
   },
 );
 
+watch(
+  () => appSettings.appearance.themeMode,
+  () => {
+    applyAppThemeMode();
+    applyTerminalSettings();
+    applyFileEditorTheme();
+  },
+  { immediate: true },
+);
+
 // 侧边栏拖动改变终端区宽度，需重新 fit（store 内不反向依赖终端域）。
 watch(sidebarWidth, () => {
   scheduleTerminalFit();
@@ -894,6 +909,7 @@ onUnmounted(() => {
       "
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-sftp-file-tree-view-mode="updateSftpFileTreeViewMode"
+      @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
   </main>
 </template>

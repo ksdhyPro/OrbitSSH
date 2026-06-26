@@ -3,6 +3,7 @@ import Store from 'electron-store'
 import {
   defaultAppSettings,
   type AppSettings,
+  type AppThemeMode,
   type SftpFileTreeViewMode
 } from '../../shared/settings.js'
 
@@ -21,11 +22,19 @@ function normalizeSftpFileTreeViewMode(value: unknown): SftpFileTreeViewMode {
   return value === 'tree' ? 'tree' : defaultAppSettings.sftp.fileTreeViewMode
 }
 
+function normalizeThemeMode(value: unknown): AppThemeMode {
+  return value === 'light' ? 'light' : defaultAppSettings.appearance.themeMode
+}
+
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
+  const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
   const sftpSettings = settings?.sftp ?? defaultAppSettings.sftp
 
   return {
+    appearance: {
+      themeMode: normalizeThemeMode(appearanceSettings.themeMode)
+    },
     terminal: {
       fontSize: clampNumber(Number(terminalSettings.fontSize), 10, 24),
       lineHeight: clampNumber(Number(terminalSettings.lineHeight), 1, 2),

@@ -90,6 +90,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
         themeExtension: fileEditorThemeCompartment.of(
           createFileEditorTheme(
             settingsStore.appSettings.terminal.selectionBackground,
+            settingsStore.appSettings.appearance.themeMode,
           ),
         ),
         onSearchShortcut: () => {
@@ -392,6 +393,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
       effects: fileEditorThemeCompartment.reconfigure(
         createFileEditorTheme(
           settingsStore.appSettings.terminal.selectionBackground,
+          settingsStore.appSettings.appearance.themeMode,
         ),
       ),
     });

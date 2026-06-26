@@ -1,14 +1,21 @@
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import type { AppThemeMode } from "../../../shared/settings";
+import { getEditorThemePalette } from "../theme";
 
 // 选区背景色由调用方传入，便于在设置变更时通过 compartment.reconfigure 重建主题。
-export function createFileEditorTheme(selectionBackground: string): Extension {
+export function createFileEditorTheme(
+  selectionBackground: string,
+  themeMode: AppThemeMode,
+): Extension {
+  const palette = getEditorThemePalette(themeMode);
+
   return EditorView.theme({
     "&": {
       height: "100%",
-      backgroundColor: "#0b0f14",
-      color: "#d8e2f0",
-      caretColor: "#ffffff",
+      backgroundColor: palette.background,
+      color: palette.foreground,
+      caretColor: palette.cursor,
       fontSize: "13px",
     },
     ".cm-scroller": {
@@ -23,31 +30,31 @@ export function createFileEditorTheme(selectionBackground: string): Extension {
       padding: "0 14px",
     },
     ".cm-gutters": {
-      backgroundColor: "#0b0f14",
-      borderRight: "1px solid #202633",
-      color: "#59677b",
+      backgroundColor: palette.gutterBackground,
+      borderRight: `1px solid ${palette.gutterBorder}`,
+      color: palette.gutterForeground,
     },
     ".cm-activeLine": {
-      backgroundColor: "rgba(111, 182, 255, 0.08)",
+      backgroundColor: palette.activeLineBackground,
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "rgba(111, 182, 255, 0.08)",
-      color: "#9fb3cc",
+      backgroundColor: palette.activeLineBackground,
+      color: palette.activeLineForeground,
     },
     ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
       {
         backgroundColor: `${selectionBackground} !important`,
-      },
+    },
     ".cm-cursor, .cm-dropCursor": {
-      borderLeftColor: "#ffffff",
+      borderLeftColor: palette.cursor,
     },
     ".cm-searchMatch": {
-      backgroundColor: "#324152",
-      outline: "1px solid #52637A",
+      backgroundColor: palette.searchMatchBackground,
+      outline: `1px solid ${palette.searchMatchBorder}`,
     },
     ".cm-searchMatch-selected": {
-      backgroundColor: "#A87922",
-      outline: "1px solid #F0B44C",
+      backgroundColor: palette.activeSearchMatchBackground,
+      outline: `1px solid ${palette.activeSearchMatchBorder}`,
     },
     ".cm-panels": {
       display: "none",

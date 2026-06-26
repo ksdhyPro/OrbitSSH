@@ -2,6 +2,7 @@
 import { computed } from "vue";
 import type {
   AppSettings,
+  AppThemeMode,
   SftpFileTreeViewMode,
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
@@ -25,6 +26,7 @@ const emit = defineEmits<{
     delta: number,
   ];
   updateSftpFileTreeViewMode: [mode: SftpFileTreeViewMode];
+  updateThemeMode: [mode: AppThemeMode];
   selectSelectionBackground: [color: string];
 }>();
 
@@ -68,6 +70,33 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
       <section
         v-if="activeSettingsSection === 'general'"
         class="settings-content">
+        <div class="settings-field">
+          <div>
+            <h3>主题外观</h3>
+            <p>切换应用界面的深色或浅色配色。</p>
+          </div>
+          <div class="theme-mode-control" aria-label="主题外观">
+            <button
+              type="button"
+              :class="[
+                'theme-mode-option',
+                { active: appSettings.appearance.themeMode === 'dark' },
+              ]"
+              @click="emit('updateThemeMode', 'dark')">
+              深色
+            </button>
+            <button
+              type="button"
+              :class="[
+                'theme-mode-option',
+                { active: appSettings.appearance.themeMode === 'light' },
+              ]"
+              @click="emit('updateThemeMode', 'light')">
+              浅色
+            </button>
+          </div>
+        </div>
+
         <div class="settings-field">
           <div>
             <h3>终端文字字号</h3>
