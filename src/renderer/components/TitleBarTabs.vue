@@ -38,6 +38,7 @@ const emit = defineEmits<{
   ];
   openDataTransfer: [];
   openSettings: [];
+  openUpdate: [];
   minimizeWindow: [];
   toggleMaximizeWindow: [];
   closeWindow: [];
@@ -148,8 +149,9 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
     return;
   }
 
-  // 检查更新：暂不接入实际逻辑，仅作为菜单项占位。
+  // 检查更新
   if (item.key === "check-update") {
+    emit("openUpdate");
     return;
   }
 }

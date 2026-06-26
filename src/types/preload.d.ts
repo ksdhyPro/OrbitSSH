@@ -7,7 +7,7 @@ import type {
   ServerInput,
   ServerUpdateInput,
 } from "../shared/server";
-import type { AppSettings } from "../shared/settings";
+import type { AppSettings, UpdateStatusInfo } from "../shared/settings";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -107,6 +107,15 @@ declare global {
       };
       system: {
         getStats: (tabId: string) => Promise<SystemStats>;
+      };
+      update: {
+        check: () => Promise<void>;
+        download: () => Promise<void>;
+        install: () => Promise<void>;
+        getStatus: () => Promise<UpdateStatusInfo>;
+        onStatusChanged: (
+          callback: (info: UpdateStatusInfo) => void,
+        ) => () => void;
       };
       terminals: {
         open: (serverId: string) => Promise<TerminalOpenResult>;

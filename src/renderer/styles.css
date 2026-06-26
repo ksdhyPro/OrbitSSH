@@ -1792,6 +1792,115 @@ input[type="number"] {
   letter-spacing: 0;
 }
 
+/* ===== Update Settings ===== */
+.update-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.update-version-label {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.update-feed-url-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.update-feed-url-input {
+  width: 360px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+}
+
+.update-feed-url-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.update-feed-url-reset {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.update-feed-url-reset:hover {
+  background: var(--bg-elevated-3);
+  color: var(--text-primary);
+}
+
+.update-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.update-actions button {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.update-actions button:hover:not(:disabled) {
+  background: var(--bg-elevated-3);
+}
+
+.update-actions button:disabled {
+  opacity: 0.5;
+}
+
+.update-actions .update-install-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.update-actions .update-install-btn:hover {
+  background: var(--accent-hover);
+}
+
+.update-available-text {
+  color: var(--accent);
+}
+
+.update-error-text {
+  color: var(--text-error);
+}
+
+.update-progress-bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+
+.update-progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
 .connection-form label {
   display: grid;
   gap: 7px;

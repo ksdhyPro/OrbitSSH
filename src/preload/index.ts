@@ -6,7 +6,7 @@ import type {
   ServerInput,
   ServerUpdateInput,
 } from "../shared/server.js";
-import type { AppSettings } from "../shared/settings.js";
+import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -199,6 +199,24 @@ const orbitSSHApi = {
   system: {
     getStats: (tabId: string) =>
       ipcRenderer.invoke("system:get-stats", tabId) as Promise<SystemStats>,
+  },
+  update: {
+    check: () => ipcRenderer.invoke("update:check") as Promise<void>,
+    download: () => ipcRenderer.invoke("update:download") as Promise<void>,
+    install: () => ipcRenderer.invoke("update:install") as Promise<void>,
+    getStatus: () =>
+      ipcRenderer.invoke("update:get-status") as Promise<UpdateStatusInfo>,
+    onStatusChanged: (
+      callback: (info: UpdateStatusInfo) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: UpdateStatusInfo,
+      ) => callback(payload);
+      ipcRenderer.on("update:status-changed", listener);
+      return () =>
+        ipcRenderer.removeListener("update:status-changed", listener);
+    },
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<boolean>,

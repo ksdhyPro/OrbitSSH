@@ -30,6 +30,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
   const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
   const sftpSettings = settings?.sftp ?? defaultAppSettings.sftp
+  const updateSettings = settings?.update ?? defaultAppSettings.update
 
   return {
     appearance: {
@@ -45,6 +46,12 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     },
     sftp: {
       fileTreeViewMode: normalizeSftpFileTreeViewMode(sftpSettings.fileTreeViewMode)
+    },
+    update: {
+      updateFeedUrl:
+        typeof updateSettings.updateFeedUrl === 'string'
+          ? updateSettings.updateFeedUrl
+          : defaultAppSettings.update.updateFeedUrl
     }
   }
 }

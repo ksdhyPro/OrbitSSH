@@ -16,10 +16,35 @@ export interface SftpSettings {
   fileTreeViewMode: SftpFileTreeViewMode
 }
 
+export interface UpdateSettings {
+  /** 更新服务器地址，空字符串表示使用构建时内置的默认地址 */
+  updateFeedUrl: string
+}
+
 export interface AppSettings {
   appearance: AppearanceSettings
   terminal: TerminalSettings
   sftp: SftpSettings
+  update: UpdateSettings
+}
+
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'update-available'
+  | 'update-not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'error'
+
+export interface UpdateStatusInfo {
+  status: UpdateStatus
+  currentVersion: string
+  newVersion?: string
+  releaseDate?: string
+  releaseNotes?: string
+  downloadProgress?: number
+  error?: string
 }
 
 export const defaultAppSettings: AppSettings = {
@@ -33,5 +58,8 @@ export const defaultAppSettings: AppSettings = {
   },
   sftp: {
     fileTreeViewMode: 'current-directory'
+  },
+  update: {
+    updateFeedUrl: ''
   }
 }

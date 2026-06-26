@@ -212,7 +212,9 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
         </div>
       </section>
 
-      <section v-else class="settings-content shortcuts-settings-content">
+      <section
+        v-else-if="activeSettingsSection === 'shortcuts'"
+        class="settings-content shortcuts-settings-content">
         <div
           v-for="section in shortcutSections"
           :key="section.id"

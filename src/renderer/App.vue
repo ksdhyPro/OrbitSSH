@@ -20,6 +20,7 @@ import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";
 import SftpPanel from "./components/SftpPanel.vue";
 import SftpPathPromptDialog from "./components/SftpPathPromptDialog.vue";
 import TerminalPanel from "./components/TerminalPanel.vue";
@@ -37,6 +38,7 @@ import { useTerminalsStore } from "./stores/useTerminalsStore";
 import { useSftpStore } from "./stores/useSftpStore";
 import { useFileEditorStore } from "./stores/useFileEditorStore";
 import { useServersStore } from "./stores/useServersStore";
+import { useUpdateStore } from "./stores/useUpdateStore";
 
 const coreStore = useCoreStore();
 const settingsStore = useSettingsStore();
@@ -47,6 +49,7 @@ const terminalsStore = useTerminalsStore();
 const sftpStore = useSftpStore();
 const fileEditorStore = useFileEditorStore();
 const serversStore = useServersStore();
+const updateStore = useUpdateStore();
 
 const SERVER_OPEN_DEBOUNCE_MS = 3000;
 const serverOpenAllowedAt = new Map<string, number>();
@@ -57,6 +60,7 @@ const deleteConfirmDialog = reactive({
 const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
+const isUpdateDialogOpen = ref(false);
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -78,6 +82,24 @@ const {
   updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
+
+// update
+const {
+  status: updateStatus,
+  currentVersion: updateCurrentVersion,
+  newVersion: updateNewVersion,
+  releaseDate: updateReleaseDate,
+  releaseNotes: updateReleaseNotes,
+  downloadProgress: updateDownloadProgress,
+  error: updateError,
+} = storeToRefs(updateStore);
+const {
+  init: initUpdate,
+  destroy: destroyUpdate,
+  checkForUpdates,
+  downloadUpdate,
+  installUpdate,
+} = updateStore;
 
 // window
 const { isWindowMaximized } = storeToRefs(windowStore);
@@ -689,6 +711,7 @@ onMounted(() => {
   void windowStore.initMaximized();
   downloadsStore.startListeners();
   terminalsStore.startListeners();
+  initUpdate();
 
   window.addEventListener("resize", handleWindowResize);
   window.addEventListener("keydown", handleGlobalKeydown);
@@ -724,6 +747,7 @@ watch(
 onUnmounted(() => {
   terminalsStore.cleanup();
   downloadsStore.stopListeners();
+  destroyUpdate();
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
   sidebarStore.stopSidebarResize();
@@ -743,6 +767,7 @@ onUnmounted(() => {
       @control-download-task="controlDownloadTask"
       @open-data-transfer="openDataTransferDialog"
       @open-settings="openSettingsDialog"
+      @open-update="isUpdateDialogOpen = true"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />
@@ -911,5 +936,19 @@ onUnmounted(() => {
       @update-sftp-file-tree-view-mode="updateSftpFileTreeViewMode"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
+
+    <UpdateDialog
+      :open="isUpdateDialogOpen"
+      :status="updateStatus"
+      :current-version="updateCurrentVersion"
+      :new-version="updateNewVersion"
+      :release-date="updateReleaseDate"
+      :release-notes="updateReleaseNotes"
+      :download-progress="updateDownloadProgress"
+      :error="updateError"
+      @close="isUpdateDialogOpen = false"
+      @check="checkForUpdates"
+      @download="downloadUpdate"
+      @install="installUpdate" />
   </main>
 </template>

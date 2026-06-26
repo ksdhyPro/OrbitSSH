@@ -41,6 +41,9 @@ export const useSettingsStore = defineStore("settings", () => {
       sftp: {
         fileTreeViewMode: appSettings.sftp.fileTreeViewMode,
       },
+      update: {
+        updateFeedUrl: appSettings.update.updateFeedUrl,
+      },
     };
   }
 
@@ -54,6 +57,7 @@ export const useSettingsStore = defineStore("settings", () => {
         Object.assign(appSettings.appearance, savedSettings.appearance);
         Object.assign(appSettings.terminal, savedSettings.terminal);
         Object.assign(appSettings.sftp, savedSettings.sftp);
+        Object.assign(appSettings.update, savedSettings.update);
       }
     } catch (error) {
       core.writeRendererLog(
@@ -126,6 +130,7 @@ export const useSettingsStore = defineStore("settings", () => {
       Object.assign(appSettings.appearance, savedSettings.appearance);
       Object.assign(appSettings.terminal, savedSettings.terminal);
       Object.assign(appSettings.sftp, savedSettings.sftp);
+      Object.assign(appSettings.update, savedSettings.update);
       core.writeRendererLog("应用设置加载完成", {
         appearance: savedSettings.appearance,
         terminal: savedSettings.terminal,

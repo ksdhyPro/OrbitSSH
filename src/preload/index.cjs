@@ -91,6 +91,18 @@ const orbitSSHApi = {
   system: {
     getStats: (tabId) => ipcRenderer.invoke("system:get-stats", tabId),
   },
+  update: {
+    check: () => ipcRenderer.invoke("update:check"),
+    download: () => ipcRenderer.invoke("update:download"),
+    install: () => ipcRenderer.invoke("update:install"),
+    getStatus: () => ipcRenderer.invoke("update:get-status"),
+    onStatusChanged: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("update:status-changed", listener);
+      return () =>
+        ipcRenderer.removeListener("update:status-changed", listener);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("orbitSSH", orbitSSHApi);

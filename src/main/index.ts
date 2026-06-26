@@ -11,6 +11,8 @@ import { registerSftpIpc } from "./ipc/sftp-ipc.js";
 import { registerTerminalIpc } from "./ipc/terminal-ipc.js";
 import { registerSystemIpc } from "./ipc/system-ipc.js";
 import { registerWindowIpc } from "./ipc/window-ipc.js";
+import { registerUpdateIpc } from "./ipc/update-ipc.js";
+import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
@@ -93,6 +95,7 @@ function registerBaseIpc(): void {
   registerTerminalIpc();
   registerSystemIpc();
   registerWindowIpc();
+  registerUpdateIpc();
 }
 
 app.whenReady().then(() => {
@@ -101,7 +104,8 @@ app.whenReady().then(() => {
     message: "应用 ready",
   });
   registerBaseIpc();
-  createMainWindow();
+  const mainWindow = createMainWindow();
+  initUpdateManager(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
