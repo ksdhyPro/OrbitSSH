@@ -95,7 +95,6 @@ const {
 const {
   controlDownloadTask,
   isDownloadTaskOperating,
-  closeTaskList,
 } = downloadsStore;
 
 const {
@@ -157,6 +156,8 @@ const {
   sftpTrees,
   fileTreeElement,
   fileContextMenu,
+  blankContextMenu,
+  renaming,
   imagePreview,
 } = storeToRefs(sftpStore);
 
@@ -170,6 +171,14 @@ const {
   copyActiveSftpPath: copyActiveSftpPathFromStore,
   syncFileTreeToTerminalPath: syncFileTreeToTerminalPathFromStore,
   closeFileContextMenu,
+  closeBlankContextMenu,
+  openBlankContextMenu: openBlankContextMenuFromStore,
+  startRename,
+  commitRename: commitRenameFromStore,
+  cancelRename: cancelRenameFromStore,
+  createRemoteNode,
+  selectFileNode,
+  selectAllInFileTree,
   openRemoteImagePreview: openRemoteImagePreviewFromStore,
   downloadContextFile: downloadContextFileFromStore,
   downloadImagePreviewFile,
@@ -358,6 +367,21 @@ function openFileContextMenu(
   sftpStore.openFileContextMenu(activeTabId.value, event, node);
 }
 
+function handleFileSelectNode(
+  event: MouseEvent,
+  node: RemoteFileNode,
+): void {
+  if (isRemoteNodeDeleting(node)) {
+    return;
+  }
+
+  selectFileNode(activeTabId.value, node, visibleFileTree.value, event);
+}
+
+function handleFileSelectAll(): void {
+  selectAllInFileTree(activeTabId.value, visibleFileTree.value);
+}
+
 async function downloadContextFile(): Promise<void> {
   await downloadContextFileFromStore(activeTabId.value);
 }
@@ -495,6 +519,46 @@ async function deleteContextFile(): Promise<void> {
   });
 }
 
+function handleOpenBlankContextMenu(event: MouseEvent): void {
+  if (!activeTab.value) {
+    return;
+  }
+  openBlankContextMenuFromStore(activeTabId.value, event);
+}
+
+// 右键节点选「重命名」：单选目标进入编辑态。
+function renameContextFile(): void {
+  const node = fileContextMenu.value.node;
+  if (!node || !activeTabId.value) {
+    return;
+  }
+  closeFileContextMenu();
+  startRename(activeTabId.value, node);
+}
+
+async function handleCommitRename(): Promise<void> {
+  const oldPath = renaming.value?.path;
+  await commitRenameFromStore();
+  // 重命名后，若旧文件正打开在编辑器中，关闭它避免保存到失效路径。
+  if (oldPath && fileEditor.value.path === oldPath) {
+    closeFileEditor();
+  }
+}
+
+function handleCancelRename(): void {
+  cancelRenameFromStore();
+}
+
+async function handleCreateBlankNode(
+  type: "file" | "directory",
+): Promise<void> {
+  const parentPath = activeSftpTree.value?.homePath;
+  if (!parentPath) {
+    return;
+  }
+  await createRemoteNode(activeTabId.value, parentPath, type);
+}
+
 function requestDeleteConfirm(message: string): Promise<boolean> {
   deleteConfirmDialog.message = message;
   deleteConfirmDialog.open = true;
@@ -512,6 +576,12 @@ function resolveDeleteConfirm(confirmed: boolean): void {
 }
 
 function openDataTransferDialog(): void {
+  const tab = activeTab.value;
+
+  if (tab && !activeSftpTree.value) {
+    void loadSftpHome(tab);
+  }
+
   isDataTransferDialogOpen.value = true;
 }
 
@@ -607,9 +677,6 @@ onMounted(() => {
 
   window.addEventListener("resize", handleWindowResize);
   window.addEventListener("keydown", handleGlobalKeydown);
-  window.addEventListener("click", closeFileContextMenu);
-  window.addEventListener("click", closeTaskList);
-  window.addEventListener("contextmenu", closeFileContextMenu);
 });
 
 watch(
@@ -644,9 +711,6 @@ onUnmounted(() => {
   downloadsStore.stopListeners();
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
-  window.removeEventListener("click", closeFileContextMenu);
-  window.removeEventListener("click", closeTaskList);
-  window.removeEventListener("contextmenu", closeFileContextMenu);
   sidebarStore.stopSidebarResize();
 });
 </script>
@@ -689,6 +753,8 @@ onUnmounted(() => {
           :file-tree-view-mode="appSettings.sftp.fileTreeViewMode"
           :visible-file-tree="visibleFileTree"
           :file-context-menu="fileContextMenu"
+          :blank-context-menu="blankContextMenu"
+          :renaming="renaming"
           :file-path-input="filePathInput"
           :file-panel-hint="getFilePanelHint()"
           :file-tree-element-ref="setFileTreeElement"
@@ -703,13 +769,22 @@ onUnmounted(() => {
           @copy-path="copyActiveSftpPath"
           @sync-path="syncFileTreeToTerminalPath"
           @open-context-menu="openFileContextMenu"
+          @open-blank-context-menu="handleOpenBlankContextMenu"
+          @close-file-context-menu="closeFileContextMenu"
+          @close-blank-context-menu="closeBlankContextMenu"
+          @select-node="handleFileSelectNode"
+          @select-all="handleFileSelectAll"
           @toggle-directory="toggleRemoteDirectory"
           @open-file-by-double-click="openRemoteNodeByDoubleClick"
           @preview-context-file="previewContextFile"
           @edit-context-file="editContextFile"
           @download-context-file="downloadContextFile"
           @upload-context-file="uploadContextFile"
-          @delete-context-file="deleteContextFile" />
+          @rename-context-file="renameContextFile"
+          @delete-context-file="deleteContextFile"
+          @commit-rename="handleCommitRename"
+          @cancel-rename="handleCancelRename"
+          @create-blank-node="handleCreateBlankNode" />
       </aside>
 
       <div
@@ -754,6 +829,7 @@ onUnmounted(() => {
       v-if="isDataTransferDialogOpen"
       :servers="servers"
       :is-mac="isMac"
+      :active-source="activeTab ? { serverId: activeTab.serverId, currentPath: activeSftpTree?.homePath ?? activeTab.currentPath } : undefined"
       @close="closeDataTransferDialog" />
 
     <ImagePreviewDialog
@@ -806,6 +882,7 @@ onUnmounted(() => {
       :open="isSettingsDialogOpen"
       :app-settings="appSettings"
       :active-settings-section="activeSettingsSection"
+      :is-mac="isMac"
       :is-selection-background-dropdown-open="
         isSelectionBackgroundDropdownOpen
       "

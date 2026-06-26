@@ -19,6 +19,17 @@ export interface SftpDeleteInput {
   type: RemoteFileNode['type']
 }
 
+export interface SftpRenameInput {
+  tabId: string
+  path: string
+  newPath: string
+}
+
+export interface SftpCreateNodeInput {
+  tabId: string
+  path: string
+}
+
 export interface SftpDownloadInput {
   tabId: string
   path: string

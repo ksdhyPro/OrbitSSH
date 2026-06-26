@@ -9,6 +9,7 @@ import { registerServerIpc } from "./ipc/server-ipc.js";
 import { registerSettingsIpc } from "./ipc/settings-ipc.js";
 import { registerSftpIpc } from "./ipc/sftp-ipc.js";
 import { registerTerminalIpc } from "./ipc/terminal-ipc.js";
+import { registerSystemIpc } from "./ipc/system-ipc.js";
 import { registerWindowIpc } from "./ipc/window-ipc.js";
 import { writeAppLog } from "./logger.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
@@ -85,6 +86,7 @@ function registerBaseIpc(): void {
   registerSettingsIpc();
   registerSftpIpc();
   registerTerminalIpc();
+  registerSystemIpc();
   registerWindowIpc();
 }
 

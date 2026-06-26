@@ -1,5 +1,6 @@
 export {};
 
+import type { SystemStats } from "../main/ipc/system-ipc";
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
@@ -9,6 +10,7 @@ import type {
 import type { AppSettings } from "../shared/settings";
 import type {
   RemoteFileNode,
+  SftpCreateNodeInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
   SftpDownloadInput,
@@ -25,6 +27,7 @@ import type {
   SftpRemoteTransferControlInput,
   SftpRemoteTransferInput,
   SftpRemoteTransferProgressEvent,
+  SftpRenameInput,
   SftpRemoteTransferResult,
   SftpUploadControlInput,
   SftpUploadInput,
@@ -88,6 +91,9 @@ declare global {
         ) => Promise<boolean>;
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
         delete: (input: SftpDeleteInput) => Promise<boolean>;
+        rename: (input: SftpRenameInput) => Promise<boolean>;
+        createFile: (input: SftpCreateNodeInput) => Promise<boolean>;
+        createDirectory: (input: SftpCreateNodeInput) => Promise<boolean>;
         onDownloadProgress: (
           callback: (event: SftpDownloadProgressEvent) => void,
         ) => () => void;
@@ -98,6 +104,9 @@ declare global {
           callback: (event: SftpRemoteTransferProgressEvent) => void,
         ) => () => void;
         close: (tabId: string) => Promise<boolean>;
+      };
+      system: {
+        getStats: (tabId: string) => Promise<SystemStats>;
       };
       terminals: {
         open: (serverId: string) => Promise<TerminalOpenResult>;
@@ -114,6 +123,7 @@ declare global {
         toggleMaximize: () => Promise<boolean>;
         close: () => Promise<boolean>;
         isMaximized: () => Promise<boolean>;
+        isMinimized: () => Promise<boolean>;
       };
     };
   }

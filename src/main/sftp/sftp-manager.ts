@@ -2255,6 +2255,74 @@ export async function downloadRemoteFile(
   return true
 }
 
+export async function renameRemoteNode(
+  tabId: string,
+  path: string,
+  newPath: string
+): Promise<boolean> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+  const normalizedNewPath = normalizeRemotePath(newPath)
+
+  if (!normalizedNewPath || normalizedNewPath === '/' || normalizedNewPath === '.') {
+    throw new Error('无效的新名称')
+  }
+
+  if (normalizedPath === normalizedNewPath) {
+    return true
+  }
+
+  await session.client.rename(normalizedPath, normalizedNewPath)
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '远程文件节点重命名完成',
+    data: { tabId, path: normalizedPath, newPath: normalizedNewPath }
+  })
+
+  return true
+}
+
+export async function createRemoteFile(tabId: string, path: string): Promise<boolean> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+
+  if (!normalizedPath || normalizedPath === '/' || normalizedPath === '.') {
+    throw new Error('无效的文件路径')
+  }
+
+  const rawSftp = getRawSftpClient(session.client)
+  const handle = await openRemoteWriteHandle(rawSftp, normalizedPath, 'w')
+  await closeRemoteHandle(rawSftp, handle)
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '远程文件创建完成',
+    data: { tabId, path: normalizedPath }
+  })
+
+  return true
+}
+
+export async function createRemoteDirectory(tabId: string, path: string): Promise<boolean> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+
+  if (!normalizedPath || normalizedPath === '/' || normalizedPath === '.') {
+    throw new Error('无效的目录路径')
+  }
+
+  await session.client.mkdir(normalizedPath)
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '远程目录创建完成',
+    data: { tabId, path: normalizedPath }
+  })
+
+  return true
+}
+
 export async function deleteRemoteNode(
   tabId: string,
   path: string,

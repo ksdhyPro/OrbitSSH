@@ -42,6 +42,9 @@ const orbitSSHApi = {
     controlDownload: input =>
       ipcRenderer.invoke("sftp:download-control", input),
     delete: input => ipcRenderer.invoke("sftp:delete", input),
+    rename: input => ipcRenderer.invoke("sftp:rename", input),
+    createFile: input => ipcRenderer.invoke("sftp:create-file", input),
+    createDirectory: input => ipcRenderer.invoke("sftp:create-directory", input),
     onDownloadProgress: callback => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("sftp:download-progress", listener);
@@ -83,6 +86,10 @@ const orbitSSHApi = {
     toggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize"),
     close: () => ipcRenderer.invoke("window:close"),
     isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
+    isMinimized: () => ipcRenderer.invoke("window:is-minimized"),
+  },
+  system: {
+    getStats: (tabId) => ipcRenderer.invoke("system:get-stats", tabId),
   },
 };
 

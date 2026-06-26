@@ -6,6 +6,8 @@ import {
   controlRemoteDownloadTask,
   controlRemoteTransferTask,
   controlRemoteUploadTask,
+  createRemoteDirectory,
+  createRemoteFile,
   deleteRemoteNode,
   downloadRemoteFile,
   listRemoteDirectory,
@@ -13,11 +15,13 @@ import {
   previewRemoteImageFile,
   probeRemoteTextFile,
   readRemoteTextFile,
+  renameRemoteNode,
   transferRemoteSourcesBetweenServers,
   uploadLocalPathsToRemoteDirectory,
   writeRemoteTextFile
 } from '../sftp/sftp-manager.js'
 import type {
+  SftpCreateNodeInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
   SftpDownloadInput,
@@ -27,6 +31,7 @@ import type {
   SftpReadTextInput,
   SftpRemoteTransferControlInput,
   SftpRemoteTransferInput,
+  SftpRenameInput,
   SftpUploadControlInput,
   SftpUploadInput,
   SftpWriteTextInput
@@ -225,6 +230,18 @@ export function registerSftpIpc(): void {
 
   ipcMain.handle('sftp:delete', (_event, input: SftpDeleteInput) =>
     deleteRemoteNode(input.tabId, input.path, input.type)
+  )
+
+  ipcMain.handle('sftp:rename', (_event, input: SftpRenameInput) =>
+    renameRemoteNode(input.tabId, input.path, input.newPath)
+  )
+
+  ipcMain.handle('sftp:create-file', (_event, input: SftpCreateNodeInput) =>
+    createRemoteFile(input.tabId, input.path)
+  )
+
+  ipcMain.handle('sftp:create-directory', (_event, input: SftpCreateNodeInput) =>
+    createRemoteDirectory(input.tabId, input.path)
   )
 
   ipcMain.handle('sftp:close', async (_event, tabId: string) => {

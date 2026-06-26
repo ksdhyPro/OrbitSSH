@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppDialog from "./AppDialog.vue";
+import NumberStepper from "./NumberStepper.vue";
 import type { ServerAuthType } from "../../shared/server";
 
 const props = defineProps<{
@@ -55,11 +56,11 @@ function setAuthType(authType: ServerAuthType): void {
       <div class="form-row">
         <label>
           <span>Port</span>
-          <input
-            v-model.number="connectionForm.port"
-            type="number"
-            min="1"
-            max="65535" />
+          <NumberStepper
+            :model-value="connectionForm.port"
+            :min="1"
+            :max="65535"
+            @update:model-value="connectionForm.port = $event" />
         </label>
         <label>
           <span>Username</span>

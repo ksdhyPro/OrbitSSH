@@ -9,6 +9,7 @@ import type {
 import type { AppSettings } from "../shared/settings.js";
 import type {
   RemoteFileNode,
+  SftpCreateNodeInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
   SftpDownloadInput,
@@ -21,6 +22,7 @@ import type {
   SftpProbeTextInput,
   SftpProbeTextResult,
   SftpReadTextInput,
+  SftpRenameInput,
   SftpReadTextResult,
   SftpRemoteTransferControlInput,
   SftpRemoteTransferInput,
@@ -32,6 +34,7 @@ import type {
   SftpUploadResult,
   SftpWriteTextInput,
 } from "../shared/sftp.js";
+import type { SystemStats } from "../main/ipc/system-ipc.js";
 import type {
   TerminalDataEvent,
   TerminalOpenResult,
@@ -122,6 +125,12 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:download-control", input) as Promise<boolean>,
     delete: (input: SftpDeleteInput) =>
       ipcRenderer.invoke("sftp:delete", input) as Promise<boolean>,
+    rename: (input: SftpRenameInput) =>
+      ipcRenderer.invoke("sftp:rename", input) as Promise<boolean>,
+    createFile: (input: SftpCreateNodeInput) =>
+      ipcRenderer.invoke("sftp:create-file", input) as Promise<boolean>,
+    createDirectory: (input: SftpCreateNodeInput) =>
+      ipcRenderer.invoke("sftp:create-directory", input) as Promise<boolean>,
     onDownloadProgress: (
       callback: (event: SftpDownloadProgressEvent) => void,
     ) => {
@@ -187,6 +196,10 @@ const orbitSSHApi = {
       return () => ipcRenderer.removeListener("terminal:status", listener);
     },
   },
+  system: {
+    getStats: (tabId: string) =>
+      ipcRenderer.invoke("system:get-stats", tabId) as Promise<SystemStats>,
+  },
   windowControls: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<boolean>,
     toggleMaximize: () =>
@@ -194,6 +207,8 @@ const orbitSSHApi = {
     close: () => ipcRenderer.invoke("window:close") as Promise<boolean>,
     isMaximized: () =>
       ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
+    isMinimized: () =>
+      ipcRenderer.invoke("window:is-minimized") as Promise<boolean>,
   },
 };
 

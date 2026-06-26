@@ -2,8 +2,6 @@
 import {
   computed,
   nextTick,
-  onMounted,
-  onUnmounted,
   reactive,
   ref,
   watch,
@@ -17,7 +15,10 @@ import pasteIcon from "../assets/icons/paste.svg";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { TerminalTab } from "../types/terminal";
 import { getStatusText } from "../utils/status-text";
+import { closeFloatingMenus } from "../utils/floating-menu";
+import { resolveMenuPlacement } from "../utils/menu-position";
 import ContextMenu from "./ContextMenu.vue";
+import StatusBar from "./StatusBar.vue";
 
 const props = defineProps<{
   tabs: TerminalTab[];
@@ -80,9 +81,14 @@ async function openTerminalContextMenu(event: MouseEvent): Promise<void> {
   event.preventDefault();
   event.stopPropagation();
 
+  closeFloatingMenus();
   terminalContextMenu.open = true;
-  terminalContextMenu.x = event.clientX;
-  terminalContextMenu.y = event.clientY;
+  const placement = resolveMenuPlacement(
+    { x: event.clientX, y: event.clientY },
+    terminalContextMenuItems.value.length,
+  );
+  terminalContextMenu.x = placement.x;
+  terminalContextMenu.y = placement.y;
   terminalContextMenu.canCopy = props.hasActiveTerminalSelection();
   terminalContextMenu.canPaste = false;
 
@@ -107,13 +113,15 @@ async function selectTerminalContextMenuItem(
   }
 }
 
-onMounted(() => {
-  window.addEventListener("click", closeTerminalContextMenu);
-});
+// 搜索框内用 Shift+Tab 跳到上一个结果，同时阻止默认回退焦点。
+function searchPreviousByBackwardTab(event: KeyboardEvent): void {
+  if (!event.shiftKey) {
+    return;
+  }
 
-onUnmounted(() => {
-  window.removeEventListener("click", closeTerminalContextMenu);
-});
+  event.preventDefault();
+  emit("search", "previous");
+}
 
 // 搜索栏显示后在子组件内聚焦，避免父组件直接持有内部 DOM。
 watch(
@@ -171,6 +179,7 @@ watch(
           @keydown.enter.prevent="
             emit('search', $event.shiftKey ? 'previous' : 'next')
           "
+          @keydown.tab="searchPreviousByBackwardTab"
           @keydown.esc.prevent="emit('closeSearch')" />
         <span class="terminal-search-count">
           {{ terminalSearchResult.index }}/{{ terminalSearchResult.total }}
@@ -235,7 +244,9 @@ watch(
       <ContextMenu
         :menu="terminalContextMenu"
         :items="terminalContextMenuItems"
-        @select="selectTerminalContextMenuItem" />
+        @select="selectTerminalContextMenuItem"
+        @close="closeTerminalContextMenu" />
+      <StatusBar :active-tab-id="activeTabId" />
     </section>
   </section>
 </template>

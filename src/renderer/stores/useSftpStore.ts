@@ -3,9 +3,11 @@ import { reactive, ref } from "vue";
 
 import type { TerminalTab } from "../types/terminal";
 import type {
+  BlankContextMenuState,
   FileContextMenuState,
   FileTextProbeState,
   ImagePreviewState,
+  RenamingState,
   SftpTreeState,
 } from "../types/sftp";
 import type {
@@ -16,6 +18,14 @@ import { copyTextByFallback } from "../utils/clipboard";
 import { getRemoteParentPath, getRootName } from "../utils/path";
 import { updateNodeChildren } from "../utils/file-tree";
 import { isKnownEditableTextFile, isPreviewImageFile } from "../utils/file-kind";
+import { closeFloatingMenus } from "../utils/floating-menu";
+import { resolveMenuPlacement } from "../utils/menu-position";
+import {
+  deleteRemoteNodes,
+  getRemoteDeleteConfirmMessage,
+  refreshRemoteDirectory,
+  renameRemoteNodeByName,
+} from "../utils/remote-node-actions";
 import { useCoreStore } from "./useCoreStore";
 
 export interface DeleteRemoteNodeCallbacks {
@@ -39,7 +49,16 @@ export const useSftpStore = defineStore("sftp", () => {
     x: 0,
     y: 0,
     node: null,
+    selectedCount: 0,
+    contextNodeSelected: false,
   });
+  const blankContextMenu = reactive<BlankContextMenuState>({
+    open: false,
+    x: 0,
+    y: 0,
+  });
+  // 内联重命名/新建后的编辑态：非 null 时对应节点文件名处显示输入框。
+  const renaming = ref<RenamingState | null>(null);
   const fileTextProbeStates = reactive<Record<string, FileTextProbeState>>({});
   const imagePreview = reactive<ImagePreviewState>({
     tabId: "",
@@ -102,6 +121,8 @@ export const useSftpStore = defineStore("sftp", () => {
       expandedPaths: new Set<string>(),
       loadingPaths: new Set<string>([pendingRoot.path]),
       deletingPaths: new Set<string>(),
+      selectedPaths: new Set<string>(),
+      lastClickedIndex: -1,
       error: "",
     });
 
@@ -128,6 +149,8 @@ export const useSftpStore = defineStore("sftp", () => {
         expandedPaths: new Set<string>([root.path]),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
+        selectedPaths: new Set<string>(),
+        lastClickedIndex: -1,
         error: "",
       });
     } catch (error) {
@@ -145,6 +168,8 @@ export const useSftpStore = defineStore("sftp", () => {
         expandedPaths: new Set<string>(),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
+        selectedPaths: new Set<string>(),
+        lastClickedIndex: -1,
         error: error instanceof Error ? error.message : "SFTP 文件树加载失败",
       });
     }
@@ -329,6 +354,8 @@ export const useSftpStore = defineStore("sftp", () => {
         expandedPaths: new Set<string>([targetPath]),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
+        selectedPaths: new Set<string>(),
+        lastClickedIndex: -1,
         error: "",
       });
       return true;
@@ -538,6 +565,271 @@ export const useSftpStore = defineStore("sftp", () => {
   function closeFileContextMenu(): void {
     fileContextMenu.open = false;
     fileContextMenu.node = null;
+    fileContextMenu.selectedCount = 0;
+    fileContextMenu.contextNodeSelected = false;
+  }
+
+  function closeBlankContextMenu(): void {
+    blankContextMenu.open = false;
+  }
+
+  // 在文件面板空白处右键：不改变选中状态，仅弹出新建菜单。
+  function openBlankContextMenu(tabId: string, event: MouseEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!getSftpTree(tabId)) {
+      return;
+    }
+
+    closeFloatingMenus();
+
+    const placement = resolveMenuPlacement({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    blankContextMenu.x = placement.x;
+    blankContextMenu.y = placement.y;
+    blankContextMenu.open = true;
+  }
+
+  // 进入重命名编辑态：右键节点选「重命名」或新建占位节点后调用。
+  function startRename(tabId: string, node: RemoteFileNode): void {
+    renaming.value = {
+      tabId,
+      path: node.path,
+      value: node.name,
+    };
+  }
+
+  function cancelRename(): void {
+    renaming.value = null;
+  }
+
+  // 提交重命名：空名直接取消；同名直接关闭；否则调用后端 rename 后刷新父目录。
+  async function commitRename(): Promise<void> {
+    const state = renaming.value;
+
+    if (!state || !core.orbitSSHApi) {
+      return;
+    }
+
+    const trimmed = state.value.trim();
+
+    if (!trimmed) {
+      renaming.value = null;
+      return;
+    }
+
+    // 拼出新路径：父目录 + 新名。
+    const parentPath = getRemoteParentPath(state.path);
+    renaming.value = null;
+
+    try {
+      const result = await renameRemoteNodeByName(
+        core.orbitSSHApi.sftp,
+        state.tabId,
+        state.path,
+        trimmed,
+      );
+
+      if (result.renamed) {
+        // 旧路径的文本探测结果失效，清掉避免残留状态。
+        delete fileTextProbeStates[state.path];
+      }
+
+      await refreshRemoteDirectoryPath(state.tabId, parentPath);
+    } catch (error) {
+      showSftpPathPrompt(
+        error instanceof Error ? error.message : "重命名失败",
+        "重命名失败",
+      );
+    }
+  }
+
+  // 新建文件/文件夹：先用占位名创建，成功后刷新目录并进入重命名态（名称全选可改名）。
+  async function createRemoteNode(
+    tabId: string,
+    parentPath: string,
+    type: "file" | "directory",
+  ): Promise<void> {
+    if (!tabId || !core.orbitSSHApi || !parentPath) {
+      return;
+    }
+
+    const placeholderName =
+      type === "directory" ? "新建文件夹" : "新建文件.txt";
+    const newPath =
+      parentPath === "/" ? `/${placeholderName}` : `${parentPath}/${placeholderName}`;
+
+    closeBlankContextMenu();
+
+    try {
+      if (type === "directory") {
+        await core.orbitSSHApi.sftp.createDirectory({ tabId, path: newPath });
+      } else {
+        await core.orbitSSHApi.sftp.createFile({ tabId, path: newPath });
+      }
+
+      await refreshRemoteDirectoryPath(tabId, parentPath);
+
+      // 进入重命名态，名称默认全选，用户可立即改名（Windows 式）。
+      renaming.value = { tabId, path: newPath, value: placeholderName };
+    } catch (error) {
+      showSftpPathPrompt(
+        error instanceof Error ? error.message : "新建失败",
+        "新建失败",
+      );
+    }
+  }
+
+  function clearFileSelection(tabId: string): void {
+    const tree = getSftpTree(tabId);
+
+    if (!tree) {
+      return;
+    }
+
+    setSftpTree(tabId, {
+      ...tree,
+      selectedPaths: new Set<string>(),
+      lastClickedIndex: -1,
+    });
+  }
+
+  function selectFileNode(
+    tabId: string,
+    node: RemoteFileNode & { isVirtualParent?: boolean },
+    visibleNodes: (RemoteFileNode & { isVirtualParent?: boolean })[],
+    event: MouseEvent,
+  ): void {
+    if (node.isVirtualParent) {
+      return;
+    }
+
+    const tree = getSftpTree(tabId);
+
+    if (!tree) {
+      return;
+    }
+
+    const currentIndex = visibleNodes.findIndex(n => n.path === node.path);
+
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const isCtrl = event.ctrlKey || event.metaKey;
+    const isShift = event.shiftKey;
+
+    // Shift 范围选择
+    if (isShift && tree.lastClickedIndex >= 0) {
+      event.preventDefault();
+      const basePaths = isCtrl
+        ? new Set(tree.selectedPaths)
+        : new Set<string>();
+      const start = Math.min(tree.lastClickedIndex, currentIndex);
+      const end = Math.max(tree.lastClickedIndex, currentIndex);
+
+      for (let i = start; i <= end; i++) {
+        const n = visibleNodes[i];
+        if (n && !n.isVirtualParent) {
+          basePaths.add(n.path);
+        }
+      }
+
+      setSftpTree(tabId, {
+        ...tree,
+        selectedPaths: basePaths,
+      });
+      return;
+    }
+
+    // 更新锚点
+    setSftpTree(tabId, {
+      ...tree,
+      lastClickedIndex: currentIndex,
+    });
+
+    // Ctrl 切换选择
+    if (isCtrl) {
+      const nextPaths = new Set(tree.selectedPaths);
+
+      if (tree.selectedPaths.has(node.path)) {
+        nextPaths.delete(node.path);
+      } else {
+        nextPaths.add(node.path);
+      }
+
+      setSftpTree(tabId, {
+        ...tree,
+        lastClickedIndex: currentIndex,
+        selectedPaths: nextPaths,
+      });
+      return;
+    }
+
+    // 普通点击：单选
+    setSftpTree(tabId, {
+      ...tree,
+      lastClickedIndex: currentIndex,
+      selectedPaths: new Set<string>([node.path]),
+    });
+  }
+
+  function selectAllInFileTree(
+    tabId: string,
+    visibleNodes: (RemoteFileNode & { isVirtualParent?: boolean })[],
+  ): void {
+    const tree = getSftpTree(tabId);
+
+    if (!tree) {
+      return;
+    }
+
+    const nextPaths = new Set<string>();
+
+    for (const node of visibleNodes) {
+      if (!node.isVirtualParent) {
+        nextPaths.add(node.path);
+      }
+    }
+
+    const lastIdx = visibleNodes.length - 1;
+
+    setSftpTree(tabId, {
+      ...tree,
+      selectedPaths: nextPaths,
+      lastClickedIndex: lastIdx >= 0 ? lastIdx : -1,
+    });
+  }
+
+  function getSelectedNodes(
+    tree: SftpTreeState | undefined,
+  ): RemoteFileNode[] {
+    if (!tree) {
+      return [];
+    }
+
+    const result: RemoteFileNode[] = [];
+    collectNodes(tree.root, tree.selectedPaths, result);
+    return result;
+  }
+
+  function collectNodes(
+    node: RemoteFileNode,
+    selectedPaths: Set<string>,
+    result: RemoteFileNode[],
+  ): void {
+    if (selectedPaths.has(node.path)) {
+      result.push(node);
+    }
+
+    if (node.children) {
+      for (const child of node.children) {
+        collectNodes(child, selectedPaths, result);
+      }
+    }
   }
 
   function openFileContextMenu(
@@ -547,9 +839,23 @@ export const useSftpStore = defineStore("sftp", () => {
   ): void {
     event.preventDefault();
     event.stopPropagation();
+
+    const tree = getSftpTree(tabId);
+    closeFloatingMenus();
+
+    // 右键不参与选中，仅记录当前选区状态，避免右键污染多选/单选状态。
+    fileContextMenu.selectedCount = tree?.selectedPaths.size ?? 0;
+    fileContextMenu.contextNodeSelected = Boolean(
+      tree?.selectedPaths.has(node.path),
+    );
+
     fileContextMenu.open = true;
-    fileContextMenu.x = event.clientX;
-    fileContextMenu.y = event.clientY;
+    const placement = resolveMenuPlacement({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    fileContextMenu.x = placement.x;
+    fileContextMenu.y = placement.y;
     fileContextMenu.node = node;
 
     if (!isPreviewImageFile(node)) {
@@ -717,10 +1023,7 @@ export const useSftpStore = defineStore("sftp", () => {
       return;
     }
 
-    const children = await core.orbitSSHApi.sftp.list({
-      tabId,
-      path,
-    });
+    const children = await refreshRemoteDirectory(core.orbitSSHApi.sftp, tabId, path);
     const latestTree = getSftpTree(tabId);
 
     if (!latestTree) {
@@ -739,23 +1042,33 @@ export const useSftpStore = defineStore("sftp", () => {
     tree: SftpTreeState | undefined,
     callbacks: DeleteRemoteNodeCallbacks,
   ): Promise<void> {
-    const node = fileContextMenu.node;
-    const typeLabel = node?.type === "directory" ? "文件夹" : "文件";
+    const contextNode = fileContextMenu.node;
 
-    if (
-      !node ||
-      !tabId ||
-      !core.orbitSSHApi ||
-      !tree ||
-      !canDeleteRemoteNode(tree, node)
-    ) {
+    if (!contextNode || !tabId || !core.orbitSSHApi || !tree) {
       return;
     }
 
-    const confirmMessage =
-      node.type === "directory"
-        ? `确认删除文件夹“${node.name}”？\n\n该操作会递归删除其中的所有文件和子文件夹。`
-        : `确认删除文件“${node.name}”？`;
+    // 收集待删除节点：多选时取全部选中项，否则取右键目标
+    const selectedNodes = getSelectedNodes(tree);
+    const shouldDeleteSelectedNodes =
+      fileContextMenu.contextNodeSelected && selectedNodes.length > 1;
+    const nodesToDelete =
+      shouldDeleteSelectedNodes
+        ? selectedNodes
+        : [contextNode];
+
+    // 过滤掉根目录和已在删除中的
+    const validNodes = nodesToDelete.filter(
+      n =>
+        n.path !== tree.root.path &&
+        !tree.deletingPaths.has(n.path),
+    );
+
+    if (validNodes.length === 0) {
+      return;
+    }
+
+    const confirmMessage = getRemoteDeleteConfirmMessage(validNodes);
 
     if (!(await callbacks.shouldDelete(confirmMessage))) {
       closeFileContextMenu();
@@ -763,73 +1076,94 @@ export const useSftpStore = defineStore("sftp", () => {
     }
 
     closeFileContextMenu();
+
+    // 先标记所有待删节点
     const deletingPaths = new Set(tree.deletingPaths);
-    deletingPaths.add(node.path);
+
+    for (const n of validNodes) {
+      deletingPaths.add(n.path);
+    }
+
     setSftpTree(tabId, {
       ...tree,
       deletingPaths,
-      error: "",
+      selectedPaths: new Set<string>(),
+      lastClickedIndex: -1,
+      error: '',
     });
 
+    const { firstError } = await deleteRemoteNodes(
+      core.orbitSSHApi.sftp,
+      tabId,
+      validNodes,
+      {
+        onDeleted: node => {
+          delete fileTextProbeStates[node.path];
+          callbacks.onDeleted?.(node);
+        },
+        onError: (node, error) => {
+          core.writeRendererLog(
+            '远程文件节点删除失败',
+            {
+              tabId,
+              path: node.path,
+              type: node.type,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            'error',
+          );
+        },
+      },
+    );
+
+    // 删除完成后刷新父目录
+    const contextParentPath = getRemoteParentPath(contextNode.path);
+
     try {
-      await core.orbitSSHApi.sftp.delete({
+      const children = await refreshRemoteDirectory(
+        core.orbitSSHApi.sftp,
         tabId,
-        path: node.path,
-        type: node.type,
-      });
-
-      // 删除后清理本地探测状态，避免同路径新文件复用旧结论。
-      delete fileTextProbeStates[node.path];
-      callbacks.onDeleted?.(node);
-
-      const parentPath = getRemoteParentPath(node.path);
-      const children = await core.orbitSSHApi.sftp.list({
-        tabId,
-        path: parentPath,
-      });
+        contextParentPath,
+      );
       const latestTree = getSftpTree(tabId);
 
-      if (!latestTree) {
-        return;
+      if (latestTree) {
+        const nextExpandedPaths = new Set(latestTree.expandedPaths);
+        const nextDeletingPaths = new Set(latestTree.deletingPaths);
+
+        for (const n of validNodes) {
+          nextExpandedPaths.delete(n.path);
+          nextDeletingPaths.delete(n.path);
+        }
+
+        setSftpTree(tabId, {
+          ...latestTree,
+          root: updateNodeChildren(latestTree.root, contextParentPath, children),
+          expandedPaths: nextExpandedPaths,
+          deletingPaths: nextDeletingPaths,
+          error: firstError || '',
+        });
       }
-
-      const nextExpandedPaths = new Set(latestTree.expandedPaths);
-      nextExpandedPaths.delete(node.path);
-      const nextDeletingPaths = new Set(latestTree.deletingPaths);
-      nextDeletingPaths.delete(node.path);
-
-      setSftpTree(tabId, {
-        ...latestTree,
-        root: updateNodeChildren(latestTree.root, parentPath, children),
-        expandedPaths: nextExpandedPaths,
-        deletingPaths: nextDeletingPaths,
-        error: "",
-      });
     } catch (error) {
       const latestTree = getSftpTree(tabId);
 
       if (latestTree) {
         const nextDeletingPaths = new Set(latestTree.deletingPaths);
-        nextDeletingPaths.delete(node.path);
+
+        for (const n of validNodes) {
+          nextDeletingPaths.delete(n.path);
+        }
 
         setSftpTree(tabId, {
           ...latestTree,
           deletingPaths: nextDeletingPaths,
           error:
-            error instanceof Error ? error.message : `删除${typeLabel}失败`,
+            firstError ||
+            (error instanceof Error
+              ? error.message
+              : '删除后刷新目录失败'),
         });
       }
-
-      core.writeRendererLog(
-        "远程文件节点删除失败",
-        {
-          tabId,
-          path: node.path,
-          type: node.type,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "error",
-      );
     }
   }
 
@@ -842,6 +1176,8 @@ export const useSftpStore = defineStore("sftp", () => {
     sftpTrees,
     fileTreeElement,
     fileContextMenu,
+    blankContextMenu,
+    renaming,
     fileTextProbeStates,
     imagePreview,
     getSftpTree,
@@ -866,7 +1202,17 @@ export const useSftpStore = defineStore("sftp", () => {
     probeFileTextSupport,
     ensureEditableTextFile,
     closeFileContextMenu,
+    closeBlankContextMenu,
+    openBlankContextMenu,
+    startRename,
+    commitRename,
+    cancelRename,
+    createRemoteNode,
     openFileContextMenu,
+    clearFileSelection,
+    selectFileNode,
+    selectAllInFileTree,
+    getSelectedNodes,
     openRemoteImagePreview,
     closeImagePreview,
     downloadRemoteFileNode,

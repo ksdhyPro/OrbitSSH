@@ -1,14 +1,17 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type {
   AppSettings,
   SftpFileTreeViewMode,
 } from "../../shared/settings";
+import { getShortcutSections } from "../config/shortcuts";
 import AppDialog from "./AppDialog.vue";
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   appSettings: AppSettings;
   activeSettingsSection: "general" | "shortcuts";
+  isMac: boolean;
   isSelectionBackgroundDropdownOpen: boolean;
   selectionBackgroundOptions: string[];
 }>();
@@ -24,13 +27,20 @@ const emit = defineEmits<{
   updateSftpFileTreeViewMode: [mode: SftpFileTreeViewMode];
   selectSelectionBackground: [color: string];
 }>();
+
+// 快捷键页只负责展示当前已生效的快捷键，后续可在同一数据源上扩展编辑能力。
+const shortcutSections = computed(() => getShortcutSections(props.isMac));
 </script>
 
 <template>
   <AppDialog
     v-if="open"
     title="设置"
-    description="调整应用常规选项。"
+    :description="
+      activeSettingsSection === 'shortcuts'
+        ? '查看当前应用已启用的快捷键。'
+        : '调整应用常规选项。'
+    "
     width="large"
     @close="emit('close')">
     <div class="settings-layout">
@@ -173,13 +183,33 @@ const emit = defineEmits<{
         </div>
       </section>
 
-      <section v-else class="settings-content">
-        <div class="settings-field">
-          <div>
-            <h3>终端搜索</h3>
-            <p>在当前终端右上角打开搜索框，Esc 或关闭按钮可退出。</p>
+      <section v-else class="settings-content shortcuts-settings-content">
+        <div
+          v-for="section in shortcutSections"
+          :key="section.id"
+          class="shortcut-section">
+          <header class="shortcut-section-header">
+            <h3>{{ section.title }}</h3>
+            <p>{{ section.description }}</p>
+          </header>
+
+          <div
+            v-for="shortcut in section.shortcuts"
+            :key="shortcut.id"
+            class="settings-field shortcut-field">
+            <div>
+              <h4>{{ shortcut.title }}</h4>
+              <p>{{ shortcut.description }}</p>
+            </div>
+            <div class="shortcut-key-group">
+              <kbd
+                v-for="key in shortcut.keys"
+                :key="key"
+                class="shortcut-key">
+                {{ key }}
+              </kbd>
+            </div>
           </div>
-          <kbd class="shortcut-key">Ctrl + F</kbd>
         </div>
       </section>
     </div>

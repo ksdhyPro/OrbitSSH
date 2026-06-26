@@ -46,6 +46,16 @@ const emit = defineEmits<{
   discard: [];
   saveAndClose: [];
 }>();
+
+// 搜索工具栏内用 Shift+Tab 跳到上一个结果，同时阻止默认回退焦点。
+function searchPreviousByBackwardTab(event: KeyboardEvent): void {
+  if (!event.shiftKey) {
+    return;
+  }
+
+  event.preventDefault();
+  emit("search", "previous");
+}
 </script>
 
 <template>
@@ -73,6 +83,7 @@ const emit = defineEmits<{
             @keydown.enter.prevent="
               emit('search', $event.shiftKey ? 'previous' : 'next')
             "
+            @keydown.tab="searchPreviousByBackwardTab"
             @keydown.esc.prevent="emit('closeSearch')" />
           <input
             :ref="setReplaceInput"
@@ -84,6 +95,7 @@ const emit = defineEmits<{
               emit('applySearchQuery');
             "
             @keydown.enter.prevent="emit('replaceCurrent')"
+            @keydown.tab="searchPreviousByBackwardTab"
             @keydown.esc.prevent="emit('closeSearch')" />
           <span>{{ editor.searchIndex }}/{{ editor.searchTotal }}</span>
           <button

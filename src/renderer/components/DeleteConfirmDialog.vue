@@ -16,10 +16,9 @@ const emit = defineEmits<{
   <AppDialog
     v-if="open"
     title="确认删除"
-    description="删除后无法通过应用恢复，请确认后继续。"
-    width="medium"
+    width="small"
     @close="emit('cancel')">
-    <section class="confirm-dialog-content">
+    <section class="confirm-dialog-content delete-confirm-content">
       <p class="delete-confirm-message">{{ message }}</p>
       <footer class="dialog-actions">
         <button type="button" class="ghost-button" @click="emit('cancel')">

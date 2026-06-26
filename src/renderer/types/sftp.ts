@@ -11,6 +11,8 @@ export interface SftpTreeState {
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
   deletingPaths: Set<string>;
+  selectedPaths: Set<string>;
+  lastClickedIndex: number;
   error: string;
 }
 
@@ -19,6 +21,23 @@ export interface FileContextMenuState {
   x: number;
   y: number;
   node: RemoteFileNode | null;
+  selectedCount: number;
+  /** 右键目标是否属于当前选区，用于区分批量操作和单个右键目标操作。 */
+  contextNodeSelected: boolean;
+}
+
+export interface BlankContextMenuState {
+  open: boolean;
+  x: number;
+  y: number;
+}
+
+export interface RenamingState {
+  tabId: string;
+  /** 待重命名节点的当前完整路径（旧路径） */
+  path: string;
+  /** 输入框中的新名称 */
+  value: string;
 }
 
 export interface FileTextProbeState {

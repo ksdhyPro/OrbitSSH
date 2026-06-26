@@ -228,13 +228,13 @@ export const useTerminalsStore = defineStore("terminals", () => {
     }
 
     const keywordChanged = keyword !== lastTerminalSearchKeyword;
-    let nextIndex = keywordChanged
-      ? 0
-      : Math.max(terminalSearchResult.index - 1, 0);
+    let nextIndex = Math.max(terminalSearchResult.index - 1, 0);
 
-    if (direction === "next" && !keywordChanged) {
+    if (keywordChanged) {
+      nextIndex = direction === "previous" ? matches.length - 1 : 0;
+    } else if (direction === "next") {
       nextIndex = (nextIndex + 1) % matches.length;
-    } else if (direction === "previous" && !keywordChanged) {
+    } else if (direction === "previous") {
       nextIndex = (nextIndex - 1 + matches.length) % matches.length;
     }
 
@@ -679,6 +679,15 @@ export const useTerminalsStore = defineStore("terminals", () => {
       terminalInstances
         .get(event.tabId)
         ?.terminal.writeln(`\r\n${event.message}`);
+    }
+
+    // SSH shell 就绪后补发一次终端尺寸同步。
+    // createTerminalInstance 中的 fitAddon.fit() 触发的 resize IPC
+    // 可能早于 shellStream 就绪到达主进程，从而被 resizeTerminal
+    // 静默丢弃，导致远端 pty 停留在 sshClient.shell() 的初始 80×24。
+    // 此处补发确保 shell 拿到实际窗口尺寸。
+    if (event.status === "connected" && event.tabId === activeTabId.value) {
+      scheduleTerminalFit();
     }
   }
 

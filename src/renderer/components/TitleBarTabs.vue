@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import closeIcon from "../assets/icons/close.svg";
 import continueIcon from "../assets/icons/continue.svg";
 import maximizeIcon from "../assets/icons/maximize.svg";
@@ -16,9 +16,12 @@ import {
   getDownloadProgressPercent,
   getDownloadTaskStatusText,
 } from "../utils/status-text";
+import { closeFloatingMenus } from "../utils/floating-menu";
+import { resolveMenuPlacement } from "../utils/menu-position";
 import ContextMenu from "./ContextMenu.vue";
+import FloatingMenu from "./FloatingMenu.vue";
 
-defineProps<{
+const props = defineProps<{
   isWindows: boolean;
   isWindowMaximized: boolean;
   isTaskListOpen: boolean;
@@ -50,19 +53,49 @@ const headerMenu = reactive({
 });
 
 const headerMenuItems = computed<ContextMenuItem[]>(() => {
-  if (activeHeaderMenu.value !== "tools") {
-    return [];
+  if (activeHeaderMenu.value === "tools") {
+    return [
+      {
+        key: "data-transfer",
+        label: "数据传输",
+      },
+    ];
   }
 
-  return [
-    {
-      key: "data-transfer",
-      label: "数据传输",
-    },
-  ];
+  if (activeHeaderMenu.value === "help") {
+    return [
+      {
+        key: "check-update",
+        label: "检查更新",
+      },
+      {
+        key: "about",
+        label: "关于",
+      },
+    ];
+  }
+
+  return [];
 });
 
 // 复用通用右键菜单，通过按钮位置计算顶栏下拉菜单坐标。
+function activateHeaderMenu(
+  menuKey: HeaderMenuKey,
+  trigger: HTMLElement,
+): void {
+  const rect = trigger.getBoundingClientRect();
+  const placement = resolveMenuPlacement(
+    { x: rect.left, y: rect.bottom },
+    headerMenuItems.value.length,
+  );
+
+  activeHeaderMenu.value = menuKey;
+  headerMenu.open = true;
+  headerMenu.x = placement.x;
+  headerMenu.y = placement.y;
+}
+
+// 点击：首次打开菜单；若点的是当前已打开的同一个菜单则关闭。
 function openHeaderMenu(menuKey: HeaderMenuKey, event: MouseEvent): void {
   event.stopPropagation();
 
@@ -72,7 +105,6 @@ function openHeaderMenu(menuKey: HeaderMenuKey, event: MouseEvent): void {
     return;
   }
 
-  const rect = trigger.getBoundingClientRect();
   const isSameMenuOpen = headerMenu.open && activeHeaderMenu.value === menuKey;
 
   if (isSameMenuOpen) {
@@ -80,10 +112,27 @@ function openHeaderMenu(menuKey: HeaderMenuKey, event: MouseEvent): void {
     return;
   }
 
-  activeHeaderMenu.value = menuKey;
-  headerMenu.open = true;
-  headerMenu.x = rect.left;
-  headerMenu.y = rect.bottom;
+  closeFloatingMenus();
+  activateHeaderMenu(menuKey, trigger);
+}
+
+// 菜单栏已打开时，鼠标平移到其他菜单按钮上直接切换（原生菜单栏行为）。
+// 未打开时不触发，避免一进入界面 hover 就弹出菜单。
+function switchHeaderMenuOnHover(
+  menuKey: HeaderMenuKey,
+  event: MouseEvent,
+): void {
+  if (!headerMenu.open || activeHeaderMenu.value === menuKey) {
+    return;
+  }
+
+  const trigger = event.currentTarget;
+
+  if (!(trigger instanceof HTMLElement)) {
+    return;
+  }
+
+  activateHeaderMenu(menuKey, trigger);
 }
 
 function closeHeaderMenu(): void {
@@ -96,7 +145,23 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
 
   if (item.key === "data-transfer") {
     emit("openDataTransfer");
+    return;
   }
+
+  // 检查更新：暂不接入实际逻辑，仅作为菜单项占位。
+  if (item.key === "check-update") {
+    return;
+  }
+}
+
+function toggleTaskList(): void {
+  if (props.isTaskListOpen) {
+    emit("updateTaskListOpen", false);
+    return;
+  }
+
+  closeFloatingMenus();
+  emit("updateTaskListOpen", true);
 }
 
 function getTaskDirectionText(task: DownloadTask): string {
@@ -110,14 +175,6 @@ function getTaskDirectionText(task: DownloadTask): string {
 
   return "下载";
 }
-
-onMounted(() => {
-  window.addEventListener("click", closeHeaderMenu);
-});
-
-onUnmounted(() => {
-  window.removeEventListener("click", closeHeaderMenu);
-});
 </script>
 
 <template>
@@ -132,36 +189,48 @@ onUnmounted(() => {
     <nav class="header-menu" aria-label="应用菜单" @click.stop>
       <button
         type="button"
+        tabindex="-1"
+        data-floating-menu-trigger
         :class="{ active: activeHeaderMenu === 'tools' && headerMenu.open }"
-        @click="openHeaderMenu('tools', $event)">
+        @click="openHeaderMenu('tools', $event)"
+        @mouseenter="switchHeaderMenuOnHover('tools', $event)">
         工具
       </button>
       <button
         type="button"
+        tabindex="-1"
+        data-floating-menu-trigger
         :class="{ active: activeHeaderMenu === 'help' && headerMenu.open }"
-        @click="openHeaderMenu('help', $event)">
+        @click="openHeaderMenu('help', $event)"
+        @mouseenter="switchHeaderMenuOnHover('help', $event)">
         帮助
       </button>
       <ContextMenu
         :menu="headerMenu"
         :items="headerMenuItems"
-        @select="selectHeaderMenuItem" />
+        @select="selectHeaderMenuItem"
+        @close="closeHeaderMenu" />
     </nav>
     <div class="titlebar-drag-zone" aria-hidden="true"></div>
     <div class="window-actions">
       <div class="tasklist" @click.stop>
         <button
           type="button"
+          tabindex="-1"
           class="tasklist-trigger"
+          data-floating-menu-trigger
           aria-label="传输任务"
           title="传输任务"
-          @click="emit('updateTaskListOpen', !isTaskListOpen)">
+          @click="toggleTaskList">
           <img :src="taskIcon" alt="" />
           <strong v-if="activeDownloadCount > 0">
             {{ activeDownloadCount }}
           </strong>
         </button>
-        <section v-if="isTaskListOpen" class="tasklist-panel">
+        <FloatingMenu
+          :open="isTaskListOpen"
+          class="tasklist-panel"
+          @close="emit('updateTaskListOpen', false)">
           <header>
             <span>传输任务</span>
             <small>{{ visibleDownloadTasks.length }} 项</small>
@@ -207,6 +276,7 @@ onUnmounted(() => {
                       v-if="task.status === 'paused'"
                       title="继续"
                       type="button"
+                      tabindex="-1"
                       :disabled="isDownloadTaskOperating(task.taskId)"
                       @click="emit('controlDownloadTask', task, 'resume')">
                       <img :src="continueIcon" alt="继续" />
@@ -215,6 +285,7 @@ onUnmounted(() => {
                       v-else
                       title="暂停"
                       type="button"
+                      tabindex="-1"
                       :disabled="isDownloadTaskOperating(task.taskId)"
                       @click="emit('controlDownloadTask', task, 'pause')">
                       <img :src="pauseIcon" alt="暂停" />
@@ -222,6 +293,7 @@ onUnmounted(() => {
                     <button
                       title="删除"
                       type="button"
+                      tabindex="-1"
                       class="danger"
                       :disabled="isDownloadTaskOperating(task.taskId)"
                       @click="emit('controlDownloadTask', task, 'cancel')">
@@ -232,27 +304,34 @@ onUnmounted(() => {
               </div>
             </article>
           </template>
-        </section>
+        </FloatingMenu>
       </div>
-      <button type="button" aria-label="设置" @click="emit('openSettings')">
+      <button
+        type="button"
+        tabindex="-1"
+        aria-label="设置"
+        @click="emit('openSettings')">
         <img :src="settingsIcon" alt="" />
       </button>
       <template v-if="isWindows">
         <span class="window-action-divider"></span>
         <button
           type="button"
+          tabindex="-1"
           aria-label="最小化窗口"
           @click="emit('minimizeWindow')">
           <img :src="minimizeIcon" alt="" />
         </button>
         <button
           type="button"
+          tabindex="-1"
           :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
           @click="emit('toggleMaximizeWindow')">
           <img :src="isWindowMaximized ? restoreIcon : maximizeIcon" alt="" />
         </button>
         <button
           type="button"
+          tabindex="-1"
           class="window-close"
           aria-label="关闭窗口"
           @click="emit('closeWindow')">

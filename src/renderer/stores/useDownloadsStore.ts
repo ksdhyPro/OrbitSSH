@@ -29,10 +29,6 @@ export const useDownloadsStore = defineStore("downloads", () => {
     return downloadTaskOperationIds.value.has(taskId);
   }
 
-  function closeTaskList(): void {
-    isTaskListOpen.value = false;
-  }
-
   function upsertDownloadTask(task: DownloadTask): void {
     const existingIndex = downloadTasks.value.findIndex(
       item => item.taskId === task.taskId,
@@ -239,7 +235,6 @@ export const useDownloadsStore = defineStore("downloads", () => {
     activeDownloadCount,
     visibleDownloadTasks,
     isDownloadTaskOperating,
-    closeTaskList,
     handleSftpDownloadProgress,
     handleSftpUploadProgress,
     handleSftpRemoteTransferProgress,

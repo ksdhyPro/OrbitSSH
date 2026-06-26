@@ -4,6 +4,7 @@ import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import editIcon from "../assets/icons/edit.svg";
 import fileIcon from "../assets/icons/file.svg";
+import folderIcon from "../assets/icons/folder.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
 import type { ContextMenuItem } from "../types/context-menu";
@@ -25,11 +26,44 @@ const emit = defineEmits<{
   edit: [];
   download: [];
   upload: [sourceType: "file" | "directory"];
+  create: [type: "file" | "directory"];
+  rename: [];
   delete: [];
+  close: [];
 }>();
 
 const menuItems = computed<ContextMenuItem[]>(() => {
   const node = props.menu.node;
+  const count = props.menu.selectedCount;
+
+  // 右键目标属于多选选区时，菜单执行批量操作；右键未选中项时不影响既有选区。
+  if (props.menu.contextNodeSelected && count > 1) {
+    return [
+      {
+        key: "delete",
+        label: `删除 ${count} 项`,
+        icon: trashIcon,
+        danger: true,
+      },
+    ];
+  }
+
+  const createItems: ContextMenuItem[] =
+    count === 0
+      ? [
+          {
+            key: "new-file",
+            label: "新建文件",
+            icon: fileIcon,
+          },
+          {
+            key: "new-directory",
+            label: "新建文件夹",
+            icon: folderIcon,
+          },
+        ]
+      : [];
+
   const uploadFileItem = {
     key: "upload-file",
     label: "上传文件",
@@ -45,8 +79,15 @@ const menuItems = computed<ContextMenuItem[]>(() => {
 
   if (node?.type === "directory") {
     return [
+      ...createItems,
       uploadFileItem,
       uploadDirectoryItem,
+      {
+        key: "rename",
+        label: "重命名",
+        icon: editIcon,
+        disabled: !props.canDeleteRemoteNode(node),
+      },
       {
         key: "delete",
         label: "删除",
@@ -71,12 +112,19 @@ const menuItems = computed<ContextMenuItem[]>(() => {
       };
 
   return [
+    ...createItems,
     primaryItem,
     {
       key: "download",
       label: "下载",
       icon: arrowDownIcon,
       disabled: !props.canDownloadRemoteFile(node),
+    },
+    {
+      key: "rename",
+      label: "重命名",
+      icon: editIcon,
+      disabled: !props.canDeleteRemoteNode(node),
     },
     {
       key: "delete",
@@ -100,6 +148,12 @@ function selectMenuItem(item: ContextMenuItem): void {
     emit("upload", "file");
   } else if (item.key === "upload-directory") {
     emit("upload", "directory");
+  } else if (item.key === "new-file") {
+    emit("create", "file");
+  } else if (item.key === "new-directory") {
+    emit("create", "directory");
+  } else if (item.key === "rename") {
+    emit("rename");
   } else if (item.key === "delete") {
     emit("delete");
   }
@@ -107,5 +161,9 @@ function selectMenuItem(item: ContextMenuItem): void {
 </script>
 
 <template>
-  <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" />
+  <ContextMenu
+    :menu="menu"
+    :items="menuItems"
+    @select="selectMenuItem"
+    @close="emit('close')" />
 </template>

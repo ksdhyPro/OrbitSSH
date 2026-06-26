@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
+import type { FloatingMenuCloseReason } from "../utils/floating-menu";
+import FloatingMenu from "./FloatingMenu.vue";
 
 defineProps<{
   menu: ContextMenuState;
@@ -8,6 +10,7 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [item: ContextMenuItem];
+  close: [reason: FloatingMenuCloseReason];
 }>();
 
 // 统一处理菜单项点击，禁用项不向外派发事件。
@@ -21,20 +24,19 @@ function selectMenuItem(item: ContextMenuItem): void {
 </script>
 
 <template>
-  <div
-    v-if="menu.open"
+  <FloatingMenu
+    :open="menu.open"
+    :x="menu.x"
+    :y="menu.y"
     class="context-menu"
-    :style="{
-      left: `${menu.x}px`,
-      top: `${menu.y}px`,
-    }"
     role="menu"
-    @click.stop
-    @contextmenu.prevent.stop>
+    prevent-context-menu
+    @close="emit('close', $event)">
     <button
       v-for="item in items"
       :key="item.key"
       type="button"
+      tabindex="-1"
       role="menuitem"
       :disabled="item.disabled"
       :class="{ disabled: item.disabled, danger: item.danger }"
@@ -42,5 +44,5 @@ function selectMenuItem(item: ContextMenuItem): void {
       <img v-if="item.icon" :src="item.icon" alt="" />
       <span>{{ item.label }}</span>
     </button>
-  </div>
+  </FloatingMenu>
 </template>
