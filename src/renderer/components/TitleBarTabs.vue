@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import closeIcon from "../assets/icons/close.svg";
 import continueIcon from "../assets/icons/continue.svg";
 import maximizeIcon from "../assets/icons/maximize.svg";
@@ -9,11 +10,13 @@ import settingsIcon from "../assets/icons/settings.svg";
 import taskIcon from "../assets/icons/task.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { DownloadTask } from "../types/download";
+import type { ContextMenuItem } from "../types/context-menu";
 import { formatFileSize } from "../utils/format";
 import {
   getDownloadProgressPercent,
   getDownloadTaskStatusText,
 } from "../utils/status-text";
+import ContextMenu from "./ContextMenu.vue";
 
 defineProps<{
   isWindows: boolean;
@@ -30,22 +33,120 @@ const emit = defineEmits<{
     task: DownloadTask,
     action: "pause" | "resume" | "cancel",
   ];
+  openDataTransfer: [];
   openSettings: [];
   minimizeWindow: [];
   toggleMaximizeWindow: [];
   closeWindow: [];
 }>();
+
+type HeaderMenuKey = "tools" | "help";
+
+const activeHeaderMenu = ref<HeaderMenuKey | null>(null);
+const headerMenu = reactive({
+  open: false,
+  x: 0,
+  y: 0,
+});
+
+const headerMenuItems = computed<ContextMenuItem[]>(() => {
+  if (activeHeaderMenu.value !== "tools") {
+    return [];
+  }
+
+  return [
+    {
+      key: "data-transfer",
+      label: "数据传输",
+    },
+  ];
+});
+
+// 复用通用右键菜单，通过按钮位置计算顶栏下拉菜单坐标。
+function openHeaderMenu(menuKey: HeaderMenuKey, event: MouseEvent): void {
+  event.stopPropagation();
+
+  const trigger = event.currentTarget;
+
+  if (!(trigger instanceof HTMLElement)) {
+    return;
+  }
+
+  const rect = trigger.getBoundingClientRect();
+  const isSameMenuOpen = headerMenu.open && activeHeaderMenu.value === menuKey;
+
+  if (isSameMenuOpen) {
+    closeHeaderMenu();
+    return;
+  }
+
+  activeHeaderMenu.value = menuKey;
+  headerMenu.open = true;
+  headerMenu.x = rect.left;
+  headerMenu.y = rect.bottom;
+}
+
+function closeHeaderMenu(): void {
+  headerMenu.open = false;
+  activeHeaderMenu.value = null;
+}
+
+function selectHeaderMenuItem(item: ContextMenuItem): void {
+  closeHeaderMenu();
+
+  if (item.key === "data-transfer") {
+    emit("openDataTransfer");
+  }
+}
+
+function getTaskDirectionText(task: DownloadTask): string {
+  if (task.direction === "upload") {
+    return "上传";
+  }
+
+  if (task.direction === "server-transfer") {
+    return "服务器传输";
+  }
+
+  return "下载";
+}
+
+onMounted(() => {
+  window.addEventListener("click", closeHeaderMenu);
+});
+
+onUnmounted(() => {
+  window.removeEventListener("click", closeHeaderMenu);
+});
 </script>
 
 <template>
   <header class="topbar">
     <section class="header-brand">
-      <div class="brand-mark">OSSH</div>
+      <div class="brand-mark">O</div>
       <div>
         <h1>OrbitSSH</h1>
-        <p>SSH Terminal Client</p>
+        <!-- <p>SSH Terminal Client</p> -->
       </div>
     </section>
+    <nav class="header-menu" aria-label="应用菜单" @click.stop>
+      <button
+        type="button"
+        :class="{ active: activeHeaderMenu === 'tools' && headerMenu.open }"
+        @click="openHeaderMenu('tools', $event)">
+        工具
+      </button>
+      <button
+        type="button"
+        :class="{ active: activeHeaderMenu === 'help' && headerMenu.open }"
+        @click="openHeaderMenu('help', $event)">
+        帮助
+      </button>
+      <ContextMenu
+        :menu="headerMenu"
+        :items="headerMenuItems"
+        @select="selectHeaderMenuItem" />
+    </nav>
     <div class="titlebar-drag-zone" aria-hidden="true"></div>
     <div class="window-actions">
       <div class="tasklist" @click.stop>
@@ -76,7 +177,7 @@ const emit = defineEmits<{
               <div class="tasklist-item-head">
                 <strong>
                   <span class="tasklist-direction">
-                    {{ task.direction === "upload" ? "上传" : "下载" }}
+                    {{ getTaskDirectionText(task) }}
                   </span>
                   {{ task.name }}
                 </strong>

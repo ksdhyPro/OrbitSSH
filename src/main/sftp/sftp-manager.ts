@@ -1,7 +1,9 @@
 import SftpClient from 'ssh2-sftp-client'
+import { Client as SshClient } from 'ssh2'
 
-import { open as openLocalFile, readdir, rm, stat as statLocalFile } from 'node:fs/promises'
-import { basename, dirname, extname, join as joinLocalPath, relative } from 'node:path'
+import { mkdir, mkdtemp, open as openLocalFile, readdir, rm, stat as statLocalFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, dirname, extname, join as joinLocalPath, posix as posixPath, relative } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
@@ -13,10 +15,14 @@ import type {
   SftpInitResult,
   SftpPreviewImageResult,
   SftpProbeTextResult,
+  SftpRemoteTransferProgressEvent,
+  SftpRemoteTransferResult,
+  SftpRemoteTransferSource,
   SftpReadTextResult,
   SftpUploadProgressEvent,
   SftpUploadResult
 } from '../../shared/sftp.js'
+import type { ServerAuthConfig } from '../../shared/server.js'
 
 interface SftpSession {
   tabId: string
@@ -35,6 +41,14 @@ interface RawSftpClient {
     position: number,
     callback: (error: Error | undefined, bytesRead: number) => void
   ) => void
+  write: (
+    handle: Buffer,
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number,
+    callback: (error?: Error) => void
+  ) => void
   close: (handle: Buffer, callback: (error?: Error) => void) => void
 }
 
@@ -44,6 +58,11 @@ interface DownloadRuntimeTask {
   paused: boolean
   canceled: boolean
   emitProgress: (status: SftpDownloadProgressEvent['status'], error?: string) => void
+}
+
+interface PausableTransferTask {
+  paused: boolean
+  canceled: boolean
 }
 
 interface UploadFileEntry {
@@ -60,9 +79,48 @@ interface UploadRuntimeTask {
   remoteDirectoryPath: string
   paused: boolean
   canceled: boolean
+  completedRemotePaths: Set<string>
+  currentRemotePath?: string
   transferredBytes: number
   totalBytes: number
   emitProgress: (status: SftpUploadProgressEvent['status'], error?: string) => void
+}
+
+interface RemoteTransferEntry {
+  sourcePath: string
+  targetPath: string
+  type: RemoteFileNode['type']
+  size: number
+}
+
+interface RemoteTransferRuntimeTask {
+  sourceServerId: string
+  targetServerId: string
+  sources: SftpRemoteTransferSource[]
+  targetDirectoryPath: string
+  sourceClient?: SftpClient
+  targetClient?: SftpClient
+  sshClient?: SshClient
+  tempDirectoryPath?: string
+  paused: boolean
+  canceled: boolean
+  completedSourcePaths: Set<string>
+  transferredBytes: number
+  totalBytes: number
+  phase: SftpRemoteTransferProgressEvent['phase']
+  emitProgress: (status: SftpRemoteTransferProgressEvent['status'], error?: string) => void
+}
+
+interface PausedRemoteTransferTask {
+  sourceServerId: string
+  targetServerId: string
+  sources: SftpRemoteTransferSource[]
+  targetDirectoryPath: string
+  completedSourcePaths: string[]
+  tempDirectoryPath?: string
+  transferredBytes: number
+  totalBytes: number
+  phase: SftpRemoteTransferProgressEvent['phase']
 }
 
 interface PausedUploadTask {
@@ -70,6 +128,8 @@ interface PausedUploadTask {
   name: string
   localPaths: string[]
   remoteDirectoryPath: string
+  completedRemotePaths: string[]
+  currentRemotePath?: string
   transferredBytes: number
   totalBytes: number
 }
@@ -79,6 +139,8 @@ const { maxEditableFileSizeBytes, textProbeSampleBytes } = appConfig.sftp.textEd
 const activeDownloadTasks = new Map<string, DownloadRuntimeTask>()
 const activeUploadTasks = new Map<string, UploadRuntimeTask>()
 const pausedUploadTasks = new Map<string, PausedUploadTask>()
+const activeRemoteTransferTasks = new Map<string, RemoteTransferRuntimeTask>()
+const pausedRemoteTransferTasks = new Map<string, PausedRemoteTransferTask>()
 const imageMimeTypes: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -89,6 +151,87 @@ const imageMimeTypes: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml',
   '.avif': 'image/avif'
+}
+
+function stopRemoteTransferConnections(taskId: string, task: RemoteTransferRuntimeTask): void {
+  task.sshClient?.end()
+  // SFTP 中转下载/上传阶段关闭连接可能需要等待底层分块读写退出，这里异步执行，避免控制 IPC 卡住任务中心按钮。
+  void task.sourceClient?.end().catch((error) => {
+    writeAppLog({
+      scope: 'main.sftp',
+      level: 'warn',
+      message: '停止服务器间传输源连接失败',
+      data: { taskId, error: error instanceof Error ? error.message : String(error) }
+    })
+  })
+  void task.targetClient?.end().catch((error) => {
+    writeAppLog({
+      scope: 'main.sftp',
+      level: 'warn',
+      message: '停止服务器间传输目标连接失败',
+      data: { taskId, error: error instanceof Error ? error.message : String(error) }
+    })
+  })
+}
+
+function createPausedRemoteTransferTask(task: RemoteTransferRuntimeTask): PausedRemoteTransferTask {
+  return {
+    sourceServerId: task.sourceServerId,
+    targetServerId: task.targetServerId,
+    sources: task.sources,
+    targetDirectoryPath: task.targetDirectoryPath,
+    completedSourcePaths: [...task.completedSourcePaths],
+    tempDirectoryPath: task.tempDirectoryPath,
+    transferredBytes: task.transferredBytes,
+    totalBytes: task.totalBytes,
+    phase: task.phase
+  }
+}
+
+// 记录普通上传暂停时的进度快照，继续时用于跳过已完成文件并续传当前文件。
+function createPausedUploadTask(task: UploadRuntimeTask): PausedUploadTask {
+  return {
+    tabId: task.tabId,
+    name: task.name,
+    localPaths: task.localPaths,
+    remoteDirectoryPath: task.remoteDirectoryPath,
+    completedRemotePaths: [...task.completedRemotePaths],
+    currentRemotePath: task.currentRemotePath,
+    transferredBytes: task.transferredBytes,
+    totalBytes: task.totalBytes
+  }
+}
+
+function stopUploadConnection(taskId: string, task: UploadRuntimeTask, action: 'pause' | 'cancel'): void {
+  // 上传暂停/取消只负责快速打断连接，不能阻塞 IPC 返回，否则任务面板会一直处于操作中。
+  void task.client.end().catch((error) => {
+    writeAppLog({
+      scope: 'main.sftp',
+      level: 'warn',
+      message: action === 'pause' ? '暂停上传时关闭连接失败' : '取消上传时关闭连接失败',
+      data: { taskId, error: error instanceof Error ? error.message : String(error) }
+    })
+  })
+}
+
+// 统一清理服务器间中转临时目录，暂停时跳过，完成/取消/失败时复用这一处收口。
+async function cleanupRemoteTransferTempDirectory(taskId: string, tempDirectoryPath?: string): Promise<void> {
+  if (!tempDirectoryPath) {
+    return
+  }
+
+  await rm(tempDirectoryPath, { recursive: true, force: true }).catch((error) => {
+    writeAppLog({
+      scope: 'main.sftp',
+      level: 'warn',
+      message: '服务器间传输临时目录清理失败',
+      data: {
+        taskId,
+        tempDirectoryPath,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    })
+  })
 }
 
 async function getLocalFileSize(path: string): Promise<number> {
@@ -124,9 +267,35 @@ function openRemoteReadHandle(sftp: RawSftpClient, path: string): Promise<Buffer
   })
 }
 
+function openRemoteWriteHandle(sftp: RawSftpClient, path: string, flags: 'w' | 'r+'): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    sftp.open(path, flags, (error, handle) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      resolve(handle)
+    })
+  })
+}
+
 function closeRemoteHandle(sftp: RawSftpClient, handle: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {
     sftp.close(handle, (error) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      resolve()
+    })
+  })
+}
+
+function writeRemoteChunk(sftp: RawSftpClient, handle: Buffer, buffer: Buffer, position: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    sftp.write(handle, buffer, 0, buffer.length, position, (error) => {
       if (error) {
         reject(error)
         return
@@ -174,12 +343,83 @@ function joinRemotePath(parentPath: string, childName: string): string {
   return `${pathPrefix}${childName.replace(/\\/g, '/')}`.replace(/\/+/g, '/')
 }
 
+function quoteShellValue(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function getServerSshTarget(server: ServerAuthConfig): string {
+  return `${server.username}@${server.host}`
+}
+
 function getUploadDisplayName(localPaths: string[]): string {
   if (localPaths.length === 1) {
     return basename(localPaths[0])
   }
 
   return `${localPaths.length} 个项目`
+}
+
+function getRemoteTransferDisplayName(sources: SftpRemoteTransferSource[]): string {
+  if (sources.length === 1) {
+    return sources[0].name
+  }
+
+  return `${sources.length} 个项目`
+}
+
+function createSftpClient(name: string, server: ServerAuthConfig): Promise<SftpClient> {
+  const client = new SftpClient(name)
+
+  return client
+    .connect({
+      ...createServerConnectOptions(server),
+      readyTimeout: 15000
+    })
+    .then(() => client)
+}
+
+function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
+  const client = new SshClient()
+
+  return new Promise((resolve, reject) => {
+    client
+      .once('ready', () => resolve(client))
+      .once('error', reject)
+      .connect({
+        ...createServerConnectOptions(server),
+        readyTimeout: 15000,
+        keepaliveInterval: 10000
+      })
+  })
+}
+
+function execSshCommand(client: SshClient, command: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    client.exec(command, (error, stream) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      const stdout: Buffer[] = []
+      const stderr: Buffer[] = []
+
+      stream.on('data', (chunk: Buffer) => stdout.push(chunk))
+      stream.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
+      stream.on('close', (code: number) => {
+        const stdoutText = Buffer.concat(stdout).toString('utf8')
+        const stderrText = Buffer.concat(stderr).toString('utf8')
+
+        if (code === 0) {
+          resolve({ stdout: stdoutText, stderr: stderrText })
+          return
+        }
+
+        reject(new Error(stderrText.trim() || `远端命令执行失败：${code}`))
+      })
+      stream.on('error', reject)
+    })
+  })
 }
 
 async function collectUploadFileEntries(
@@ -230,6 +470,88 @@ async function collectUploadFileEntries(
 async function collectUploadEntries(localPaths: string[], remoteDirectoryPath: string): Promise<UploadFileEntry[]> {
   const entries = await Promise.all(
     localPaths.map((localPath) => collectUploadFileEntries(localPath, remoteDirectoryPath))
+  )
+
+  return entries.flat()
+}
+
+function getCompletedUploadBytes(entries: UploadFileEntry[], completedRemotePaths: Set<string>): number {
+  return entries.reduce(
+    (total, entry) => completedRemotePaths.has(entry.remotePath) ? total + entry.size : total,
+    0
+  )
+}
+
+async function collectRemoteTransferEntries(
+  client: SftpClient,
+  source: SftpRemoteTransferSource,
+  targetDirectoryPath: string,
+  rootSourcePath = source.path
+): Promise<RemoteTransferEntry[]> {
+  const normalizedSourcePath = normalizeRemotePath(source.path)
+  const normalizedTargetDirectoryPath = normalizeRemotePath(targetDirectoryPath)
+
+  if (source.type === 'file') {
+    const stat = await client.stat(normalizedSourcePath)
+    const relativePath = normalizedSourcePath === rootSourcePath
+      ? source.name
+      : posixPath.relative(posixPath.dirname(rootSourcePath), normalizedSourcePath)
+
+    return [
+      {
+        sourcePath: normalizedSourcePath,
+        targetPath: joinRemotePath(normalizedTargetDirectoryPath, relativePath),
+        type: 'file',
+        size: stat.size ?? source.size ?? 0
+      }
+    ]
+  }
+
+  const items = await client.list(normalizedSourcePath)
+  const targetDirectory = joinRemotePath(
+    normalizedTargetDirectoryPath,
+    normalizedSourcePath === rootSourcePath
+      ? source.name
+      : posixPath.relative(posixPath.dirname(rootSourcePath), normalizedSourcePath)
+  )
+
+  if (items.length === 0) {
+    return [
+      {
+        sourcePath: normalizedSourcePath,
+        targetPath: targetDirectory,
+        type: 'directory',
+        size: 0
+      }
+    ]
+  }
+
+  const entries = await Promise.all(
+    items.map((item) =>
+      collectRemoteTransferEntries(
+        client,
+        {
+          path: joinRemotePath(normalizedSourcePath, item.name),
+          name: item.name,
+          type: item.type === 'd' ? 'directory' : 'file',
+          size: item.size
+        },
+        normalizedTargetDirectoryPath,
+        rootSourcePath
+      )
+    )
+  )
+
+  return entries.flat()
+}
+
+async function collectAllRemoteTransferEntries(
+  client: SftpClient,
+  sources: SftpRemoteTransferSource[],
+  targetDirectoryPath: string
+): Promise<RemoteTransferEntry[]> {
+  const entries = await Promise.all(
+    sources.map((source) => collectRemoteTransferEntries(client, source, targetDirectoryPath))
   )
 
   return entries.flat()
@@ -607,7 +929,8 @@ export async function uploadLocalPathsToRemoteDirectory(
   remoteDirectoryPath: string,
   localPaths: string[],
   task: Pick<SftpUploadProgressEvent, 'taskId'>,
-  onProgress?: (event: SftpUploadProgressEvent) => void
+  onProgress?: (event: SftpUploadProgressEvent) => void,
+  resumeState?: Pick<PausedUploadTask, 'completedRemotePaths' | 'currentRemotePath' | 'transferredBytes' | 'totalBytes'>
 ): Promise<SftpUploadResult> {
   const session = getSftpSession(tabId)
   const normalizedRemoteDirectoryPath = normalizeRemotePath(remoteDirectoryPath)
@@ -617,10 +940,11 @@ export async function uploadLocalPathsToRemoteDirectory(
   const name = getUploadDisplayName(normalizedLocalPaths)
   const entries = await collectUploadEntries(normalizedLocalPaths, normalizedRemoteDirectoryPath)
   const totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
-  let transferredBytes = 0
+  const completedRemotePaths = new Set(resumeState?.completedRemotePaths ?? [])
+  let transferredBytes = Math.min(resumeState?.transferredBytes ?? 0, totalBytes)
   let lastProgressAt = 0
   let lastSpeedAt = Date.now()
-  let lastSpeedBytes = 0
+  let lastSpeedBytes = transferredBytes
   let currentSpeedBytesPerSecond = 0
   let wasCanceled = false
   let wasPaused = false
@@ -665,6 +989,8 @@ export async function uploadLocalPathsToRemoteDirectory(
     remoteDirectoryPath: normalizedRemoteDirectoryPath,
     paused: false,
     canceled: false,
+    completedRemotePaths,
+    currentRemotePath: resumeState?.currentRemotePath,
     transferredBytes,
     totalBytes,
     emitProgress
@@ -685,31 +1011,83 @@ export async function uploadLocalPathsToRemoteDirectory(
         break
       }
 
+      if (uploadTask.completedRemotePaths.has(entry.remotePath)) {
+        continue
+      }
+
       const localStat = await statLocalFile(entry.localPath)
 
       if (localStat.isDirectory()) {
         await uploadClient.mkdir(entry.remotePath, true)
+        uploadTask.completedRemotePaths.add(entry.remotePath)
         continue
       }
 
       await uploadClient.mkdir(dirname(entry.remotePath).replace(/\\/g, '/'), true)
-      let entryBaseTransferred = transferredBytes
+      const shouldResumeEntry = entry.remotePath === resumeState?.currentRemotePath
+      const entryBaseTransferred = getCompletedUploadBytes(entries, uploadTask.completedRemotePaths)
+      const savedCurrentFileBytes = Math.max(
+        (resumeState?.transferredBytes ?? entryBaseTransferred) - entryBaseTransferred,
+        0
+      )
+      const safeUploadResumeOffset = shouldResumeEntry
+        ? Math.min(savedCurrentFileBytes, entry.size)
+        : undefined
+      const uploadResumeOffset = await getRemoteUploadResumeOffset(
+        uploadClient,
+        entry.remotePath,
+        entry.size,
+        shouldResumeEntry,
+        safeUploadResumeOffset
+      )
 
-      await uploadClient.fastPut(entry.localPath, entry.remotePath, {
-        concurrency: appConfig.sftp.download.fastGetConcurrency,
-        chunkSize: appConfig.sftp.download.fastGetChunkSizeBytes,
-        step: (totalTransferred) => {
-          const now = Date.now()
-          transferredBytes = entryBaseTransferred + totalTransferred
-          uploadTask.transferredBytes = transferredBytes
+      uploadTask.currentRemotePath = entry.remotePath
+      transferredBytes = entryBaseTransferred + uploadResumeOffset
+      uploadTask.transferredBytes = transferredBytes
+      emitProgress('progress')
 
-          if (now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
-            lastProgressAt = now
-            emitProgress('progress')
+      if (shouldResumeEntry) {
+        await uploadLocalFileToRemote(
+          uploadTask,
+          uploadClient,
+          entry.localPath,
+          entry.remotePath,
+          entry.size,
+          uploadResumeOffset,
+          (totalTransferred) => {
+            const now = Date.now()
+            transferredBytes = entryBaseTransferred + totalTransferred
+            uploadTask.transferredBytes = transferredBytes
+
+            if (!uploadTask.paused && !uploadTask.canceled && now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
+              lastProgressAt = now
+              emitProgress('progress')
+            }
           }
-        }
-      })
+        )
+      } else {
+        await uploadClient.fastPut(entry.localPath, entry.remotePath, {
+          concurrency: appConfig.sftp.download.fastGetConcurrency,
+          chunkSize: appConfig.sftp.download.fastGetChunkSizeBytes,
+          step: (totalTransferred) => {
+            const now = Date.now()
+            transferredBytes = entryBaseTransferred + totalTransferred
+            uploadTask.transferredBytes = transferredBytes
 
+            if (!uploadTask.paused && !uploadTask.canceled && now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
+              lastProgressAt = now
+              emitProgress('progress')
+            }
+          }
+        })
+      }
+
+      if (uploadTask.paused || uploadTask.canceled) {
+        break
+      }
+
+      uploadTask.completedRemotePaths.add(entry.remotePath)
+      uploadTask.currentRemotePath = undefined
       transferredBytes = entryBaseTransferred + entry.size
       uploadTask.transferredBytes = transferredBytes
     }
@@ -746,6 +1124,8 @@ export async function uploadLocalPathsToRemoteDirectory(
         name,
         localPaths: normalizedLocalPaths,
         remoteDirectoryPath: normalizedRemoteDirectoryPath,
+        completedRemotePaths: [...uploadTask.completedRemotePaths],
+        currentRemotePath: uploadTask.currentRemotePath,
         transferredBytes,
         totalBytes
       })
@@ -791,19 +1171,68 @@ export async function controlRemoteUploadTask(
   action: 'pause' | 'resume' | 'cancel',
   onProgress?: (event: SftpUploadProgressEvent) => void
 ): Promise<boolean> {
+  const resumePausedTask = (pausedTask: PausedUploadTask): boolean => {
+    pausedUploadTasks.delete(taskId)
+    void uploadLocalPathsToRemoteDirectory(
+      pausedTask.tabId,
+      pausedTask.remoteDirectoryPath,
+      pausedTask.localPaths,
+      { taskId },
+      onProgress,
+      {
+        completedRemotePaths: pausedTask.completedRemotePaths,
+        currentRemotePath: pausedTask.currentRemotePath,
+        transferredBytes: pausedTask.transferredBytes,
+        totalBytes: pausedTask.totalBytes
+      }
+    ).catch((error) => {
+      onProgress?.({
+        taskId,
+        tabId: pausedTask.tabId,
+        name: pausedTask.name,
+        path: pausedTask.remoteDirectoryPath,
+        status: 'error',
+        transferredBytes: pausedTask.transferredBytes,
+        totalBytes: pausedTask.totalBytes,
+        speedBytesPerSecond: 0,
+        localPaths: pausedTask.localPaths,
+        remoteDirectoryPath: pausedTask.remoteDirectoryPath,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+
+    return true
+  }
+
   const task = activeUploadTasks.get(taskId)
 
   if (task) {
     if (action === 'pause') {
       task.paused = true
-      await task.client.end().catch(() => undefined)
+      pausedUploadTasks.set(taskId, createPausedUploadTask(task))
+      task.emitProgress('paused')
+      stopUploadConnection(taskId, task, 'pause')
       return true
     }
 
     if (action === 'cancel') {
       task.canceled = true
-      await task.client.end().catch(() => undefined)
+      pausedUploadTasks.delete(taskId)
+      task.emitProgress('canceled')
+      stopUploadConnection(taskId, task, 'cancel')
       return true
+    }
+
+    if (action === 'resume' && task.paused) {
+      const pausedTask = pausedUploadTasks.get(taskId)
+
+      if (!pausedTask) {
+        return false
+      }
+
+      activeUploadTasks.delete(taskId)
+      stopUploadConnection(taskId, task, 'pause')
+      return resumePausedTask(pausedTask)
     }
 
     return false
@@ -836,30 +1265,736 @@ export async function controlRemoteUploadTask(
     return false
   }
 
-  pausedUploadTasks.delete(taskId)
-  void uploadLocalPathsToRemoteDirectory(
-    pausedTask.tabId,
-    pausedTask.remoteDirectoryPath,
-    pausedTask.localPaths,
-    { taskId },
-    onProgress
-  ).catch((error) => {
+  return resumePausedTask(pausedTask)
+}
+
+async function tryDirectRemoteTransfer(
+  task: RemoteTransferRuntimeTask,
+  taskId: string,
+  sourceServer: ServerAuthConfig,
+  targetServer: ServerAuthConfig
+): Promise<boolean> {
+  const sshClient = await createSshClient(sourceServer)
+  task.sshClient = sshClient
+
+  try {
+    const target = getServerSshTarget(targetServer)
+    const sshBaseOptions = [
+      '-o BatchMode=yes',
+      '-o ConnectTimeout=8',
+      '-o StrictHostKeyChecking=no',
+      '-o UserKnownHostsFile=/dev/null',
+      '-p',
+      String(targetServer.port)
+    ].join(' ')
+    const probeCommand = `ssh ${sshBaseOptions} ${quoteShellValue(target)} ${quoteShellValue('pwd')}`
+
+    await execSshCommand(sshClient, probeCommand)
+
+    if (task.paused || task.canceled) {
+      return false
+    }
+
+    const sourceArgs = task.sources.map((source) => quoteShellValue(normalizeRemotePath(source.path))).join(' ')
+    const targetArg = `${target}:${normalizeRemotePath(task.targetDirectoryPath).replace(/'/g, `'\\''`)}`
+    const scpCommand = [
+      'scp',
+      '-r',
+      '-P',
+      String(targetServer.port),
+      '-o BatchMode=yes',
+      '-o StrictHostKeyChecking=no',
+      '-o UserKnownHostsFile=/dev/null',
+      '--',
+      sourceArgs,
+      quoteShellValue(targetArg)
+    ].join(' ')
+
+    writeAppLog({
+      scope: 'main.sftp',
+      message: '服务器间直连传输开始',
+      data: { taskId, sourceServerId: task.sourceServerId, targetServerId: task.targetServerId }
+    })
+
+    task.phase = 'direct'
+    task.emitProgress('progress')
+    await execSshCommand(sshClient, scpCommand)
+    task.transferredBytes = task.totalBytes
+    task.emitProgress('progress')
+    return true
+  } finally {
+    task.sshClient = undefined
+    sshClient.end()
+  }
+}
+
+function getRelativeRemotePath(rootPath: string, childPath: string): string {
+  const normalizedRoot = normalizeRemotePath(rootPath).replace(/\/$/, '')
+  const normalizedChild = normalizeRemotePath(childPath)
+  const prefix = `${normalizedRoot}/`
+
+  if (normalizedChild.startsWith(prefix)) {
+    return normalizedChild.slice(prefix.length)
+  }
+
+  return posixPath.basename(normalizedChild)
+}
+
+async function downloadRemoteTransferEntryToLocal(
+  task: RemoteTransferRuntimeTask,
+  client: SftpClient,
+  entry: RemoteTransferEntry,
+  localPath: string,
+  onChunk: (transferredBytes: number) => void
+): Promise<void> {
+  let localSize = await getLocalFileSize(localPath)
+
+  if (localSize > entry.size) {
+    await rm(localPath, { force: true }).catch(() => undefined)
+    localSize = 0
+  }
+
+  const resumeOffset = Math.min(localSize, entry.size)
+
+  if (entry.size === 0) {
+    const emptyFile = await openLocalFile(localPath, 'w')
+
+    await emptyFile.close()
+    onChunk(0)
+    return
+  }
+
+  if (resumeOffset > 0) {
+    // 复用暂停前写入的本地半成品，进度先回到真实续传偏移。
+    onChunk(resumeOffset)
+  }
+
+  if (resumeOffset >= entry.size) {
+    return
+  }
+
+  const rawSftp = getRawSftpClient(client)
+  const remoteHandle = await openRemoteReadHandle(rawSftp, entry.sourcePath)
+  const localFile = await openLocalFile(localPath, resumeOffset > 0 ? 'r+' : 'w')
+  let nextReadPosition = resumeOffset
+  let transferredBytes = resumeOffset
+
+  try {
+    const readRemainingChunks = async (): Promise<void> => {
+      while (!task.paused && !task.canceled && nextReadPosition < entry.size) {
+        const readPosition = nextReadPosition
+        const readLength = Math.min(appConfig.sftp.download.fastGetChunkSizeBytes, entry.size - readPosition)
+        nextReadPosition += readLength
+        const chunk = await readRemoteChunk(rawSftp, remoteHandle, readLength, readPosition)
+
+        if (chunk.length === 0 || task.paused || task.canceled) {
+          return
+        }
+
+        // 并发分块按远程偏移写入本地临时文件，暂停时最多多完成当前分块。
+        await localFile.write(chunk, 0, chunk.length, readPosition)
+        transferredBytes += chunk.length
+        onChunk(transferredBytes)
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: appConfig.sftp.download.fastGetConcurrency }, () => readRemainingChunks())
+    )
+  } finally {
+    await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined)
+    await localFile.close().catch(() => undefined)
+  }
+}
+
+async function getRemoteUploadResumeOffset(
+  client: SftpClient,
+  remotePath: string,
+  totalBytes: number,
+  allowResume: boolean,
+  safeResumeOffset?: number
+): Promise<number> {
+  if (!allowResume || totalBytes <= 0) {
+    return 0
+  }
+
+  try {
+    const remoteStat = await client.stat(remotePath)
+
+    if (remoteStat.isDirectory) {
+      throw new Error(`目标路径已存在同名目录：${remotePath}`)
+    }
+
+    if (remoteStat.size > totalBytes) {
+      return 0
+    }
+
+    if (typeof safeResumeOffset === 'number') {
+      return Math.min(Math.max(safeResumeOffset, 0), remoteStat.size, totalBytes)
+    }
+
+    return Math.min(remoteStat.size, totalBytes)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('目标路径已存在同名目录')) {
+      throw error
+    }
+
+    return 0
+  }
+}
+
+async function uploadLocalFileToRemote(
+  task: PausableTransferTask,
+  client: SftpClient,
+  localPath: string,
+  remotePath: string,
+  totalBytes: number,
+  resumeOffset: number,
+  onChunk: (transferredBytes: number) => void
+): Promise<void> {
+  const rawSftp = getRawSftpClient(client)
+
+  if (totalBytes === 0) {
+    const emptyRemoteHandle = await openRemoteWriteHandle(rawSftp, remotePath, 'w')
+
+    await closeRemoteHandle(rawSftp, emptyRemoteHandle).catch(() => undefined)
+    onChunk(0)
+    return
+  }
+
+  if (resumeOffset > 0) {
+    // 目标端已有半成品时从对应偏移继续写，避免上传阶段暂停后回到 50% 重新上传。
+    onChunk(resumeOffset)
+  }
+
+  if (resumeOffset >= totalBytes) {
+    return
+  }
+
+  const localFile = await openLocalFile(localPath, 'r')
+  let remoteHandle: Buffer | undefined
+  let nextReadPosition = resumeOffset
+  let contiguousTransferredBytes = resumeOffset
+  const completedChunks = new Map<number, number>()
+  const recordCompletedChunk = (position: number, length: number): void => {
+    const previousTransferredBytes = contiguousTransferredBytes
+
+    completedChunks.set(position, length)
+
+    while (true) {
+      const chunkLength = completedChunks.get(contiguousTransferredBytes)
+
+      if (!chunkLength) {
+        break
+      }
+
+      completedChunks.delete(contiguousTransferredBytes)
+      contiguousTransferredBytes += chunkLength
+    }
+
+    if (contiguousTransferredBytes > previousTransferredBytes) {
+      onChunk(contiguousTransferredBytes)
+    }
+  }
+
+  try {
+    remoteHandle = await openRemoteWriteHandle(rawSftp, remotePath, resumeOffset > 0 ? 'r+' : 'w')
+
+    const uploadRemainingChunks = async (): Promise<void> => {
+      while (!task.paused && !task.canceled && nextReadPosition < totalBytes) {
+        const readPosition = nextReadPosition
+        const readLength = Math.min(appConfig.sftp.download.fastGetChunkSizeBytes, totalBytes - readPosition)
+        nextReadPosition += readLength
+        const buffer = Buffer.allocUnsafe(readLength)
+        const { bytesRead } = await localFile.read(buffer, 0, readLength, readPosition)
+
+        if (bytesRead === 0 || task.paused || task.canceled) {
+          return
+        }
+
+        const chunk = bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead)
+
+        // 断点上传并发写入剩余分块，但进度只推进到连续完成的位置，保证下一次暂停仍能安全续传。
+        await writeRemoteChunk(rawSftp, remoteHandle as Buffer, chunk, readPosition)
+        recordCompletedChunk(readPosition, chunk.length)
+      }
+    }
+
+    await Promise.all(
+      Array.from({ length: appConfig.sftp.download.fastGetConcurrency }, () => uploadRemainingChunks())
+    )
+  } finally {
+    if (remoteHandle) {
+      await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined)
+    }
+    await localFile.close().catch(() => undefined)
+  }
+}
+
+async function runLocalRelayRemoteTransfer(
+  task: RemoteTransferRuntimeTask,
+  taskId: string,
+  entries: RemoteTransferEntry[],
+  sourceServer: ServerAuthConfig,
+  targetServer: ServerAuthConfig
+): Promise<void> {
+  const sourceClient = await createSftpClient(`remote-transfer-source-${taskId}`, sourceServer)
+  const targetClient = await createSftpClient(`remote-transfer-target-${taskId}`, targetServer)
+  const tempDirectoryPath = task.tempDirectoryPath ?? (await mkdtemp(joinLocalPath(tmpdir(), `orbitssh-transfer-${taskId}-`)))
+  let lastProgressAt = 0
+  let lastSpeedAt = Date.now()
+  let lastSpeedBytes = task.transferredBytes
+  let currentSpeedBytesPerSecond = 0
+
+  task.sourceClient = sourceClient
+  task.targetClient = targetClient
+  task.tempDirectoryPath = tempDirectoryPath
+
+  const getCompletedFileBytes = (): number =>
+    entries.reduce(
+      (total, entry) =>
+        entry.type === 'file' && task.completedSourcePaths.has(entry.sourcePath)
+          ? total + entry.size
+          : total,
+      0
+    )
+  const getLogicalTransferBytes = (
+    completedFileBytes: number,
+    entrySize: number,
+    phase: 'download' | 'upload',
+    phaseTransferredBytes: number
+  ): number => {
+    // 本地中转展示为两段进度：下载到本地占前 50%，上传到目标占后 50%。
+    const completedBytes = completedFileBytes
+    const entryHalfBytes = entrySize / 2
+
+    if (phase === 'download') {
+      return completedBytes + Math.min(phaseTransferredBytes, entrySize) / 2
+    }
+
+    return completedBytes + entryHalfBytes + Math.min(phaseTransferredBytes, entrySize) / 2
+  }
+  const emitProgress = (): void => {
+    const now = Date.now()
+    const elapsedSeconds = Math.max((now - lastSpeedAt) / 1000, 0.001)
+    currentSpeedBytesPerSecond = Math.max((task.transferredBytes - lastSpeedBytes) / elapsedSeconds, 0)
+    lastSpeedAt = now
+    lastSpeedBytes = task.transferredBytes
+    task.emitProgress('progress')
+  }
+  const resumeUploadTransferBytes = task.phase === 'upload' ? task.transferredBytes : undefined
+  let shouldResumeUploadEntry = task.phase === 'upload'
+
+  try {
+    await targetClient.mkdir(normalizeRemotePath(task.targetDirectoryPath), true)
+
+    for (const entry of entries) {
+      if (task.paused || task.canceled) {
+        break
+      }
+
+      if (task.completedSourcePaths.has(entry.sourcePath)) {
+        continue
+      }
+
+      if (entry.type === 'directory') {
+        await targetClient.mkdir(entry.targetPath, true)
+        task.completedSourcePaths.add(entry.sourcePath)
+        continue
+      }
+
+      const relativePath = getRelativeRemotePath(task.targetDirectoryPath, entry.targetPath)
+      const localPath = joinLocalPath(tempDirectoryPath, ...relativePath.split('/').filter(Boolean))
+      const completedFileBytes = getCompletedFileBytes()
+      const existingLocalBytes = await getLocalFileSize(localPath)
+      const localResumeOffset = existingLocalBytes > entry.size ? 0 : existingLocalBytes
+
+      await mkdir(dirname(localPath), { recursive: true })
+      await targetClient.mkdir(posixPath.dirname(entry.targetPath), true)
+      task.phase = 'download'
+      // 恢复中转下载时先按本地半成品大小展示进度，避免任务面板短暂回跳到当前文件 0%。
+      task.transferredBytes = getLogicalTransferBytes(completedFileBytes, entry.size, 'download', localResumeOffset)
+      emitProgress()
+      await downloadRemoteTransferEntryToLocal(task, sourceClient, entry, localPath, (totalTransferred) => {
+        const now = Date.now()
+        task.transferredBytes = getLogicalTransferBytes(completedFileBytes, entry.size, 'download', totalTransferred)
+
+        if (!task.paused && !task.canceled && now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
+          lastProgressAt = now
+          emitProgress()
+        }
+      })
+
+      if (task.paused || task.canceled) {
+        break
+      }
+
+      const canResumeUpload = shouldResumeUploadEntry
+      shouldResumeUploadEntry = false
+      const safeUploadResumeOffset = canResumeUpload
+        && typeof resumeUploadTransferBytes === 'number'
+        ? Math.min(
+            Math.max(resumeUploadTransferBytes - completedFileBytes - entry.size / 2, 0) * 2,
+            entry.size
+          )
+        : undefined
+      const uploadResumeOffset = await getRemoteUploadResumeOffset(
+        targetClient,
+        entry.targetPath,
+        entry.size,
+        canResumeUpload,
+        safeUploadResumeOffset
+      )
+      task.phase = 'upload'
+      task.transferredBytes = getLogicalTransferBytes(completedFileBytes, entry.size, 'upload', uploadResumeOffset)
+      emitProgress()
+      await uploadLocalFileToRemote(
+        task,
+        targetClient,
+        localPath,
+        entry.targetPath,
+        entry.size,
+        uploadResumeOffset,
+        (totalTransferred) => {
+          const now = Date.now()
+          task.transferredBytes = getLogicalTransferBytes(completedFileBytes, entry.size, 'upload', totalTransferred)
+
+          if (!task.paused && !task.canceled && now - lastProgressAt >= appConfig.sftp.download.progressIntervalMs) {
+            lastProgressAt = now
+            emitProgress()
+          }
+        }
+      )
+
+      if (task.paused || task.canceled) {
+        break
+      }
+
+      const targetStat = await targetClient.stat(entry.targetPath)
+
+      if ((targetStat.size ?? 0) !== entry.size) {
+        throw new Error(`目标文件大小校验失败：${entry.targetPath}`)
+      }
+
+      task.completedSourcePaths.add(entry.sourcePath)
+      task.transferredBytes = getCompletedFileBytes()
+      emitProgress()
+      await rm(localPath, { force: true }).catch(() => undefined)
+    }
+  } finally {
+    await sourceClient.end().catch(() => undefined)
+    await targetClient.end().catch(() => undefined)
+    task.sourceClient = undefined
+    task.targetClient = undefined
+  }
+}
+
+export async function transferRemoteSourcesBetweenServers(
+  input: {
+    taskId: string
+    sourceServerId: string
+    targetServerId: string
+    sources: SftpRemoteTransferSource[]
+    targetDirectoryPath: string
+  },
+  onProgress?: (event: SftpRemoteTransferProgressEvent) => void,
+  resumeState?: Pick<
+    PausedRemoteTransferTask,
+    'completedSourcePaths' | 'tempDirectoryPath' | 'transferredBytes' | 'totalBytes' | 'phase'
+  >
+): Promise<SftpRemoteTransferResult> {
+  const normalizedSources = input.sources.filter((source) => source.path && source.name)
+  const normalizedTargetDirectoryPath = normalizeRemotePath(input.targetDirectoryPath)
+
+  if (normalizedSources.length === 0) {
+    return { transferred: false, taskId: input.taskId, transferredCount: 0 }
+  }
+
+  const sourceServer = getServerAuthConfig(input.sourceServerId)
+  const targetServer = getServerAuthConfig(input.targetServerId)
+  const name = getRemoteTransferDisplayName(normalizedSources)
+  let totalBytes = resumeState?.totalBytes ?? normalizedSources.reduce((total, source) => total + (source.size ?? 0), 0)
+  let transferredBytes = resumeState?.transferredBytes ?? 0
+  let lastSpeedAt = Date.now()
+  let lastSpeedBytes = transferredBytes
+  let currentSpeedBytesPerSecond = 0
+  let entries: RemoteTransferEntry[] = []
+  let wasPaused = false
+  let wasCanceled = false
+  const task: RemoteTransferRuntimeTask = {
+    sourceServerId: input.sourceServerId,
+    targetServerId: input.targetServerId,
+    sources: normalizedSources,
+    targetDirectoryPath: normalizedTargetDirectoryPath,
+    tempDirectoryPath: resumeState?.tempDirectoryPath,
+    paused: false,
+    canceled: false,
+    completedSourcePaths: new Set(resumeState?.completedSourcePaths ?? []),
+    transferredBytes,
+    totalBytes,
+    phase: resumeState?.phase ?? 'preparing',
+    emitProgress: (status, error) => {
+      const now = Date.now()
+
+      if (status === 'progress') {
+        const elapsedSeconds = Math.max((now - lastSpeedAt) / 1000, 0.001)
+        currentSpeedBytesPerSecond = Math.max((task.transferredBytes - lastSpeedBytes) / elapsedSeconds, 0)
+        lastSpeedAt = now
+        lastSpeedBytes = task.transferredBytes
+      }
+
+      onProgress?.({
+        taskId: input.taskId,
+        sourceServerId: input.sourceServerId,
+        targetServerId: input.targetServerId,
+        name,
+        path: normalizedSources[0].path,
+        targetDirectoryPath: normalizedTargetDirectoryPath,
+        phase: task.phase,
+        status,
+        transferredBytes: task.transferredBytes,
+        totalBytes: task.totalBytes,
+        speedBytesPerSecond: ['started', 'paused', 'canceled', 'error'].includes(status) ? 0 : currentSpeedBytesPerSecond,
+        sources: normalizedSources,
+        error
+      })
+    }
+  }
+
+  activeRemoteTransferTasks.set(input.taskId, task)
+  task.emitProgress('started')
+
+  try {
+    const collectClient = await createSftpClient(`remote-transfer-collect-${input.taskId}`, sourceServer)
+    task.sourceClient = collectClient
+
+    try {
+      if (!task.paused && !task.canceled) {
+        entries = await collectAllRemoteTransferEntries(collectClient, normalizedSources, normalizedTargetDirectoryPath)
+        totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
+        task.totalBytes = totalBytes
+        task.phase = 'preparing'
+        task.emitProgress('progress')
+      }
+    } finally {
+      if (task.sourceClient === collectClient) {
+        task.sourceClient = undefined
+      }
+      await collectClient.end().catch(() => undefined)
+    }
+
+    if (task.paused || task.canceled) {
+      // 目录收集阶段已收到暂停/取消请求，避免继续进入直连或本地中转。
+    } else if (!resumeState && entries.length > 0) {
+      try {
+        const transferredDirectly = await tryDirectRemoteTransfer(task, input.taskId, sourceServer, targetServer)
+
+        if (transferredDirectly) {
+          task.transferredBytes = task.totalBytes
+          task.emitProgress('completed')
+          return { transferred: true, taskId: input.taskId, transferredCount: entries.length }
+        }
+      } catch (error) {
+        if (task.paused || task.canceled) {
+          throw error
+        }
+
+        writeAppLog({
+          scope: 'main.sftp',
+          level: 'warn',
+          message: '服务器间直连传输不可用，切换本地中转',
+          data: {
+            taskId: input.taskId,
+            sourceServerId: input.sourceServerId,
+            targetServerId: input.targetServerId,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        })
+      }
+    }
+
+    if (!task.paused && !task.canceled) {
+      await runLocalRelayRemoteTransfer(task, input.taskId, entries, sourceServer, targetServer)
+    }
+
+    if (task.canceled) {
+      wasCanceled = true
+    } else if (task.paused) {
+      wasPaused = true
+    } else {
+      task.transferredBytes = task.totalBytes
+      task.phase = 'upload'
+      task.emitProgress('completed')
+    }
+  } catch (error) {
+    if (task.canceled) {
+      wasCanceled = true
+    } else if (task.paused) {
+      wasPaused = true
+    } else {
+      task.emitProgress('error', error instanceof Error ? error.message : String(error))
+      throw error
+    }
+  } finally {
+    const isCurrentTask = activeRemoteTransferTasks.get(input.taskId) === task
+
+    if (isCurrentTask) {
+      activeRemoteTransferTasks.delete(input.taskId)
+    }
+    task.sshClient?.end()
+    await task.sourceClient?.end().catch(() => undefined)
+    await task.targetClient?.end().catch(() => undefined)
+
+    if (!wasPaused) {
+      await cleanupRemoteTransferTempDirectory(input.taskId, task.tempDirectoryPath)
+    }
+
+    if (isCurrentTask && wasPaused) {
+      pausedRemoteTransferTasks.set(input.taskId, createPausedRemoteTransferTask(task))
+      task.emitProgress('paused')
+    } else if (isCurrentTask && wasCanceled) {
+      pausedRemoteTransferTasks.delete(input.taskId)
+      task.emitProgress('canceled')
+    } else if (isCurrentTask) {
+      pausedRemoteTransferTasks.delete(input.taskId)
+    }
+  }
+
+  if (wasPaused || wasCanceled) {
+    return {
+      transferred: false,
+      taskId: input.taskId,
+      transferredCount: task.completedSourcePaths.size
+    }
+  }
+
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '服务器间传输完成',
+    data: {
+      taskId: input.taskId,
+      sourceServerId: input.sourceServerId,
+      targetServerId: input.targetServerId,
+      sourceCount: normalizedSources.length,
+      transferredCount: entries.length
+    }
+  })
+
+  return { transferred: entries.length > 0, taskId: input.taskId, transferredCount: entries.length }
+}
+
+export async function controlRemoteTransferTask(
+  taskId: string,
+  action: 'pause' | 'resume' | 'cancel',
+  onProgress?: (event: SftpRemoteTransferProgressEvent) => void
+): Promise<boolean> {
+  const resumePausedTask = (
+    pausedTask: PausedRemoteTransferTask
+  ): boolean => {
+    pausedRemoteTransferTasks.delete(taskId)
+    void transferRemoteSourcesBetweenServers(
+      {
+        taskId,
+        sourceServerId: pausedTask.sourceServerId,
+        targetServerId: pausedTask.targetServerId,
+        sources: pausedTask.sources,
+        targetDirectoryPath: pausedTask.targetDirectoryPath
+      },
+      onProgress,
+      {
+        completedSourcePaths: pausedTask.completedSourcePaths,
+        tempDirectoryPath: pausedTask.tempDirectoryPath,
+        transferredBytes: pausedTask.transferredBytes,
+        totalBytes: pausedTask.totalBytes,
+        phase: pausedTask.phase
+      }
+    ).catch((error) => {
+      onProgress?.({
+        taskId,
+        sourceServerId: pausedTask.sourceServerId,
+        targetServerId: pausedTask.targetServerId,
+        name: getRemoteTransferDisplayName(pausedTask.sources),
+        path: pausedTask.sources[0]?.path ?? '',
+        targetDirectoryPath: pausedTask.targetDirectoryPath,
+        phase: pausedTask.phase,
+        status: 'error',
+        transferredBytes: pausedTask.transferredBytes,
+        totalBytes: pausedTask.totalBytes,
+        speedBytesPerSecond: 0,
+        sources: pausedTask.sources,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+
+    return true
+  }
+
+  const task = activeRemoteTransferTasks.get(taskId)
+
+  if (task) {
+    if (action === 'pause') {
+      task.paused = true
+      pausedRemoteTransferTasks.set(taskId, createPausedRemoteTransferTask(task))
+      task.emitProgress('paused')
+      stopRemoteTransferConnections(taskId, task)
+
+      return true
+    }
+
+    if (action === 'cancel') {
+      task.canceled = true
+      pausedRemoteTransferTasks.delete(taskId)
+      stopRemoteTransferConnections(taskId, task)
+      return true
+    }
+
+    if (action === 'resume' && task.paused) {
+      const pausedTask = pausedRemoteTransferTasks.get(taskId)
+
+      if (!pausedTask) {
+        return false
+      }
+
+      // 参照普通下载的恢复方式：旧连接继续异步收尾，新传输直接基于暂停快照重启。
+      activeRemoteTransferTasks.delete(taskId)
+      stopRemoteTransferConnections(taskId, task)
+      return resumePausedTask(pausedTask)
+    }
+
+    return false
+  }
+
+  const pausedTask = pausedRemoteTransferTasks.get(taskId)
+
+  if (!pausedTask) {
+    return false
+  }
+
+  if (action === 'cancel') {
+    pausedRemoteTransferTasks.delete(taskId)
+    await cleanupRemoteTransferTempDirectory(taskId, pausedTask.tempDirectoryPath)
     onProgress?.({
       taskId,
-      tabId: pausedTask.tabId,
-      name: pausedTask.name,
-      path: pausedTask.remoteDirectoryPath,
-      status: 'error',
+      sourceServerId: pausedTask.sourceServerId,
+      targetServerId: pausedTask.targetServerId,
+      name: getRemoteTransferDisplayName(pausedTask.sources),
+      path: pausedTask.sources[0]?.path ?? '',
+      targetDirectoryPath: pausedTask.targetDirectoryPath,
+      phase: pausedTask.phase,
+      status: 'canceled',
       transferredBytes: pausedTask.transferredBytes,
       totalBytes: pausedTask.totalBytes,
       speedBytesPerSecond: 0,
-      localPaths: pausedTask.localPaths,
-      remoteDirectoryPath: pausedTask.remoteDirectoryPath,
-      error: error instanceof Error ? error.message : String(error)
+      sources: pausedTask.sources
     })
-  })
+    return true
+  }
 
-  return true
+  if (action !== 'resume') {
+    return false
+  }
+
+  return resumePausedTask(pausedTask)
 }
 
 export async function controlRemoteDownloadTask(

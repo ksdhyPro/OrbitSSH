@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type {
   SftpDownloadProgressEvent,
+  SftpRemoteTransferProgressEvent,
   SftpUploadProgressEvent,
 } from "../../shared/sftp";
 import type { DownloadTask } from "../types/download";
@@ -87,6 +88,27 @@ export const useDownloadsStore = defineStore("downloads", () => {
     }
   }
 
+  function handleSftpRemoteTransferProgress(
+    event: SftpRemoteTransferProgressEvent,
+  ): void {
+    upsertDownloadTask({
+      taskId: event.taskId,
+      tabId: event.targetServerId,
+      direction: "server-transfer",
+      name: event.name,
+      path: event.path,
+      status: event.status,
+      transferredBytes: event.transferredBytes,
+      totalBytes: event.totalBytes,
+      speedBytesPerSecond: event.speedBytesPerSecond,
+      sourceServerId: event.sourceServerId,
+      targetServerId: event.targetServerId,
+      transferPhase: event.phase,
+      targetDirectoryPath: event.targetDirectoryPath,
+      error: event.error,
+    });
+  }
+
   function removeDownloadTask(taskId: string): void {
     downloadTasks.value = downloadTasks.value.filter(
       task => task.taskId !== taskId,
@@ -107,8 +129,23 @@ export const useDownloadsStore = defineStore("downloads", () => {
     ]);
 
     try {
+      let isControlled = true;
+
       if (task.direction === "upload") {
-        await core.orbitSSHApi?.sftp.controlUpload({
+        if (!core.orbitSSHApi?.sftp.controlUpload) {
+          throw new Error("当前窗口未加载上传控制能力，请重启应用后重试");
+        }
+
+        isControlled = await core.orbitSSHApi.sftp.controlUpload({
+          taskId: task.taskId,
+          action,
+        });
+      } else if (task.direction === "server-transfer") {
+        if (!core.orbitSSHApi?.sftp.controlRemoteTransfer) {
+          throw new Error("当前窗口未加载数据传输控制能力，请重启应用后重试");
+        }
+
+        isControlled = await core.orbitSSHApi.sftp.controlRemoteTransfer({
           taskId: task.taskId,
           action,
         });
@@ -123,11 +160,19 @@ export const useDownloadsStore = defineStore("downloads", () => {
           transferredBytes: task.transferredBytes,
         });
       } else {
-        await core.orbitSSHApi?.sftp.controlDownload({
+        if (!core.orbitSSHApi?.sftp.controlDownload) {
+          throw new Error("当前窗口未加载下载控制能力，请重启应用后重试");
+        }
+
+        isControlled = await core.orbitSSHApi.sftp.controlDownload({
           taskId: task.taskId,
           action,
           localPath: task.filePath,
         });
+      }
+
+      if (!isControlled) {
+        throw new Error("传输任务状态已变化，请稍后重试");
       }
 
       if (action === "cancel") {
@@ -154,6 +199,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
 
   let removeSftpDownloadProgressListener: (() => void) | undefined;
   let removeSftpUploadProgressListener: (() => void) | undefined;
+  let removeSftpRemoteTransferProgressListener: (() => void) | undefined;
 
   function startListeners(): void {
     if (core.orbitSSHApi && !removeSftpDownloadProgressListener) {
@@ -165,6 +211,16 @@ export const useDownloadsStore = defineStore("downloads", () => {
       removeSftpUploadProgressListener =
         core.orbitSSHApi.sftp.onUploadProgress(handleSftpUploadProgress);
     }
+
+    if (
+      core.orbitSSHApi?.sftp.onRemoteTransferProgress &&
+      !removeSftpRemoteTransferProgressListener
+    ) {
+      removeSftpRemoteTransferProgressListener =
+        core.orbitSSHApi.sftp.onRemoteTransferProgress(
+          handleSftpRemoteTransferProgress,
+        );
+    }
   }
 
   function stopListeners(): void {
@@ -172,6 +228,8 @@ export const useDownloadsStore = defineStore("downloads", () => {
     removeSftpDownloadProgressListener = undefined;
     removeSftpUploadProgressListener?.();
     removeSftpUploadProgressListener = undefined;
+    removeSftpRemoteTransferProgressListener?.();
+    removeSftpRemoteTransferProgressListener = undefined;
   }
 
   return {
@@ -184,6 +242,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     closeTaskList,
     handleSftpDownloadProgress,
     handleSftpUploadProgress,
+    handleSftpRemoteTransferProgress,
     controlDownloadTask,
     removeDownloadTask,
     startListeners,

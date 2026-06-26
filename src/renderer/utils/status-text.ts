@@ -25,21 +25,32 @@ export function getDownloadProgressPercent(task: DownloadTask): number {
 }
 
 export function getDownloadTaskStatusText(task: DownloadTask): string {
+  const phasePrefixMap: Record<string, string> = {
+    preparing: "准备中",
+    direct: "直连传输",
+    download: "下载到本地",
+    upload: "上传到目标",
+  };
+  const phasePrefix =
+    task.direction === "server-transfer" && task.transferPhase
+      ? `${phasePrefixMap[task.transferPhase] ?? "服务器传输"} · `
+      : "";
+
   if (task.status === "completed") {
     return "已完成";
   }
 
   if (task.status === "error") {
-    return "失败";
+    return `${phasePrefix}失败`;
   }
 
   if (task.status === "canceled") {
-    return "已取消";
+    return `${phasePrefix}已取消`;
   }
 
   if (task.status === "paused") {
-    return "已暂停";
+    return `${phasePrefix}已暂停`;
   }
 
-  return `${getDownloadProgressPercent(task)}% · ${formatTransferSpeed(task.speedBytesPerSecond)}`;
+  return `${phasePrefix}${getDownloadProgressPercent(task)}% · ${formatTransferSpeed(task.speedBytesPerSecond)}`;
 }

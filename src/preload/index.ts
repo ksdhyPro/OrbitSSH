@@ -22,6 +22,10 @@ import type {
   SftpProbeTextResult,
   SftpReadTextInput,
   SftpReadTextResult,
+  SftpRemoteTransferControlInput,
+  SftpRemoteTransferInput,
+  SftpRemoteTransferProgressEvent,
+  SftpRemoteTransferResult,
   SftpUploadControlInput,
   SftpUploadInput,
   SftpUploadProgressEvent,
@@ -102,8 +106,18 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:download", input) as Promise<SftpDownloadResult>,
     upload: (input: SftpUploadInput) =>
       ipcRenderer.invoke("sftp:upload", input) as Promise<SftpUploadResult>,
+    remoteTransfer: (input: SftpRemoteTransferInput) =>
+      ipcRenderer.invoke(
+        "sftp:remote-transfer",
+        input,
+      ) as Promise<SftpRemoteTransferResult>,
     controlUpload: (input: SftpUploadControlInput) =>
       ipcRenderer.invoke("sftp:upload-control", input) as Promise<boolean>,
+    controlRemoteTransfer: (input: SftpRemoteTransferControlInput) =>
+      ipcRenderer.invoke(
+        "sftp:remote-transfer-control",
+        input,
+      ) as Promise<boolean>,
     controlDownload: (input: SftpDownloadControlInput) =>
       ipcRenderer.invoke("sftp:download-control", input) as Promise<boolean>,
     delete: (input: SftpDeleteInput) =>
@@ -129,6 +143,17 @@ const orbitSSHApi = {
       ipcRenderer.on("sftp:upload-progress", listener);
       return () =>
         ipcRenderer.removeListener("sftp:upload-progress", listener);
+    },
+    onRemoteTransferProgress: (
+      callback: (event: SftpRemoteTransferProgressEvent) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: SftpRemoteTransferProgressEvent,
+      ) => callback(payload);
+      ipcRenderer.on("sftp:remote-transfer-progress", listener);
+      return () =>
+        ipcRenderer.removeListener("sftp:remote-transfer-progress", listener);
     },
     close: (tabId: string) =>
       ipcRenderer.invoke("sftp:close", tabId) as Promise<boolean>,

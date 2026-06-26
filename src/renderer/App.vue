@@ -14,6 +14,7 @@ import {
 import "@xterm/xterm/css/xterm.css";
 
 import ConnectionDialog from "./components/ConnectionDialog.vue";
+import DataTransferDialog from "./components/DataTransferDialog.vue";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
@@ -55,6 +56,7 @@ const deleteConfirmDialog = reactive({
 });
 const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
+const isDataTransferDialogOpen = ref(false);
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -241,6 +243,7 @@ const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
 });
 
 const isWindows = computed(() => appPlatform.value === "win32");
+const isMac = computed(() => appPlatform.value === "darwin");
 
 function createParentDirectoryNode(
   currentPath: string,
@@ -508,6 +511,14 @@ function resolveDeleteConfirm(confirmed: boolean): void {
   deleteConfirmResolver.value = null;
 }
 
+function openDataTransferDialog(): void {
+  isDataTransferDialogOpen.value = true;
+}
+
+function closeDataTransferDialog(): void {
+  isDataTransferDialogOpen.value = false;
+}
+
 async function deleteServer(serverId: string): Promise<void> {
   await serversStore.deleteServer(serverId, () =>
     window.confirm("确认删除该服务器配置？"),
@@ -651,6 +662,7 @@ onUnmounted(() => {
       :is-download-task-operating="isDownloadTaskOperating"
       @update-task-list-open="isTaskListOpen = $event"
       @control-download-task="controlDownloadTask"
+      @open-data-transfer="openDataTransferDialog"
       @open-settings="openSettingsDialog"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
@@ -737,6 +749,12 @@ onUnmounted(() => {
       @close="closeConnectionDialog"
       @submit="submitConnectionForm"
       @select-private-key="selectPrivateKeyFile" />
+
+    <DataTransferDialog
+      v-if="isDataTransferDialogOpen"
+      :servers="servers"
+      :is-mac="isMac"
+      @close="closeDataTransferDialog" />
 
     <ImagePreviewDialog
       :open="isImagePreviewOpen"

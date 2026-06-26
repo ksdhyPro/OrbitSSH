@@ -49,6 +49,27 @@ export interface SftpUploadResult {
   uploadedCount?: number
 }
 
+export interface SftpRemoteTransferSource {
+  path: string
+  name: string
+  type: RemoteFileNode['type']
+  size?: number
+}
+
+export interface SftpRemoteTransferInput {
+  sourceServerId: string
+  targetServerId: string
+  sources: SftpRemoteTransferSource[]
+  targetDirectoryPath: string
+  taskId?: string
+}
+
+export interface SftpRemoteTransferResult {
+  transferred: boolean
+  taskId?: string
+  transferredCount?: number
+}
+
 export interface SftpUploadControlInput {
   taskId: string
   action: 'pause' | 'resume' | 'cancel'
@@ -81,10 +102,31 @@ export interface SftpUploadProgressEvent {
   error?: string
 }
 
+export interface SftpRemoteTransferProgressEvent {
+  taskId: string
+  sourceServerId: string
+  targetServerId: string
+  name: string
+  path: string
+  targetDirectoryPath: string
+  phase: 'preparing' | 'direct' | 'download' | 'upload'
+  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  sources: SftpRemoteTransferSource[]
+  error?: string
+}
+
 export interface SftpDownloadControlInput {
   taskId: string
   action: 'pause' | 'resume' | 'cancel'
   localPath?: string
+}
+
+export interface SftpRemoteTransferControlInput {
+  taskId: string
+  action: 'pause' | 'resume' | 'cancel'
 }
 
 export interface SftpProbeTextInput {

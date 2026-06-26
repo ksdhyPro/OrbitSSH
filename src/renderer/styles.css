@@ -139,8 +139,8 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 240px;
-  min-width: 210px;
+  /* width: 240px; */
+  /* min-width: 210px; */
   -webkit-app-region: no-drag;
 }
 
@@ -173,6 +173,31 @@ input::placeholder {
   margin-top: 2px;
   color: #8f9bad;
   font-size: 10px;
+}
+
+.header-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.header-menu button {
+  height: 28px;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: transparent;
+  color: #b8c2d1;
+  font-size: 12px;
+}
+
+.header-menu button:hover,
+.header-menu button.active {
+  background: #2d3748;
+  color: #e7edf7;
 }
 
 .panel {
@@ -1086,8 +1111,10 @@ input::placeholder {
 }
 
 .app-dialog-large {
-  width: min(760px, 100%);
-  min-height: 420px;
+  width: min(960px, 100%);
+  height: min(720px, calc(100vh - 92px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .app-dialog-editor {
@@ -1452,6 +1479,158 @@ input::placeholder {
   justify-content: flex-end;
   gap: 10px;
   padding-top: 4px;
+}
+
+.data-transfer-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  min-height: 0;
+  height: 100%;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.transfer-pane {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #2a3240;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #151b25;
+}
+
+.transfer-pane-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #272d38;
+}
+
+.transfer-pane-header strong {
+  color: #dce5f2;
+  font-size: 13px;
+}
+
+.transfer-pane-header select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #303847;
+  border-radius: 7px;
+  outline: none;
+  padding: 0 10px;
+  background: #111722;
+  color: #e7edf7;
+  font: inherit;
+  font-size: 12px;
+}
+
+.transfer-path {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(48, 56, 71, 0.66);
+  color: #89dcae;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-file-list {
+  display: block;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+  background: rgba(11, 15, 20, 0.26);
+}
+
+.transfer-state {
+  padding: 18px 10px;
+  color: #8f9bad;
+  font-size: 12px;
+  text-align: center;
+}
+
+.transfer-state.error {
+  color: #ff8f82;
+}
+
+.transfer-file-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) minmax(54px, auto) minmax(82px, auto);
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: transparent;
+  color: #c6d0df;
+  text-align: left;
+  user-select: none;
+}
+
+.transfer-file-row:hover {
+  background: rgba(111, 182, 255, 0.08);
+}
+
+.transfer-file-row.selected {
+  background: rgba(75, 143, 216, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(111, 182, 255, 0.28);
+}
+
+.transfer-file-row.disabled {
+  color: #7f8da3;
+}
+
+.transfer-file-row img {
+  width: 16px;
+  height: 16px;
+}
+
+.transfer-file-row span,
+.transfer-file-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-file-row span {
+  color: #dce5f2;
+  font-size: 12px;
+}
+
+.transfer-file-row small {
+  color: #7f8da3;
+  font-size: 11px;
+  text-align: right;
+}
+
+.data-transfer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.data-transfer-footer span {
+  min-width: 0;
+  color: #8f9bad;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-editor-shell {

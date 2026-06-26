@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import {
   closeSftpSession,
   controlRemoteDownloadTask,
+  controlRemoteTransferTask,
   controlRemoteUploadTask,
   deleteRemoteNode,
   downloadRemoteFile,
@@ -12,6 +13,7 @@ import {
   previewRemoteImageFile,
   probeRemoteTextFile,
   readRemoteTextFile,
+  transferRemoteSourcesBetweenServers,
   uploadLocalPathsToRemoteDirectory,
   writeRemoteTextFile
 } from '../sftp/sftp-manager.js'
@@ -23,6 +25,8 @@ import type {
   SftpPreviewImageInput,
   SftpProbeTextInput,
   SftpReadTextInput,
+  SftpRemoteTransferControlInput,
+  SftpRemoteTransferInput,
   SftpUploadControlInput,
   SftpUploadInput,
   SftpWriteTextInput
@@ -172,6 +176,50 @@ export function registerSftpIpc(): void {
   ipcMain.handle('sftp:upload-control', (event, input: SftpUploadControlInput) =>
     controlRemoteUploadTask(input.taskId, input.action, (progressEvent) =>
       event.sender.send('sftp:upload-progress', progressEvent)
+    )
+  )
+
+  ipcMain.handle('sftp:remote-transfer', async (event, input: SftpRemoteTransferInput) => {
+    const taskId = input.taskId ?? randomUUID()
+    const baseEvent = {
+      taskId,
+      sourceServerId: input.sourceServerId,
+      targetServerId: input.targetServerId,
+      name: input.sources.length === 1 ? input.sources[0].name : `${input.sources.length} 个项目`,
+      path: input.sources[0]?.path ?? '',
+      targetDirectoryPath: input.targetDirectoryPath,
+      phase: 'preparing',
+      transferredBytes: 0,
+      totalBytes: input.sources.reduce((total, source) => total + (source.size ?? 0), 0),
+      speedBytesPerSecond: 0,
+      sources: input.sources
+    }
+
+    event.sender.send('sftp:remote-transfer-progress', {
+      ...baseEvent,
+      status: 'started'
+    })
+
+    void transferRemoteSourcesBetweenServers(
+      {
+        ...input,
+        taskId
+      },
+      (progressEvent) => event.sender.send('sftp:remote-transfer-progress', progressEvent)
+    ).catch((error) => {
+      event.sender.send('sftp:remote-transfer-progress', {
+        ...baseEvent,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      })
+    })
+
+    return { transferred: true, taskId, transferredCount: input.sources.length }
+  })
+
+  ipcMain.handle('sftp:remote-transfer-control', (event, input: SftpRemoteTransferControlInput) =>
+    controlRemoteTransferTask(input.taskId, input.action, (progressEvent) =>
+      event.sender.send('sftp:remote-transfer-progress', progressEvent)
     )
   )
 

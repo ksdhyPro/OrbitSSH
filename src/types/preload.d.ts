@@ -22,6 +22,10 @@ import type {
   SftpProbeTextResult,
   SftpReadTextInput,
   SftpReadTextResult,
+  SftpRemoteTransferControlInput,
+  SftpRemoteTransferInput,
+  SftpRemoteTransferProgressEvent,
+  SftpRemoteTransferResult,
   SftpUploadControlInput,
   SftpUploadInput,
   SftpUploadProgressEvent,
@@ -75,7 +79,13 @@ declare global {
         writeText: (input: SftpWriteTextInput) => Promise<boolean>;
         download: (input: SftpDownloadInput) => Promise<SftpDownloadResult>;
         upload: (input: SftpUploadInput) => Promise<SftpUploadResult>;
+        remoteTransfer?: (
+          input: SftpRemoteTransferInput,
+        ) => Promise<SftpRemoteTransferResult>;
         controlUpload: (input: SftpUploadControlInput) => Promise<boolean>;
+        controlRemoteTransfer?: (
+          input: SftpRemoteTransferControlInput,
+        ) => Promise<boolean>;
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
         delete: (input: SftpDeleteInput) => Promise<boolean>;
         onDownloadProgress: (
@@ -83,6 +93,9 @@ declare global {
         ) => () => void;
         onUploadProgress: (
           callback: (event: SftpUploadProgressEvent) => void,
+        ) => () => void;
+        onRemoteTransferProgress?: (
+          callback: (event: SftpRemoteTransferProgressEvent) => void,
         ) => () => void;
         close: (tabId: string) => Promise<boolean>;
       };
