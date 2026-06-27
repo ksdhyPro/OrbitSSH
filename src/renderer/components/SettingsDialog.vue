@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type {
-  AppSettings,
-  AppThemeMode,
-  SftpFileTreeViewMode,
-} from "../../shared/settings";
+import type { AppSettings, AppThemeMode } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import AppDialog from "./AppDialog.vue";
 import NumberStepper from "./NumberStepper.vue";
@@ -26,7 +22,6 @@ const emit = defineEmits<{
     key: "fontSize" | "lineHeight",
     delta: number,
   ];
-  updateSftpFileTreeViewMode: [mode: SftpFileTreeViewMode];
   updateKeepaliveIntervalSeconds: [value: number];
   updateIdleDisconnectMinutes: [value: number];
   updateThemeMode: [mode: AppThemeMode];
@@ -213,38 +208,6 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
             " />
         </div>
 
-        <div class="settings-field">
-          <div>
-            <h3>SFTP 文件列表</h3>
-            <p>切换远程文件区域的目录展示方式。</p>
-          </div>
-          <div class="file-view-mode-control" aria-label="SFTP 文件列表展示方式">
-            <button
-              type="button"
-              :class="[
-                'file-view-mode-option',
-                {
-                  active:
-                    appSettings.sftp.fileTreeViewMode ===
-                    'current-directory',
-                },
-              ]"
-              @click="emit('updateSftpFileTreeViewMode', 'current-directory')">
-              <span class="file-view-mode-title">当前层</span>
-              <span class="file-view-mode-desc">双击进入目录</span>
-            </button>
-            <button
-              type="button"
-              :class="[
-                'file-view-mode-option',
-                { active: appSettings.sftp.fileTreeViewMode === 'tree' },
-              ]"
-              @click="emit('updateSftpFileTreeViewMode', 'tree')">
-              <span class="file-view-mode-title">树形</span>
-              <span class="file-view-mode-desc">展开多级目录</span>
-            </button>
-          </div>
-        </div>
       </section>
 
       <section

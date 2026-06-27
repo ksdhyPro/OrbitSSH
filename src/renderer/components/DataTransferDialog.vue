@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import editIcon from "../assets/icons/edit.svg";
-import fileIcon from "../assets/icons/file.svg";
-import folderIcon from "../assets/icons/folder.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { ServerConfig } from "../../shared/server";
-import type { RemoteFileNode, SftpRemoteTransferSource } from "../../shared/sftp";
+import type {
+  RemoteFileNode,
+  SftpRemoteTransferProgressEvent,
+  SftpRemoteTransferSource,
+} from "../../shared/sftp";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
-import { formatFileSize, formatModifyTime } from "../utils/format";
 import { resolveLocalMenuPlacement } from "../utils/menu-position";
 import { getRemoteParentPath } from "../utils/path";
 import {
+  canMoveRemoteNodesToDirectory,
   deleteRemoteNodes,
   getRemoteDeleteConfirmMessage,
+  getRemoteMoveConfirmMessage,
+  moveRemoteNodesToDirectory,
   refreshRemoteDirectory,
   renameRemoteNodeByName,
 } from "../utils/remote-node-actions";
@@ -22,6 +33,7 @@ import { useSftpStore } from "../stores/useSftpStore";
 import AppDialog from "./AppDialog.vue";
 import ContextMenu from "./ContextMenu.vue";
 import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
+import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 type TransferPaneKey = "left" | "right";
 interface TransferPaneState {
@@ -46,6 +58,10 @@ interface TransferRenamingState {
   paneKey: TransferPaneKey;
   path: string;
   value: string;
+}
+interface PendingTransferRefresh {
+  targetPaneKey: TransferPaneKey;
+  targetDirectoryPath: string;
 }
 const props = defineProps<{
   servers: ServerConfig[];
@@ -86,7 +102,6 @@ const rightPane = reactive<TransferPaneState>({
 });
 const focusedPane = ref<TransferPaneKey>("left");
 const renaming = ref<TransferRenamingState | null>(null);
-const renameInputRef = ref<HTMLInputElement | null>(null);
 const transferContextMenu = reactive<TransferContextMenuState>({
   open: false,
   x: 0,
@@ -98,21 +113,37 @@ const transferContextMenu = reactive<TransferContextMenuState>({
 });
 const deleteConfirmDialog = reactive({
   open: false,
+  title: "确认删除",
   message: "",
+  confirmLabel: "删除",
+  danger: true,
 });
 let resolveDeleteConfirm: ((confirmed: boolean) => void) | null = null;
+const pendingTransferRefreshes = new Map<string, PendingTransferRefresh>();
+let removeRemoteTransferProgressListener: (() => void) | undefined;
+const transferDrag = reactive<{
+  paneKey: TransferPaneKey | null;
+  sourcePaths: Set<string>;
+  targetPath: string;
+}>({
+  paneKey: null,
+  sourcePaths: new Set<string>(),
+  targetPath: "",
+});
 const leftSelectedNodes = computed(() => getSelectedNodes(leftPane));
 const rightSelectedNodes = computed(() => getSelectedNodes(rightPane));
-const leftServerOptions = computed<AppSelectOption[]>(() => props.servers.map(server => ({
-  value: server.id,
-  label: server.name,
-  disabled: server.id === rightPane.serverId,
-})));
-const rightServerOptions = computed<AppSelectOption[]>(() => props.servers.map(server => ({
-  value: server.id,
-  label: server.name,
-  disabled: server.id === leftPane.serverId,
-})));
+const leftServerOptions = computed<AppSelectOption[]>(() =>
+  props.servers.map((server) => ({
+    value: server.id,
+    label: server.name,
+  })),
+);
+const rightServerOptions = computed<AppSelectOption[]>(() =>
+  props.servers.map((server) => ({
+    value: server.id,
+    label: server.name,
+  })),
+);
 const transferMenuItems = computed<ContextMenuItem[]>(() => {
   const paneKey = transferContextMenu.paneKey ?? focusedPane.value;
   const targetKey = getOppositePaneKey(paneKey);
@@ -160,20 +191,10 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
   return items;
 });
 const footerText = computed(
-  () => `左侧已选 ${leftSelectedNodes.value.length} 项，右侧已选 ${rightSelectedNodes.value.length} 项`,
+  () =>
+    `左侧已选 ${leftSelectedNodes.value.length} 项，右侧已选 ${rightSelectedNodes.value.length} 项`,
 );
 
-watch(
-  () => renaming.value,
-  async state => {
-    if (!state) {
-      return;
-    }
-    await nextTick();
-    renameInputRef.value?.focus();
-    renameInputRef.value?.select();
-  },
-);
 function getPaneByKey(paneKey: TransferPaneKey): TransferPaneState {
   return paneKey === "left" ? leftPane : rightPane;
 }
@@ -184,17 +205,31 @@ function getPaneLabel(paneKey: TransferPaneKey): string {
   return paneKey === "left" ? "左侧" : "右侧";
 }
 function getSelectedNodes(pane: TransferPaneState): RemoteFileNode[] {
-  return pane.nodes.filter(node => pane.selectedPaths.has(node.path));
+  return pane.nodes.filter((node) => pane.selectedPaths.has(node.path));
 }
-function isRemoteNodeDeleting(pane: TransferPaneState, node: RemoteFileNode): boolean {
+function isRemoteNodeDeleting(
+  pane: TransferPaneState,
+  node: RemoteFileNode,
+): boolean {
   return pane.deletingPaths.has(node.path);
+}
+function getPaneRenamingPath(paneKey: TransferPaneKey): string {
+  return renaming.value?.paneKey === paneKey ? renaming.value.path : "";
+}
+function getPaneRenamingValue(paneKey: TransferPaneKey): string {
+  return renaming.value?.paneKey === paneKey ? renaming.value.value : "";
+}
+function updatePaneRenameValue(paneKey: TransferPaneKey, value: string): void {
+  if (renaming.value?.paneKey === paneKey) {
+    renaming.value.value = value;
+  }
 }
 function selectAllInPane(pane: TransferPaneState): void {
   const visibleNodes = getVisibleNodes(pane);
   const nextSelected = new Set<string>();
 
   for (const node of visibleNodes) {
-    if (node.name === ".." || isRemoteNodeDeleting(pane, node)) {
+    if (node.isVirtualParent || isRemoteNodeDeleting(pane, node)) {
       continue;
     }
     nextSelected.add(node.path);
@@ -203,13 +238,48 @@ function selectAllInPane(pane: TransferPaneState): void {
   // 全选后把锚点放到最后一个可选项目，保证后续 Shift 范围选择可连续操作。
   const lastSelectable = [...visibleNodes]
     .reverse()
-    .find(node => node.name !== ".." && !isRemoteNodeDeleting(pane, node));
+    .find((node) => !node.isVirtualParent && !isRemoteNodeDeleting(pane, node));
   if (lastSelectable) {
     updateClickAnchor(pane, lastSelectable);
   }
 }
+
+function clearPaneSelection(paneKey: TransferPaneKey): void {
+  const pane = getPaneByKey(paneKey);
+
+  focusedPane.value = paneKey;
+  pane.selectedPaths = new Set<string>();
+  pane.lastClickedIndex = -1;
+}
+
+function selectPaneNodesByPaths(
+  paneKey: TransferPaneKey,
+  paths: string[],
+): void {
+  const pane = getPaneByKey(paneKey);
+  const visibleNodes = getVisibleNodes(pane);
+  const selectedPaths = new Set(paths);
+  let lastClickedIndex = -1;
+
+  focusedPane.value = paneKey;
+
+  for (let index = visibleNodes.length - 1; index >= 0; index--) {
+    const node = visibleNodes[index];
+
+    if (node && selectedPaths.has(node.path)) {
+      lastClickedIndex = index;
+      break;
+    }
+  }
+
+  pane.selectedPaths = selectedPaths;
+  pane.lastClickedIndex = lastClickedIndex;
+}
+
 function onTransferKeydown(event: KeyboardEvent): void {
-  const isSelectAll = props.isMac ? event.metaKey && event.key === "a" : event.ctrlKey && event.key === "a";
+  const isSelectAll = props.isMac
+    ? event.metaKey && event.key === "a"
+    : event.ctrlKey && event.key === "a";
   if (!isSelectAll) {
     return;
   }
@@ -222,29 +292,36 @@ function canTransferFromPane(paneKey: TransferPaneKey): boolean {
 
   return Boolean(
     sourcePane.serverId &&
-      targetPane.serverId &&
-      targetPane.currentPath &&
-      getSelectedNodes(sourcePane).length > 0 &&
-      !sourcePane.loading &&
-      !targetPane.loading,
+    targetPane.serverId &&
+    targetPane.currentPath &&
+    getSelectedNodes(sourcePane).length > 0 &&
+    !sourcePane.loading &&
+    !targetPane.loading,
   );
 }
 function isContextMultiSelection(): boolean {
-  return transferContextMenu.contextNodeSelected && transferContextMenu.selectedCount > 1;
+  return (
+    transferContextMenu.contextNodeSelected &&
+    transferContextMenu.selectedCount > 1
+  );
 }
 function canEditContextNode(): boolean {
-  const pane = transferContextMenu.paneKey ? getPaneByKey(transferContextMenu.paneKey) : null;
+  const pane = transferContextMenu.paneKey
+    ? getPaneByKey(transferContextMenu.paneKey)
+    : null;
   const node = transferContextMenu.node;
   return Boolean(
     pane &&
-      node &&
-      node.type === "file" &&
-      !isRemoteNodeDeleting(pane, node) &&
-      sftpStore.isEditableTextFile(node),
+    node &&
+    node.type === "file" &&
+    !isRemoteNodeDeleting(pane, node) &&
+    sftpStore.isEditableTextFile(node),
   );
 }
 function canRenameContextNode(): boolean {
-  const pane = transferContextMenu.paneKey ? getPaneByKey(transferContextMenu.paneKey) : null;
+  const pane = transferContextMenu.paneKey
+    ? getPaneByKey(transferContextMenu.paneKey)
+    : null;
   const node = transferContextMenu.node;
   return Boolean(pane && node && !isRemoteNodeDeleting(pane, node));
 }
@@ -259,14 +336,14 @@ function getContextDeleteNodes(): RemoteFileNode[] {
     ? selectedNodes
     : [transferContextMenu.node];
 
-  return nodesToDelete.filter(node => !isRemoteNodeDeleting(pane, node));
+  return nodesToDelete.filter((node) => !isRemoteNodeDeleting(pane, node));
 }
 
 function canDeleteContextNodes(): boolean {
   return getContextDeleteNodes().length > 0;
 }
 
-function createParentNode(currentPath: string): RemoteFileNode | null {
+function createParentNode(currentPath: string): RemoteFileListNode | null {
   const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
 
   if (!normalizedPath || normalizedPath === "/") {
@@ -278,10 +355,11 @@ function createParentNode(currentPath: string): RemoteFileNode | null {
     name: "..",
     type: "directory",
     loaded: true,
+    isVirtualParent: true,
   };
 }
 
-function getVisibleNodes(pane: TransferPaneState): RemoteFileNode[] {
+function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
   const parentNode = createParentNode(pane.currentPath);
 
   return parentNode ? [parentNode, ...pane.nodes] : pane.nodes;
@@ -319,7 +397,11 @@ async function loadPaneHome(
     const result = await window.orbitSSH.sftp.open(pane.tabId, pane.serverId);
 
     if (initialPath && initialPath !== result.homePath) {
-      pane.nodes = await refreshRemoteDirectory(window.orbitSSH.sftp, pane.tabId, initialPath);
+      pane.nodes = await refreshRemoteDirectory(
+        window.orbitSSH.sftp,
+        pane.tabId,
+        initialPath,
+      );
       pane.currentPath = initialPath;
       pane.pathInput = initialPath;
       return;
@@ -335,12 +417,19 @@ async function loadPaneHome(
   }
 }
 
-async function refreshPaneDirectory(pane: TransferPaneState, path = pane.currentPath): Promise<void> {
+async function refreshPaneDirectory(
+  pane: TransferPaneState,
+  path = pane.currentPath,
+): Promise<void> {
   if (!pane.serverId || !path) {
     return;
   }
 
-  pane.nodes = await refreshRemoteDirectory(window.orbitSSH.sftp, pane.tabId, path);
+  pane.nodes = await refreshRemoteDirectory(
+    window.orbitSSH.sftp,
+    pane.tabId,
+    path,
+  );
   pane.currentPath = path;
   pane.pathInput = path;
 }
@@ -402,7 +491,7 @@ function selectRange(
 
   for (let i = start; i <= end; i++) {
     const n = visibleNodes[i];
-    if (n && n.name !== ".." && !isRemoteNodeDeleting(pane, n)) {
+    if (n && !n.isVirtualParent && !isRemoteNodeDeleting(pane, n)) {
       nextSelectedPaths.add(n.path);
     }
   }
@@ -410,9 +499,12 @@ function selectRange(
   return nextSelectedPaths;
 }
 
-function updateClickAnchor(pane: TransferPaneState, node: RemoteFileNode): void {
+function updateClickAnchor(
+  pane: TransferPaneState,
+  node: RemoteFileNode,
+): void {
   const visibleNodes = getVisibleNodes(pane);
-  const clickedIndex = visibleNodes.findIndex(n => n.path === node.path);
+  const clickedIndex = visibleNodes.findIndex((n) => n.path === node.path);
 
   if (clickedIndex !== -1) {
     pane.lastClickedIndex = clickedIndex;
@@ -422,18 +514,18 @@ function updateClickAnchor(pane: TransferPaneState, node: RemoteFileNode): void 
 function selectPaneNode(
   event: MouseEvent,
   paneKey: TransferPaneKey,
-  node: RemoteFileNode,
+  node: RemoteFileListNode,
 ): void {
   const pane = getPaneByKey(paneKey);
   focusedPane.value = paneKey;
   closeTransferContextMenu();
 
-  if (node.name === ".." || isRemoteNodeDeleting(pane, node)) {
+  if (node.isVirtualParent || isRemoteNodeDeleting(pane, node)) {
     return;
   }
 
   const visibleNodes = getVisibleNodes(pane);
-  const currentIndex = visibleNodes.findIndex(n => n.path === node.path);
+  const currentIndex = visibleNodes.findIndex((n) => n.path === node.path);
 
   if (currentIndex === -1) {
     return;
@@ -481,8 +573,178 @@ async function openNodeByDoubleClick(
   await openPaneDirectory(pane, node.path);
 }
 
-function resolveTransferMenuPlacement(event: MouseEvent, itemCount: number): { x: number; y: number } {
-  const dialogElement = (event.currentTarget as HTMLElement | null)?.closest(".app-dialog");
+function getNodesByPaths(
+  pane: TransferPaneState,
+  paths: Set<string>,
+): RemoteFileNode[] {
+  return pane.nodes.filter((node) => paths.has(node.path));
+}
+
+function getDragMoveNodes(
+  pane: TransferPaneState,
+  node: RemoteFileListNode,
+): RemoteFileNode[] {
+  if (node.isVirtualParent || isRemoteNodeDeleting(pane, node)) {
+    return [];
+  }
+
+  const selectedNodes = getSelectedNodes(pane);
+  const nodes = pane.selectedPaths.has(node.path) && selectedNodes.length > 0
+    ? selectedNodes
+    : [node];
+
+  return nodes.filter((item) => !isRemoteNodeDeleting(pane, item));
+}
+
+function clearTransferDrag(clearSource = true): void {
+  if (clearSource) {
+    transferDrag.paneKey = null;
+    transferDrag.sourcePaths = new Set<string>();
+  }
+  transferDrag.targetPath = "";
+}
+
+function startTransferDrag(
+  event: DragEvent,
+  paneKey: TransferPaneKey,
+  node: RemoteFileListNode,
+): void {
+  const pane = getPaneByKey(paneKey);
+  const nodes = getDragMoveNodes(pane, node);
+
+  if (nodes.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  transferDrag.paneKey = paneKey;
+  transferDrag.sourcePaths = new Set(nodes.map((item) => item.path));
+  transferDrag.targetPath = "";
+  event.dataTransfer?.setData("text/plain", node.path);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function updateTransferDragTarget(
+  paneKey: TransferPaneKey,
+  targetNode: RemoteFileNode,
+): boolean {
+  if (transferDrag.paneKey !== paneKey) {
+    transferDrag.targetPath = "";
+    return false;
+  }
+
+  const pane = getPaneByKey(paneKey);
+  const sourceNodes = getNodesByPaths(pane, transferDrag.sourcePaths);
+  const canMove = canMoveRemoteNodesToDirectory(sourceNodes, targetNode);
+
+  transferDrag.targetPath = canMove ? targetNode.path : "";
+  return canMove;
+}
+
+function dragOverTransferNode(
+  event: DragEvent,
+  paneKey: TransferPaneKey,
+  node: RemoteFileNode,
+): void {
+  if (node.type !== "directory") {
+    clearTransferDrag(false);
+    return;
+  }
+
+  if (!updateTransferDragTarget(paneKey, node)) {
+    event.dataTransfer && (event.dataTransfer.dropEffect = "none");
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+}
+
+function dragLeaveTransferNode(event: DragEvent, node: RemoteFileNode): void {
+  const nextTarget = event.relatedTarget;
+  const currentTarget = event.currentTarget;
+
+  if (
+    currentTarget instanceof HTMLElement &&
+    nextTarget instanceof Node &&
+    currentTarget.contains(nextTarget)
+  ) {
+    return;
+  }
+
+  if (transferDrag.targetPath === node.path) {
+    clearTransferDrag(false);
+  }
+}
+
+async function dropTransferNode(
+  event: DragEvent,
+  paneKey: TransferPaneKey,
+  targetNode: RemoteFileNode,
+): Promise<void> {
+  event.preventDefault();
+
+  if (targetNode.type !== "directory" || transferDrag.paneKey !== paneKey) {
+    clearTransferDrag();
+    return;
+  }
+
+  const pane = getPaneByKey(paneKey);
+  const sourceNodes = getNodesByPaths(pane, transferDrag.sourcePaths);
+
+  if (!canMoveRemoteNodesToDirectory(sourceNodes, targetNode)) {
+    clearTransferDrag();
+    return;
+  }
+
+  const confirmed = await requestTransferConfirm({
+    title: "确认移动",
+    message: getRemoteMoveConfirmMessage(sourceNodes, targetNode),
+    confirmLabel: "移动",
+    danger: false,
+  });
+
+  if (!confirmed) {
+    clearTransferDrag();
+    return;
+  }
+
+  const { firstError } = await moveRemoteNodesToDirectory(
+    window.orbitSSH.sftp,
+    pane.tabId,
+    sourceNodes,
+    targetNode,
+  );
+
+  for (const node of sourceNodes) {
+    delete sftpStore.fileTextProbeStates[node.path];
+  }
+
+  try {
+    await refreshPaneDirectory(pane, pane.currentPath);
+    pane.selectedPaths = new Set<string>();
+    pane.lastClickedIndex = -1;
+    pane.error = firstError;
+  } catch (error) {
+    pane.error =
+      firstError ||
+      (error instanceof Error ? error.message : "移动后刷新目录失败");
+  } finally {
+    clearTransferDrag();
+  }
+}
+
+function resolveTransferMenuPlacement(
+  event: MouseEvent,
+  itemCount: number,
+): { x: number; y: number } {
+  const dialogElement = (event.currentTarget as HTMLElement | null)?.closest(
+    ".app-dialog",
+  );
   const rect = dialogElement?.getBoundingClientRect();
 
   if (!rect) {
@@ -512,15 +774,23 @@ function setContextMenuState(
   transferContextMenu.paneKey = paneKey;
   transferContextMenu.node = node;
   transferContextMenu.selectedCount = pane.selectedPaths.size;
-  transferContextMenu.contextNodeSelected = Boolean(node && pane.selectedPaths.has(node.path));
+  transferContextMenu.contextNodeSelected = Boolean(
+    node && pane.selectedPaths.has(node.path),
+  );
 }
 
-function openBlankTransferContextMenu(event: MouseEvent, paneKey: TransferPaneKey): void {
+function openBlankTransferContextMenu(
+  event: MouseEvent,
+  paneKey: TransferPaneKey,
+): void {
   event.preventDefault();
   event.stopPropagation();
   setContextMenuState(paneKey, null);
 
-  const placement = resolveTransferMenuPlacement(event, transferMenuItems.value.length);
+  const placement = resolveTransferMenuPlacement(
+    event,
+    transferMenuItems.value.length,
+  );
   transferContextMenu.open = true;
   transferContextMenu.x = placement.x;
   transferContextMenu.y = placement.y;
@@ -529,12 +799,12 @@ function openBlankTransferContextMenu(event: MouseEvent, paneKey: TransferPaneKe
 function openTransferContextMenu(
   event: MouseEvent,
   paneKey: TransferPaneKey,
-  node: RemoteFileNode,
+  node: RemoteFileListNode,
 ): void {
   event.preventDefault();
   event.stopPropagation();
 
-  if (node.name === "..") {
+  if (node.isVirtualParent) {
     openBlankTransferContextMenu(event, paneKey);
     return;
   }
@@ -545,7 +815,10 @@ function openTransferContextMenu(
     void sftpStore.probeFileTextSupport(getPaneByKey(paneKey).tabId, node);
   }
 
-  const placement = resolveTransferMenuPlacement(event, transferMenuItems.value.length);
+  const placement = resolveTransferMenuPlacement(
+    event,
+    transferMenuItems.value.length,
+  );
   transferContextMenu.open = true;
   transferContextMenu.x = placement.x;
   transferContextMenu.y = placement.y;
@@ -586,7 +859,7 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
   const sourcePane = getPaneByKey(paneKey);
   const targetPane = getPaneByKey(getOppositePaneKey(paneKey));
   const sources: SftpRemoteTransferSource[] = getSelectedNodes(sourcePane).map(
-    node => ({
+    (node) => ({
       path: node.path,
       name: node.name,
       type: node.type,
@@ -596,21 +869,55 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
 
   try {
     if (!window.orbitSSH.sftp.remoteTransfer) {
-      throw new Error("当前窗口未加载数据传输能力，请重启应用后重试");
+      throw new Error("当前窗口未加载文件传输能力，请重启应用后重试");
     }
 
-    await window.orbitSSH.sftp.remoteTransfer({
+    const result = await window.orbitSSH.sftp.remoteTransfer({
       sourceServerId: sourcePane.serverId,
       targetServerId: targetPane.serverId,
       sources,
       targetDirectoryPath: targetPane.currentPath,
     });
+    if (result.taskId) {
+      pendingTransferRefreshes.set(result.taskId, {
+        targetPaneKey: getOppositePaneKey(paneKey),
+        targetDirectoryPath: targetPane.currentPath,
+      });
+    }
     leftPane.selectedPaths = new Set<string>();
     rightPane.selectedPaths = new Set<string>();
-    emit("close");
   } catch (error) {
-    targetPane.error = error instanceof Error ? error.message : "传输任务创建失败";
+    targetPane.error =
+      error instanceof Error ? error.message : "传输任务创建失败";
   }
+}
+
+async function handleRemoteTransferProgress(
+  event: SftpRemoteTransferProgressEvent,
+): Promise<void> {
+  if (event.status !== "completed") {
+    return;
+  }
+
+  const refreshState = pendingTransferRefreshes.get(event.taskId);
+
+  if (!refreshState) {
+    return;
+  }
+
+  pendingTransferRefreshes.delete(event.taskId);
+
+  const targetPane = getPaneByKey(refreshState.targetPaneKey);
+  const refreshes: Promise<void>[] = [];
+
+  if (targetPane.currentPath === refreshState.targetDirectoryPath) {
+    refreshes.push(refreshPaneDirectory(targetPane).catch((error) => {
+      targetPane.error =
+        error instanceof Error ? error.message : "刷新目标目录失败";
+    }));
+  }
+
+  await Promise.all(refreshes);
 }
 
 async function editContextNode(paneKey: TransferPaneKey): Promise<void> {
@@ -642,12 +949,6 @@ function startContextRename(paneKey: TransferPaneKey): void {
     path: node.path,
     value: node.name,
   };
-}
-
-function setRenameInput(element: Element | unknown, paneKey: TransferPaneKey, nodePath: string): void {
-  if (renaming.value?.paneKey === paneKey && renaming.value.path === nodePath) {
-    renameInputRef.value = element instanceof HTMLInputElement ? element : null;
-  }
 }
 
 async function commitRename(): Promise<void> {
@@ -687,18 +988,38 @@ function cancelRename(): void {
   renaming.value = null;
 }
 
-function requestDeleteConfirm(message: string): Promise<boolean> {
-  deleteConfirmDialog.message = message;
+function requestTransferConfirm(input: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger: boolean;
+}): Promise<boolean> {
+  deleteConfirmDialog.title = input.title;
+  deleteConfirmDialog.message = input.message;
+  deleteConfirmDialog.confirmLabel = input.confirmLabel;
+  deleteConfirmDialog.danger = input.danger;
   deleteConfirmDialog.open = true;
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     resolveDeleteConfirm = resolve;
+  });
+}
+
+function requestDeleteConfirm(message: string): Promise<boolean> {
+  return requestTransferConfirm({
+    title: "确认删除",
+    message,
+    confirmLabel: "删除",
+    danger: true,
   });
 }
 
 function closeDeleteConfirm(confirmed: boolean): void {
   deleteConfirmDialog.open = false;
+  deleteConfirmDialog.title = "确认删除";
   deleteConfirmDialog.message = "";
+  deleteConfirmDialog.confirmLabel = "删除";
+  deleteConfirmDialog.danger = true;
   resolveDeleteConfirm?.(confirmed);
   resolveDeleteConfirm = null;
 }
@@ -711,7 +1032,9 @@ async function deleteContextNodes(paneKey: TransferPaneKey): Promise<void> {
     return;
   }
 
-  const confirmed = await requestDeleteConfirm(getRemoteDeleteConfirmMessage(nodesToDelete));
+  const confirmed = await requestDeleteConfirm(
+    getRemoteDeleteConfirmMessage(nodesToDelete),
+  );
   if (!confirmed) {
     closeTransferContextMenu();
     return;
@@ -733,7 +1056,7 @@ async function deleteContextNodes(paneKey: TransferPaneKey): Promise<void> {
     pane.tabId,
     nodesToDelete,
     {
-      onDeleted: node => {
+      onDeleted: (node) => {
         delete sftpStore.fileTextProbeStates[node.path];
         if (fileEditorStore.fileEditor.path === node.path) {
           fileEditorStore.closeFileEditor();
@@ -759,7 +1082,7 @@ async function deleteContextNodes(paneKey: TransferPaneKey): Promise<void> {
 }
 
 function getServerLabel(serverId: string): string {
-  const server = props.servers.find(item => item.id === serverId);
+  const server = props.servers.find((item) => item.id === serverId);
 
   if (!server) {
     return "请选择连接";
@@ -785,11 +1108,14 @@ let leftInitialPath = "";
 
 watch(
   () => props.servers,
-  servers => {
+  (servers) => {
     if (!leftPane.serverId) {
       const active = props.activeSource;
 
-      if (active?.serverId && servers.some(item => item.id === active.serverId)) {
+      if (
+        active?.serverId &&
+        servers.some((item) => item.id === active.serverId)
+      ) {
         leftInitialPath = active.currentPath ?? "";
         leftPane.serverId = active.serverId;
       } else if (servers[0]) {
@@ -802,12 +1128,7 @@ watch(
 
 watch(
   () => leftPane.serverId,
-  async serverId => {
-    if (serverId && serverId === rightPane.serverId) {
-      rightPane.error = "左右两侧不能选择同一个服务器";
-      await resetPaneSelection(rightPane);
-    }
-
+  () => {
     const initialPath = leftInitialPath;
     leftInitialPath = "";
     void loadPaneHome(leftPane, initialPath);
@@ -817,27 +1138,31 @@ watch(
 
 watch(
   () => rightPane.serverId,
-  async serverId => {
-    if (serverId && serverId === leftPane.serverId) {
-      rightPane.error = "左右两侧不能选择同一个服务器";
-      await resetPaneSelection(rightPane);
-      return;
-    }
-
+  () => {
     void loadPaneHome(rightPane);
   },
   { immediate: true },
 );
 
+onMounted(() => {
+  removeRemoteTransferProgressListener =
+    window.orbitSSH?.sftp.onRemoteTransferProgress?.((event) => {
+      void handleRemoteTransferProgress(event);
+    });
+});
+
 onUnmounted(() => {
   resolveDeleteConfirm?.(false);
+  removeRemoteTransferProgressListener?.();
+  removeRemoteTransferProgressListener = undefined;
+  pendingTransferRefreshes.clear();
   void closePaneSession(leftPane);
   void closePaneSession(rightPane);
 });
 </script>
 
 <template>
-  <AppDialog title="数据传输" width="large" @close="emit('close')">
+  <AppDialog title="文件传输" width="large" @close="emit('close')">
     <div class="data-transfer-dialog" @keydown="onTransferKeydown">
       <section class="transfer-pane" @click="focusedPane = 'left'">
         <header class="transfer-pane-header">
@@ -846,7 +1171,9 @@ onUnmounted(() => {
             v-model="leftPane.serverId"
             title="左侧服务器"
             ariaLabel="左侧服务器"
-            placeholder="请选择连接" :options="leftServerOptions" />
+            placeholder="请选择连接"
+            :options="leftServerOptions"
+          />
         </header>
         <input
           v-model="leftPane.pathInput"
@@ -858,54 +1185,47 @@ onUnmounted(() => {
           :title="leftPane.currentPath || getServerLabel(leftPane.serverId)"
           :placeholder="getServerLabel(leftPane.serverId)"
           @keydown.enter.prevent="submitPanePathInput(leftPane)"
-          @blur="leftPane.pathInput = leftPane.currentPath" />
-        <div class="transfer-file-list" @contextmenu="openBlankTransferContextMenu($event, 'left')">
+          @blur="leftPane.pathInput = leftPane.currentPath"
+        />
+        <div
+          class="transfer-file-list"
+          @contextmenu="openBlankTransferContextMenu($event, 'left')"
+        >
           <div v-if="leftPane.loading" class="transfer-state">加载中...</div>
           <div v-else-if="leftPane.error" class="transfer-state error">
             {{ leftPane.error }}
           </div>
-          <div
-            v-else-if="getVisibleNodes(leftPane).length === 0"
-            class="transfer-state">
-            当前目录为空
-          </div>
-          <template v-else>
-            <div
-              v-for="node in getVisibleNodes(leftPane)"
-              :key="node.path"
-              role="button"
-              tabindex="0"
-              :class="[
-                'transfer-file-row',
-                { selected: leftPane.selectedPaths.has(node.path), deleting: leftPane.deletingPaths.has(node.path) },
-              ]"
-              :title="node.path"
-              @click="selectPaneNode($event, 'left', node)"
-              @contextmenu="openTransferContextMenu($event, 'left', node)"
-              @dblclick="openNodeByDoubleClick(leftPane, node)">
-              <img :src="node.type === 'directory' ? folderIcon : fileIcon" alt="" />
-              <input
-                v-if="renaming?.paneKey === 'left' && renaming.path === node.path"
-                :ref="element => setRenameInput(element, 'left', node.path)"
-                class="transfer-rename-input"
-                type="text"
-                spellcheck="false"
-                :value="renaming.value"
-                aria-label="重命名"
-                @click.stop
-                @dblclick.stop
-                @input="renaming && (renaming.value = ($event.target as HTMLInputElement).value)"
-                @keydown.enter.prevent="commitRename"
-                @keydown.esc.prevent="cancelRename"
-                @blur="commitRename"
-                @contextmenu.prevent.stop />
-              <span v-else>{{ node.name }}</span>
-              <small v-if="leftPane.deletingPaths.has(node.path)">删除中...</small>
-              <small v-else-if="node.type === 'file'">{{ formatFileSize(node.size ?? 0) }}</small>
-              <small v-else>文件夹</small>
-              <small>{{ node.modifyTime ? formatModifyTime(node.modifyTime) : "" }}</small>
-            </div>
-          </template>
+          <RemoteFileList
+            v-else
+            :nodes="getVisibleNodes(leftPane) as RemoteFileListNode[]"
+            list-class="transfer-file-list-inner"
+            row-class="transfer-file-row"
+            :selected-paths="leftPane.selectedPaths"
+            :deleting-paths="leftPane.deletingPaths"
+            :drop-target-path="transferDrag.targetPath"
+            :renaming-path="getPaneRenamingPath('left')"
+            :renaming-value="getPaneRenamingValue('left')"
+            empty-text="当前目录为空"
+            @select-node="(event, node) => selectPaneNode(event, 'left', node)"
+            @clear-selection="clearPaneSelection('left')"
+            @marquee-select="selectPaneNodesByPaths('left', $event)"
+            @open-context-menu="
+              (event, node) => openTransferContextMenu(event, 'left', node)
+            "
+            @open-node="openNodeByDoubleClick(leftPane, $event)"
+            @drag-start-node="
+              (event, node) => startTransferDrag(event, 'left', node)
+            "
+            @drag-over-node="
+              (event, node) => dragOverTransferNode(event, 'left', node)
+            "
+            @drag-leave-node="dragLeaveTransferNode"
+            @drop-node="(event, node) => dropTransferNode(event, 'left', node)"
+            @drag-end-node="clearTransferDrag()"
+            @update-rename-value="updatePaneRenameValue('left', $event)"
+            @commit-rename="commitRename"
+            @cancel-rename="cancelRename"
+          />
         </div>
       </section>
 
@@ -916,7 +1236,9 @@ onUnmounted(() => {
             v-model="rightPane.serverId"
             title="右侧服务器"
             ariaLabel="右侧服务器"
-            placeholder="请选择连接" :options="rightServerOptions" />
+            placeholder="请选择连接"
+            :options="rightServerOptions"
+          />
         </header>
         <input
           v-model="rightPane.pathInput"
@@ -928,54 +1250,47 @@ onUnmounted(() => {
           :title="rightPane.currentPath || getServerLabel(rightPane.serverId)"
           :placeholder="getServerLabel(rightPane.serverId)"
           @keydown.enter.prevent="submitPanePathInput(rightPane)"
-          @blur="rightPane.pathInput = rightPane.currentPath" />
-        <div class="transfer-file-list" @contextmenu="openBlankTransferContextMenu($event, 'right')">
+          @blur="rightPane.pathInput = rightPane.currentPath"
+        />
+        <div
+          class="transfer-file-list"
+          @contextmenu="openBlankTransferContextMenu($event, 'right')"
+        >
           <div v-if="rightPane.loading" class="transfer-state">加载中...</div>
           <div v-else-if="rightPane.error" class="transfer-state error">
             {{ rightPane.error }}
           </div>
-          <div
-            v-else-if="getVisibleNodes(rightPane).length === 0"
-            class="transfer-state">
-            当前目录为空
-          </div>
-          <template v-else>
-            <div
-              v-for="node in getVisibleNodes(rightPane)"
-              :key="node.path"
-              role="button"
-              tabindex="0"
-              :class="[
-                'transfer-file-row',
-                { selected: rightPane.selectedPaths.has(node.path), deleting: rightPane.deletingPaths.has(node.path) },
-              ]"
-              :title="node.path"
-              @click="selectPaneNode($event, 'right', node)"
-              @contextmenu="openTransferContextMenu($event, 'right', node)"
-              @dblclick="openNodeByDoubleClick(rightPane, node)">
-              <img :src="node.type === 'directory' ? folderIcon : fileIcon" alt="" />
-              <input
-                v-if="renaming?.paneKey === 'right' && renaming.path === node.path"
-                :ref="element => setRenameInput(element, 'right', node.path)"
-                class="transfer-rename-input"
-                type="text"
-                spellcheck="false"
-                :value="renaming.value"
-                aria-label="重命名"
-                @click.stop
-                @dblclick.stop
-                @input="renaming && (renaming.value = ($event.target as HTMLInputElement).value)"
-                @keydown.enter.prevent="commitRename"
-                @keydown.esc.prevent="cancelRename"
-                @blur="commitRename"
-                @contextmenu.prevent.stop />
-              <span v-else>{{ node.name }}</span>
-              <small v-if="rightPane.deletingPaths.has(node.path)">删除中...</small>
-              <small v-else-if="node.type === 'file'">{{ formatFileSize(node.size ?? 0) }}</small>
-              <small v-else>文件夹</small>
-              <small>{{ node.modifyTime ? formatModifyTime(node.modifyTime) : "" }}</small>
-            </div>
-          </template>
+          <RemoteFileList
+            v-else
+            :nodes="getVisibleNodes(rightPane) as RemoteFileListNode[]"
+            list-class="transfer-file-list-inner"
+            row-class="transfer-file-row"
+            :selected-paths="rightPane.selectedPaths"
+            :deleting-paths="rightPane.deletingPaths"
+            :drop-target-path="transferDrag.targetPath"
+            :renaming-path="getPaneRenamingPath('right')"
+            :renaming-value="getPaneRenamingValue('right')"
+            empty-text="当前目录为空"
+            @select-node="(event, node) => selectPaneNode(event, 'right', node)"
+            @clear-selection="clearPaneSelection('right')"
+            @marquee-select="selectPaneNodesByPaths('right', $event)"
+            @open-context-menu="
+              (event, node) => openTransferContextMenu(event, 'right', node)
+            "
+            @open-node="openNodeByDoubleClick(rightPane, $event)"
+            @drag-start-node="
+              (event, node) => startTransferDrag(event, 'right', node)
+            "
+            @drag-over-node="
+              (event, node) => dragOverTransferNode(event, 'right', node)
+            "
+            @drag-leave-node="dragLeaveTransferNode"
+            @drop-node="(event, node) => dropTransferNode(event, 'right', node)"
+            @drag-end-node="clearTransferDrag()"
+            @update-rename-value="updatePaneRenameValue('right', $event)"
+            @commit-rename="commitRename"
+            @cancel-rename="cancelRename"
+          />
         </div>
       </section>
     </div>
@@ -989,12 +1304,17 @@ onUnmounted(() => {
       :menu="transferContextMenu"
       :items="transferMenuItems"
       @select="selectTransferMenuItem"
-      @close="closeTransferContextMenu" />
+      @close="closeTransferContextMenu"
+    />
 
     <DeleteConfirmDialog
       :open="deleteConfirmDialog.open"
+      :title="deleteConfirmDialog.title"
       :message="deleteConfirmDialog.message"
+      :confirm-label="deleteConfirmDialog.confirmLabel"
+      :danger="deleteConfirmDialog.danger"
       @cancel="closeDeleteConfirm(false)"
-      @confirm="closeDeleteConfirm(true)" />
+      @confirm="closeDeleteConfirm(true)"
+    />
   </AppDialog>
 </template>

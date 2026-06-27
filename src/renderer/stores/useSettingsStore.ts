@@ -4,7 +4,6 @@ import {
   defaultAppSettings,
   type AppSettings,
   type AppThemeMode,
-  type SftpFileTreeViewMode,
 } from "../../shared/settings";
 import { useCoreStore } from "./useCoreStore";
 
@@ -43,9 +42,6 @@ export const useSettingsStore = defineStore("settings", () => {
         lineHeight: appSettings.terminal.lineHeight,
         selectionBackground: appSettings.terminal.selectionBackground,
       },
-      sftp: {
-        fileTreeViewMode: appSettings.sftp.fileTreeViewMode,
-      },
       update: {
         updateFeedUrl: appSettings.update.updateFeedUrl,
       },
@@ -62,7 +58,6 @@ export const useSettingsStore = defineStore("settings", () => {
         Object.assign(appSettings.appearance, savedSettings.appearance);
         Object.assign(appSettings.connection, savedSettings.connection);
         Object.assign(appSettings.terminal, savedSettings.terminal);
-        Object.assign(appSettings.sftp, savedSettings.sftp);
         Object.assign(appSettings.update, savedSettings.update);
       }
     } catch (error) {
@@ -79,13 +74,6 @@ export const useSettingsStore = defineStore("settings", () => {
     value: AppSettings["terminal"][K],
   ): Promise<void> {
     appSettings.terminal[key] = value;
-    await saveAppSettings();
-  }
-
-  async function updateSftpFileTreeViewMode(
-    mode: SftpFileTreeViewMode,
-  ): Promise<void> {
-    appSettings.sftp.fileTreeViewMode = mode;
     await saveAppSettings();
   }
 
@@ -146,13 +134,11 @@ export const useSettingsStore = defineStore("settings", () => {
       Object.assign(appSettings.appearance, savedSettings.appearance);
       Object.assign(appSettings.connection, savedSettings.connection);
       Object.assign(appSettings.terminal, savedSettings.terminal);
-      Object.assign(appSettings.sftp, savedSettings.sftp);
-      Object.assign(appSettings.update, savedSettings.update);
+        Object.assign(appSettings.update, savedSettings.update);
       core.writeRendererLog("应用设置加载完成", {
         appearance: savedSettings.appearance,
         connection: savedSettings.connection,
         terminal: savedSettings.terminal,
-        sftp: savedSettings.sftp,
       });
     } catch (error) {
       core.writeRendererLog(
@@ -172,7 +158,6 @@ export const useSettingsStore = defineStore("settings", () => {
     toPlainAppSettings,
     saveAppSettings,
     updateTerminalSetting,
-    updateSftpFileTreeViewMode,
     updateKeepaliveIntervalSeconds,
     updateIdleDisconnectMinutes,
     updateThemeMode,

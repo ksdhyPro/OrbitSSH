@@ -1,13 +1,8 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
-import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import copyIcon from "../assets/icons/copy.svg";
-import fileIcon from "../assets/icons/file.svg";
-import folderIcon from "../assets/icons/folder.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
-import type { SftpFileTreeViewMode } from "../../shared/settings";
 import type { TerminalTab } from "../types/terminal";
 import type {
   BlankContextMenuState,
@@ -16,19 +11,19 @@ import type {
   SftpTreeState,
   VisibleRemoteFileNode,
 } from "../types/sftp";
-import { formatFileSize, formatModifyTime } from "../utils/format";
 import { isPreviewImageFile } from "../utils/file-kind";
 import FileContextMenu from "./FileContextMenu.vue";
 import BlankContextMenu from "./BlankContextMenu.vue";
+import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 
 const props = defineProps<{
   activeTab: TerminalTab | undefined;
   activeSftpTree: SftpTreeState | undefined;
-  fileTreeViewMode: SftpFileTreeViewMode;
   visibleFileTree: VisibleRemoteFileNode[];
   fileContextMenu: FileContextMenuState;
   blankContextMenu: BlankContextMenuState;
   renaming: RenamingState | null;
+  fileDragTargetPath: string;
   filePathInput: string;
   filePanelHint: string;
   fileTreeElementRef: (element: unknown) => void;
@@ -47,10 +42,25 @@ const emit = defineEmits<{
   syncPath: [];
   openContextMenu: [event: MouseEvent, node: RemoteFileNode];
   openBlankContextMenu: [event: MouseEvent];
-  toggleDirectory: [node: RemoteFileNode];
   openFileByDoubleClick: [node: RemoteFileNode];
   selectNode: [event: MouseEvent, node: RemoteFileNode];
   selectAll: [];
+  clearSelection: [];
+  marqueeSelect: [paths: string[]];
+  dragStartNode: [
+    event: DragEvent,
+    node: RemoteFileNode & { isVirtualParent?: boolean },
+  ];
+  dragOverNode: [
+    event: DragEvent,
+    node: RemoteFileNode & { isVirtualParent?: boolean },
+  ];
+  dragLeaveNode: [event: DragEvent, node: RemoteFileNode];
+  dropNode: [
+    event: DragEvent,
+    node: RemoteFileNode & { isVirtualParent?: boolean },
+  ];
+  dragEndNode: [];
   previewContextFile: [];
   editContextFile: [];
   downloadContextFile: [];
@@ -65,32 +75,11 @@ const emit = defineEmits<{
   createBlankNode: [type: "file" | "directory"];
 }>();
 
-// 重命名输入框 DOM 引用：进入编辑态时自动聚焦并全选名称（Windows 新建/重命名行为）。
-const renameInputRef = ref<HTMLInputElement | null>(null);
-
-// 函数式 ref 回调：v-for 内字符串 ref 会被聚合成数组，故改用函数式 ref，
-// 仅在目标节点上把 DOM 写入响应式引用。
-function setRenameInput(
-  element: Element | unknown,
-  nodePath: string,
-): void {
-  if (props.renaming?.path === nodePath) {
-    renameInputRef.value =
-      element instanceof HTMLInputElement ? element : null;
+function updateRenameValue(value: string): void {
+  if (props.renaming) {
+    props.renaming.value = value;
   }
 }
-
-watch(
-  () => props.renaming,
-  async (state) => {
-    if (!state) {
-      return;
-    }
-    await nextTick();
-    renameInputRef.value?.focus();
-    renameInputRef.value?.select();
-  },
-);
 </script>
 
 <template>
@@ -140,88 +129,36 @@ watch(
       </button>
     </div>
 
-    <ul
-      :ref="fileTreeElementRef"
-      class="file-tree"
-      tabindex="0"
-      :aria-label="
-        fileTreeViewMode === 'tree' ? '远程文件树预览' : '远程文件列表'
-      "
+    <RemoteFileList
+      :element-ref="fileTreeElementRef"
+      :nodes="visibleFileTree as RemoteFileListNode[]"
+      list-class="file-tree"
+      row-class="file-node"
+      aria-label="远程文件列表"
+      empty-text="当前目录为空"
+      :selected-paths="activeSftpTree?.selectedPaths ?? new Set<string>()"
+      :deleting-paths="activeSftpTree?.deletingPaths ?? new Set<string>()"
+      :drop-target-path="fileDragTargetPath"
+      :renaming-path="renaming?.path"
+      :renaming-value="renaming?.value"
+      :non-draggable-path="activeSftpTree?.root.path"
       @contextmenu="emit('openBlankContextMenu', $event)"
-      @keydown="
-        ($event.ctrlKey || $event.metaKey) &&
-          $event.key.toLowerCase() === 'a' &&
-          ($event.preventDefault(), emit('selectAll'))
-      ">
-      <li
-        v-for="node in visibleFileTree"
-        :key="node.path"
-        :class="[
-          'file-node',
-          {
-            'is-folder': node.type === 'directory',
-            'is-loading': activeSftpTree?.loadingPaths.has(node.path),
-            'is-deleting': activeSftpTree?.deletingPaths.has(node.path),
-            selected: activeSftpTree?.selectedPaths.has(node.path),
-          },
-        ]"
-        :style="{
-          paddingLeft:
-            fileTreeViewMode === 'tree' ? `${12 + node.level * 18}px` : '12px',
-        }"
-        @contextmenu.stop="
-          node.isVirtualParent || activeSftpTree?.deletingPaths.has(node.path)
-            ? $event.preventDefault()
-            : emit('openContextMenu', $event, node)
-        "
-        @click="
-          !activeSftpTree?.deletingPaths.has(node.path) &&
-            emit('selectNode', $event, node)
-        "
-        @dblclick="
-          !activeSftpTree?.deletingPaths.has(node.path) &&
-            emit('openFileByDoubleClick', node)
-        ">
-        <img
-          v-if="fileTreeViewMode === 'tree' && node.type === 'directory'"
-          :class="[
-            'chevron-icon',
-            { open: activeSftpTree?.expandedPaths.has(node.path) },
-          ]"
-          :src="chevronRightIcon"
-          alt="" />
-        <span v-else class="chevron-placeholder"></span>
-        <img
-          class="file-icon"
-          :src="node.type === 'directory' ? folderIcon : fileIcon"
-          alt="" />
-        <input
-          v-if="renaming?.path === node.path"
-          :ref="(element) => setRenameInput(element, node.path)"
-          class="rename-inline-input"
-          type="text"
-          spellcheck="false"
-          :value="renaming.value"
-          aria-label="重命名"
-          @click.stop
-          @input="
-            renaming && (renaming.value = ($event.target as HTMLInputElement).value)
-          "
-          @keydown.enter.prevent="emit('commitRename')"
-          @keydown.esc.prevent="emit('cancelRename')"
-          @blur="emit('commitRename')"
-          @contextmenu.prevent.stop />
-        <span v-else class="file-name">{{ node.name }}</span>
-        <span class="file-meta">
-          {{ node.type === "directory" ? "目录" : formatFileSize(node.size) }}
-          {{ formatModifyTime(node.modifyTime) }}
-        </span>
-        <span
-          v-if="activeSftpTree?.deletingPaths.has(node.path)"
-          class="file-node-spinner"
-          aria-label="删除中"></span>
-      </li>
-    </ul>
+      @select-node="(event, node) => emit('selectNode', event, node)"
+      @clear-selection="emit('clearSelection')"
+      @marquee-select="emit('marqueeSelect', $event)"
+      @open-context-menu="
+        (event, node) => emit('openContextMenu', event, node)
+      "
+      @open-node="emit('openFileByDoubleClick', $event)"
+      @drag-start-node="(event, node) => emit('dragStartNode', event, node)"
+      @drag-over-node="(event, node) => emit('dragOverNode', event, node)"
+      @drag-leave-node="(event, node) => emit('dragLeaveNode', event, node)"
+      @drop-node="(event, node) => emit('dropNode', event, node)"
+      @drag-end-node="emit('dragEndNode')"
+      @select-all="emit('selectAll')"
+      @update-rename-value="updateRenameValue"
+      @commit-rename="emit('commitRename')"
+      @cancel-rename="emit('cancelRename')" />
 
     <FileContextMenu
       :menu="fileContextMenu"

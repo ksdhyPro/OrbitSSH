@@ -18,7 +18,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
 
   const activeDownloadCount = computed(
     () =>
-      downloadTasks.value.filter(task =>
+      downloadTasks.value.filter((task) =>
         ["queued", "started", "progress", "paused"].includes(task.status),
       ).length,
   );
@@ -31,8 +31,9 @@ export const useDownloadsStore = defineStore("downloads", () => {
 
   function upsertDownloadTask(task: DownloadTask): void {
     const existingIndex = downloadTasks.value.findIndex(
-      item => item.taskId === task.taskId,
+      (item) => item.taskId === task.taskId,
     );
+    isTaskListOpen.value = true;
 
     if (existingIndex >= 0) {
       downloadTasks.value = downloadTasks.value.map((item, index) =>
@@ -107,7 +108,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
 
   function removeDownloadTask(taskId: string): void {
     downloadTasks.value = downloadTasks.value.filter(
-      task => task.taskId !== taskId,
+      (task) => task.taskId !== taskId,
     );
   }
 
@@ -138,7 +139,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
         });
       } else if (task.direction === "server-transfer") {
         if (!core.orbitSSHApi?.sftp.controlRemoteTransfer) {
-          throw new Error("当前窗口未加载数据传输控制能力，请重启应用后重试");
+          throw new Error("当前窗口未加载文件传输控制能力，请重启应用后重试");
         }
 
         isControlled = await core.orbitSSHApi.sftp.controlRemoteTransfer({
@@ -172,17 +173,18 @@ export const useDownloadsStore = defineStore("downloads", () => {
       }
 
       if (action === "cancel") {
-        downloadTasks.value = downloadTasks.value.map(item =>
+        downloadTasks.value = downloadTasks.value.map((item) =>
           item.taskId === task.taskId ? { ...item, status: "canceled" } : item,
         );
       }
     } catch (error) {
-      downloadTasks.value = downloadTasks.value.map(item =>
+      downloadTasks.value = downloadTasks.value.map((item) =>
         item.taskId === task.taskId
           ? {
               ...item,
               status: "error",
-              error: error instanceof Error ? error.message : "传输任务操作失败",
+              error:
+                error instanceof Error ? error.message : "传输任务操作失败",
             }
           : item,
       );
@@ -204,8 +206,9 @@ export const useDownloadsStore = defineStore("downloads", () => {
     }
 
     if (core.orbitSSHApi && !removeSftpUploadProgressListener) {
-      removeSftpUploadProgressListener =
-        core.orbitSSHApi.sftp.onUploadProgress(handleSftpUploadProgress);
+      removeSftpUploadProgressListener = core.orbitSSHApi.sftp.onUploadProgress(
+        handleSftpUploadProgress,
+      );
     }
 
     if (

@@ -796,6 +796,31 @@ input[type="number"] {
   border-top: 1px solid var(--line-translucent-strong);
 }
 
+.remote-file-list {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.remote-file-marquee {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid var(--accent-bright);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-bright) 18%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface-base) 35%, transparent);
+}
+
+.remote-file-empty {
+  padding: 18px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
 .file-node {
   display: flex;
   align-items: center;
@@ -807,6 +832,15 @@ input[type="number"] {
   line-height: 28px;
   user-select: none;
   outline: none;
+  cursor: default;
+}
+
+.file-node[draggable="true"] {
+  cursor: grab;
+}
+
+.file-node[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .file-node:hover {
@@ -822,6 +856,12 @@ input[type="number"] {
   background: var(--selected-bg);
 }
 
+.file-node.is-drop-target,
+.file-node.is-drop-target:hover {
+  background: var(--brand-fill-soft);
+  box-shadow: inset 0 0 0 1px var(--brand-border-soft);
+}
+
 .file-node.is-loading {
   opacity: 0.66;
 }
@@ -835,11 +875,13 @@ input[type="number"] {
   background: transparent;
 }
 
+.remote-file-icon,
 .file-icon {
   flex: 0 0 auto;
   color: var(--accent-bright);
 }
 
+.remote-file-name,
 .file-name {
   min-width: 0;
   flex: 1 1 auto;
@@ -847,6 +889,17 @@ input[type="number"] {
   color: var(--text-secondary);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-node small {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.file-node small:last-child {
+  min-width: 82px;
+  text-align: right;
 }
 
 /* 原地重命名输入框：贴合文件名行高，聚焦时蓝色边框提示编辑态。 */
@@ -963,23 +1016,6 @@ input[type="number"] {
   opacity: 0.82;
 }
 
-.chevron-icon {
-  display: block;
-  width: 14px;
-  height: 14px;
-  transition: transform 140ms ease;
-}
-
-.chevron-icon.open {
-  transform: rotate(90deg);
-}
-
-.chevron-placeholder {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-}
-
 .workspace {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
@@ -993,7 +1029,7 @@ input[type="number"] {
 
 .topbar {
   position: relative;
-  z-index: 30;
+  z-index: 10002;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1059,7 +1095,7 @@ input[type="number"] {
   position: absolute;
   top: 44px;
   right: 0;
-  z-index: 60;
+  z-index: 10003;
   width: 320px;
   max-height: 420px;
   overflow: auto;
@@ -1710,64 +1746,6 @@ input[type="number"] {
   font-variant-numeric: tabular-nums;
 }
 
-.file-view-mode-control {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 104px));
-  justify-content: end;
-  gap: 8px;
-}
-
-.file-view-mode-option {
-  position: relative;
-  display: grid;
-  align-content: center;
-  gap: 3px;
-  min-height: 58px;
-  padding: 0 12px;
-  border: 1px solid var(--border-input);
-  border-radius: 8px;
-  background: var(--bg-input);
-  color: var(--text-dim);
-  text-align: left;
-}
-
-.file-view-mode-option:hover {
-  border-color: var(--border-hover-strong);
-  background: var(--bg-hover-cool);
-}
-
-.file-view-mode-option.active {
-  border-color: var(--accent);
-  background: var(--accent-fill);
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
-}
-
-.file-view-mode-option.active::after {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--accent-bright);
-  content: "";
-}
-
-.file-view-mode-title {
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.file-view-mode-desc {
-  overflow: hidden;
-  color: var(--text-disabled);
-  font-size: 11px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .color-select {
   position: relative;
   display: flex;
@@ -2114,6 +2092,12 @@ input[type="number"] {
   background: var(--surface-subtle-strong);
 }
 
+.transfer-file-list-inner {
+  display: grid;
+  align-content: start;
+  gap: 0;
+}
+
 .transfer-state {
   padding: 18px 10px;
   color: var(--text-tertiary);
@@ -2143,6 +2127,15 @@ input[type="number"] {
   text-align: left;
   user-select: none;
   outline: none;
+  cursor: default;
+}
+
+.transfer-file-row[draggable="true"] {
+  cursor: grab;
+}
+
+.transfer-file-row[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .transfer-file-row:hover {
@@ -2152,6 +2145,12 @@ input[type="number"] {
 .transfer-file-row.selected {
   background: var(--selected-bg);
   box-shadow: inset 0 0 0 1px var(--selected-ring);
+}
+
+.transfer-file-row.is-drop-target,
+.transfer-file-row.is-drop-target:hover {
+  background: var(--brand-fill-soft);
+  box-shadow: inset 0 0 0 1px var(--brand-border-soft);
 }
 
 .transfer-file-row.deleting {
@@ -2187,6 +2186,7 @@ input[type="number"] {
   text-align: right;
 }
 
+.remote-file-rename-input,
 .transfer-rename-input {
   min-width: 0;
   height: 22px;

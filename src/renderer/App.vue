@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { flattenRemoteTree } from "./utils/file-tree";
 import { isPreviewImageFile } from "./utils/file-kind";
 import type { VisibleRemoteFileNode } from "./types/sftp";
 import {
@@ -57,7 +56,10 @@ const SERVER_OPEN_DEBOUNCE_MS = 3000;
 const serverOpenAllowedAt = new Map<string, number>();
 const deleteConfirmDialog = reactive({
   open: false,
+  title: "确认删除",
   message: "",
+  confirmLabel: "删除",
+  danger: true,
 });
 const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
@@ -82,7 +84,6 @@ const {
   openSettingsDialog,
   closeSettingsDialog,
   stepTerminalNumberSetting,
-  updateSftpFileTreeViewMode,
   updateKeepaliveIntervalSeconds,
   updateIdleDisconnectMinutes,
   updateThemeMode,
@@ -187,6 +188,7 @@ const {
   fileContextMenu,
   blankContextMenu,
   renaming,
+  fileDragTargetPath,
   imagePreview,
 } = storeToRefs(sftpStore);
 
@@ -206,8 +208,15 @@ const {
   commitRename: commitRenameFromStore,
   cancelRename: cancelRenameFromStore,
   createRemoteNode,
+  clearFileSelection,
   selectFileNode,
   selectAllInFileTree,
+  selectFileNodesByPaths,
+  startRemoteNodeDrag,
+  clearRemoteNodeDrag,
+  clearRemoteNodeDragTarget,
+  updateRemoteNodeDragTarget,
+  moveDraggedRemoteNodesToDirectory,
   openRemoteImagePreview: openRemoteImagePreviewFromStore,
   downloadContextFile: downloadContextFileFromStore,
   downloadImagePreviewFile,
@@ -272,19 +281,12 @@ const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
   }
 
   const parentNode = createParentDirectoryNode(tree.root.path);
+  const currentLevelNodes = (tree.root.children ?? []).map(node => ({
+    ...node,
+    level: 0,
+  }));
 
-  if (appSettings.sftp.fileTreeViewMode === "current-directory") {
-    const currentLevelNodes = (tree.root.children ?? []).map(node => ({
-      ...node,
-      level: 0,
-    }));
-
-    return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
-  }
-
-  const treeNodes = flattenRemoteTree(tree.root, tree.expandedPaths);
-
-  return parentNode ? [parentNode, ...treeNodes] : treeNodes;
+  return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
 });
 
 const isWindows = computed(() => appPlatform.value === "win32");
@@ -418,6 +420,97 @@ function handleFileSelectAll(): void {
   selectAllInFileTree(activeTabId.value, visibleFileTree.value);
 }
 
+function handleFileClearSelection(): void {
+  clearFileSelection(activeTabId.value);
+}
+
+function handleFileMarqueeSelect(paths: string[]): void {
+  selectFileNodesByPaths(activeTabId.value, visibleFileTree.value, paths);
+}
+
+function handleFileDragStart(
+  event: DragEvent,
+  node: RemoteFileNode & { isVirtualParent?: boolean },
+): void {
+  if (node.isVirtualParent || isRemoteNodeDeleting(node)) {
+    event.preventDefault();
+    return;
+  }
+
+  startRemoteNodeDrag(activeSftpTree.value, node);
+  event.dataTransfer?.setData("text/plain", node.path);
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+  }
+}
+
+function handleFileDragOver(
+  event: DragEvent,
+  node: RemoteFileNode & { isVirtualParent?: boolean },
+): void {
+  if (node.type !== "directory") {
+    clearRemoteNodeDragTarget();
+    return;
+  }
+
+  if (!updateRemoteNodeDragTarget(activeSftpTree.value, node)) {
+    event.dataTransfer && (event.dataTransfer.dropEffect = "none");
+    return;
+  }
+
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "move";
+  }
+}
+
+function handleFileDragLeave(
+  event: DragEvent,
+  node: RemoteFileNode,
+): void {
+  const nextTarget = event.relatedTarget;
+  const currentTarget = event.currentTarget;
+
+  if (
+    currentTarget instanceof HTMLElement &&
+    nextTarget instanceof Node &&
+    currentTarget.contains(nextTarget)
+  ) {
+    return;
+  }
+
+  if (fileDragTargetPath.value === node.path) {
+    clearRemoteNodeDragTarget();
+  }
+}
+
+async function handleFileDrop(
+  event: DragEvent,
+  node: RemoteFileNode & { isVirtualParent?: boolean },
+): Promise<void> {
+  event.preventDefault();
+
+  if (node.type !== "directory") {
+    clearRemoteNodeDrag();
+    return;
+  }
+
+  await moveDraggedRemoteNodesToDirectory(
+    activeTabId.value,
+    activeSftpTree.value,
+    node,
+    {
+      shouldMove: (message) =>
+        requestConfirm({
+          title: "确认移动",
+          message,
+          confirmLabel: "移动",
+          danger: false,
+        }),
+    },
+  );
+}
+
 async function downloadContextFile(): Promise<void> {
   await downloadContextFileFromStore(activeTabId.value);
 }
@@ -537,11 +630,7 @@ async function openRemoteNodeByDoubleClick(node: RemoteFileNode): Promise<void> 
     return;
   }
 
-  if (
-    node.type === "directory" &&
-    tab &&
-    appSettings.sftp.fileTreeViewMode === "current-directory"
-  ) {
+  if (node.type === "directory" && tab) {
     // 当前层模式复用路径跳转逻辑，进入目录后仅展示该目录直属内容。
     await sftpStore.openSftpDirectoryPath(tab, node.path, "路径不存在或无法访问");
     return;
@@ -602,7 +691,24 @@ async function handleCreateBlankNode(
 }
 
 function requestDeleteConfirm(message: string): Promise<boolean> {
-  deleteConfirmDialog.message = message;
+  return requestConfirm({
+    title: "确认删除",
+    message,
+    confirmLabel: "删除",
+    danger: true,
+  });
+}
+
+function requestConfirm(input: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  danger: boolean;
+}): Promise<boolean> {
+  deleteConfirmDialog.title = input.title;
+  deleteConfirmDialog.message = input.message;
+  deleteConfirmDialog.confirmLabel = input.confirmLabel;
+  deleteConfirmDialog.danger = input.danger;
   deleteConfirmDialog.open = true;
 
   return new Promise(resolve => {
@@ -612,7 +718,10 @@ function requestDeleteConfirm(message: string): Promise<boolean> {
 
 function resolveDeleteConfirm(confirmed: boolean): void {
   deleteConfirmDialog.open = false;
+  deleteConfirmDialog.title = "确认删除";
   deleteConfirmDialog.message = "";
+  deleteConfirmDialog.confirmLabel = "删除";
+  deleteConfirmDialog.danger = true;
   deleteConfirmResolver.value?.(confirmed);
   deleteConfirmResolver.value = null;
 }
@@ -704,18 +813,6 @@ async function closeTerminalTab(tabId: string): Promise<void> {
       removeSftpTree(closedTabId);
     },
   });
-}
-
-async function toggleRemoteDirectory(node: RemoteFileNode): Promise<void> {
-  if (!activeTabId.value) {
-    return;
-  }
-
-  if (isRemoteNodeDeleting(node)) {
-    return;
-  }
-
-  await sftpStore.toggleRemoteDirectory(activeTabId.value, node);
 }
 
 // 窗口尺寸变化（含最大化/还原）后重新 fit 终端。
@@ -850,11 +947,11 @@ onUnmounted(() => {
         <SftpPanel
           :active-tab="activeTab"
           :active-sftp-tree="activeSftpTree"
-          :file-tree-view-mode="appSettings.sftp.fileTreeViewMode"
           :visible-file-tree="visibleFileTree"
           :file-context-menu="fileContextMenu"
           :blank-context-menu="blankContextMenu"
           :renaming="renaming"
+          :file-drag-target-path="fileDragTargetPath"
           :file-path-input="filePathInput"
           :file-panel-hint="getFilePanelHint()"
           :file-tree-element-ref="setFileTreeElement"
@@ -874,7 +971,13 @@ onUnmounted(() => {
           @close-blank-context-menu="closeBlankContextMenu"
           @select-node="handleFileSelectNode"
           @select-all="handleFileSelectAll"
-          @toggle-directory="toggleRemoteDirectory"
+          @clear-selection="handleFileClearSelection"
+          @marquee-select="handleFileMarqueeSelect"
+          @drag-start-node="handleFileDragStart"
+          @drag-over-node="handleFileDragOver"
+          @drag-leave-node="handleFileDragLeave"
+          @drop-node="handleFileDrop"
+          @drag-end-node="clearRemoteNodeDrag"
           @open-file-by-double-click="openRemoteNodeByDoubleClick"
           @preview-context-file="previewContextFile"
           @edit-context-file="editContextFile"
@@ -975,7 +1078,10 @@ onUnmounted(() => {
 
     <DeleteConfirmDialog
       :open="deleteConfirmDialog.open"
+      :title="deleteConfirmDialog.title"
       :message="deleteConfirmDialog.message"
+      :confirm-label="deleteConfirmDialog.confirmLabel"
+      :danger="deleteConfirmDialog.danger"
       @cancel="resolveDeleteConfirm(false)"
       @confirm="resolveDeleteConfirm(true)" />
 
@@ -994,7 +1100,6 @@ onUnmounted(() => {
         isSelectionBackgroundDropdownOpen = $event
       "
       @step-terminal-number-setting="stepTerminalNumberSetting"
-      @update-sftp-file-tree-view-mode="updateSftpFileTreeViewMode"
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
       @update-theme-mode="updateThemeMode"

@@ -65,7 +65,7 @@ const headerMenuItems = computed<ContextMenuItem[]>(() => {
     return [
       {
         key: "data-transfer",
-        label: "数据传输",
+        label: "文件传输",
       },
     ];
   }
@@ -195,13 +195,15 @@ function getTaskDirectionText(task: DownloadTask): string {
     <div
       v-if="isMac && !isWindowFullScreen"
       class="mac-window-controls"
-      aria-label="窗口控制">
+      aria-label="窗口控制"
+    >
       <button
         type="button"
         tabindex="-1"
         class="mac-window-control mac-window-close"
         aria-label="关闭窗口"
-        @click="emit('closeWindow')">
+        @click="emit('closeWindow')"
+      >
         <img :src="macCloseIcon" alt="" />
       </button>
       <button
@@ -209,7 +211,8 @@ function getTaskDirectionText(task: DownloadTask): string {
         tabindex="-1"
         class="mac-window-control mac-window-minimize"
         aria-label="最小化窗口"
-        @click="emit('minimizeWindow')">
+        @click="emit('minimizeWindow')"
+      >
         <img :src="macMinimizeIcon" alt="" />
       </button>
       <button
@@ -217,7 +220,8 @@ function getTaskDirectionText(task: DownloadTask): string {
         tabindex="-1"
         class="mac-window-control mac-window-zoom"
         :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
-        @click="emit('toggleMaximizeWindow')">
+        @click="emit('toggleMaximizeWindow')"
+      >
         <img :src="macZoomIcon" alt="" />
       </button>
     </div>
@@ -235,7 +239,8 @@ function getTaskDirectionText(task: DownloadTask): string {
         data-floating-menu-trigger
         :class="{ active: activeHeaderMenu === 'tools' && headerMenu.open }"
         @click="openHeaderMenu('tools', $event)"
-        @mouseenter="switchHeaderMenuOnHover('tools', $event)">
+        @mouseenter="switchHeaderMenuOnHover('tools', $event)"
+      >
         工具
       </button>
       <button
@@ -244,14 +249,16 @@ function getTaskDirectionText(task: DownloadTask): string {
         data-floating-menu-trigger
         :class="{ active: activeHeaderMenu === 'help' && headerMenu.open }"
         @click="openHeaderMenu('help', $event)"
-        @mouseenter="switchHeaderMenuOnHover('help', $event)">
+        @mouseenter="switchHeaderMenuOnHover('help', $event)"
+      >
         帮助
       </button>
       <ContextMenu
         :menu="headerMenu"
         :items="headerMenuItems"
         @select="selectHeaderMenuItem"
-        @close="closeHeaderMenu" />
+        @close="closeHeaderMenu"
+      />
     </nav>
     <div class="titlebar-drag-zone" aria-hidden="true"></div>
     <div class="window-actions">
@@ -263,7 +270,8 @@ function getTaskDirectionText(task: DownloadTask): string {
           data-floating-menu-trigger
           aria-label="传输任务"
           title="传输任务"
-          @click="toggleTaskList">
+          @click="toggleTaskList"
+        >
           <img :src="taskIcon" alt="" />
           <strong v-if="activeDownloadCount > 0">
             {{ activeDownloadCount }}
@@ -272,7 +280,8 @@ function getTaskDirectionText(task: DownloadTask): string {
         <FloatingMenu
           :open="isTaskListOpen"
           class="tasklist-panel"
-          @close="emit('updateTaskListOpen', false)">
+          @close="emit('updateTaskListOpen', false)"
+        >
           <header>
             <span>传输任务</span>
             <small>{{ visibleDownloadTasks.length }} 项</small>
@@ -284,7 +293,8 @@ function getTaskDirectionText(task: DownloadTask): string {
             <article
               v-for="task in visibleDownloadTasks"
               :key="task.taskId"
-              class="tasklist-item">
+              class="tasklist-item"
+            >
               <div class="tasklist-item-head">
                 <strong>
                   <span class="tasklist-direction">
@@ -298,7 +308,8 @@ function getTaskDirectionText(task: DownloadTask): string {
                 <span
                   :style="{
                     width: `${getDownloadProgressPercent(task)}%`,
-                  }"></span>
+                  }"
+                ></span>
               </div>
 
               <div class="tasklist-info">
@@ -313,14 +324,16 @@ function getTaskDirectionText(task: DownloadTask): string {
                   <template
                     v-if="
                       ['started', 'progress', 'paused'].includes(task.status)
-                    ">
+                    "
+                  >
                     <button
                       v-if="task.status === 'paused'"
                       title="继续"
                       type="button"
                       tabindex="-1"
                       :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'resume')">
+                      @click="emit('controlDownloadTask', task, 'resume')"
+                    >
                       <img :src="continueIcon" alt="继续" />
                     </button>
                     <button
@@ -329,7 +342,8 @@ function getTaskDirectionText(task: DownloadTask): string {
                       type="button"
                       tabindex="-1"
                       :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'pause')">
+                      @click="emit('controlDownloadTask', task, 'pause')"
+                    >
                       <img :src="pauseIcon" alt="暂停" />
                     </button>
                     <button
@@ -338,7 +352,8 @@ function getTaskDirectionText(task: DownloadTask): string {
                       tabindex="-1"
                       class="danger"
                       :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'cancel')">
+                      @click="emit('controlDownloadTask', task, 'cancel')"
+                    >
                       <img :src="trashIcon" alt="删除" />
                     </button>
                   </template>
@@ -352,7 +367,8 @@ function getTaskDirectionText(task: DownloadTask): string {
         type="button"
         tabindex="-1"
         aria-label="设置"
-        @click="emit('openSettings')">
+        @click="emit('openSettings')"
+      >
         <img :src="settingsIcon" alt="" />
       </button>
       <template v-if="isWindows">
@@ -361,14 +377,16 @@ function getTaskDirectionText(task: DownloadTask): string {
           type="button"
           tabindex="-1"
           aria-label="最小化窗口"
-          @click="emit('minimizeWindow')">
+          @click="emit('minimizeWindow')"
+        >
           <img :src="minimizeIcon" alt="" />
         </button>
         <button
           type="button"
           tabindex="-1"
           :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
-          @click="emit('toggleMaximizeWindow')">
+          @click="emit('toggleMaximizeWindow')"
+        >
           <img :src="isWindowMaximized ? restoreIcon : maximizeIcon" alt="" />
         </button>
         <button
@@ -376,7 +394,8 @@ function getTaskDirectionText(task: DownloadTask): string {
           tabindex="-1"
           class="window-close"
           aria-label="关闭窗口"
-          @click="emit('closeWindow')">
+          @click="emit('closeWindow')"
+        >
           <img :src="closeIcon" alt="" />
         </button>
       </template>

@@ -4,6 +4,9 @@ import AppDialog from "./AppDialog.vue";
 defineProps<{
   open: boolean;
   message: string;
+  title?: string;
+  confirmLabel?: string;
+  danger?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -15,7 +18,7 @@ const emit = defineEmits<{
 <template>
   <AppDialog
     v-if="open"
-    title="确认删除"
+    :title="title ?? '确认删除'"
     width="small"
     @close="emit('cancel')">
     <section class="confirm-dialog-content delete-confirm-content">
@@ -24,8 +27,11 @@ const emit = defineEmits<{
         <button type="button" class="ghost-button" @click="emit('cancel')">
           取消
         </button>
-        <button type="button" class="danger-button" @click="emit('confirm')">
-          删除
+        <button
+          type="button"
+          :class="danger === false ? 'primary-button' : 'danger-button'"
+          @click="emit('confirm')">
+          {{ confirmLabel ?? "删除" }}
         </button>
       </footer>
     </section>

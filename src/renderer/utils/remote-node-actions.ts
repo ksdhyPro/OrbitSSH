@@ -13,6 +13,11 @@ export interface DeleteRemoteNodesResult {
   firstError: string;
 }
 
+export interface MoveRemoteNodesResult {
+  movedNodes: RemoteFileNode[];
+  firstError: string;
+}
+
 /**
  * 根据旧路径和新文件名生成远程重命名目标路径。
  * 只接收文件名，不允许调用方传入带尾部斜杠的路径片段。
@@ -21,11 +26,22 @@ export function buildRemoteRenamePath(path: string, nextName: string): string {
   const parentPath = getRemoteParentPath(path);
   const normalizedName = nextName.trim().replace(/\/+$/g, "");
 
-  return parentPath === "/" ? `/${normalizedName}` : `${parentPath}/${normalizedName}`;
+  return parentPath === "/"
+    ? `/${normalizedName}`
+    : `${parentPath}/${normalizedName}`;
+}
+
+export function buildRemoteChildPath(parentPath: string, childName: string): string {
+  const normalizedParent = parentPath.trim().replace(/\/+/g, "/").replace(/\/$/g, "");
+  const normalizedName = childName.trim().replace(/^\/+|\/+$/g, "");
+
+  return !normalizedParent || normalizedParent === "/"
+    ? `/${normalizedName}`
+    : `${normalizedParent}/${normalizedName}`;
 }
 
 /**
- * 生成删除确认文案，保持主 SFTP 与数据传输弹窗的删除提示一致。
+ * 生成删除确认文案，保持主 SFTP 与文件传输弹窗的删除提示一致。
  */
 export function getRemoteDeleteConfirmMessage(nodes: RemoteFileNode[]): string {
   if (nodes.length === 1) {
@@ -39,12 +55,59 @@ export function getRemoteDeleteConfirmMessage(nodes: RemoteFileNode[]): string {
   return `删除选中的 ${nodes.length} 项？`;
 }
 
+export function getRemoteMoveConfirmMessage(
+  nodes: RemoteFileNode[],
+  targetDirectory: RemoteFileNode,
+): string {
+  if (nodes.length === 1) {
+    return `移动 '${nodes[0].name}' 到 '${targetDirectory.name}' 文件夹？`;
+  }
+
+  return `移动选中的 ${nodes.length} 项到 '${targetDirectory.name}' 文件夹？`;
+}
+
+export function canMoveRemoteNodesToDirectory(
+  nodes: RemoteFileNode[],
+  targetDirectory: RemoteFileNode,
+): boolean {
+  if (targetDirectory.type !== "directory" || nodes.length === 0) {
+    return false;
+  }
+
+  const normalizedTargetPath = targetDirectory.path.replace(/\/+$/g, "");
+
+  return nodes.every((node) => {
+    const normalizedSourcePath = node.path.replace(/\/+$/g, "");
+
+    if (
+      !normalizedSourcePath ||
+      normalizedSourcePath === "/" ||
+      normalizedSourcePath === normalizedTargetPath ||
+      getRemoteParentPath(normalizedSourcePath) === normalizedTargetPath
+    ) {
+      return false;
+    }
+
+    if (
+      node.type === "directory" &&
+      normalizedTargetPath.startsWith(`${normalizedSourcePath}/`)
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 /**
  * 删除时深层路径优先，避免先删父目录导致子路径操作报错。
  */
-export function sortRemoteNodesForDelete(nodes: RemoteFileNode[]): RemoteFileNode[] {
+export function sortRemoteNodesForDelete(
+  nodes: RemoteFileNode[],
+): RemoteFileNode[] {
   return [...nodes].sort(
-    (a, b) => (b.path.match(/\//g)?.length ?? 0) - (a.path.match(/\//g)?.length ?? 0),
+    (a, b) =>
+      (b.path.match(/\//g)?.length ?? 0) - (a.path.match(/\//g)?.length ?? 0),
   );
 }
 
@@ -78,6 +141,33 @@ export async function deleteRemoteNodes(
   }
 
   return { deletedNodes, firstError };
+}
+
+export async function moveRemoteNodesToDirectory(
+  sftp: SftpApi,
+  tabId: string,
+  nodes: RemoteFileNode[],
+  targetDirectory: RemoteFileNode,
+): Promise<MoveRemoteNodesResult> {
+  const movedNodes: RemoteFileNode[] = [];
+  let firstError = "";
+
+  for (const node of nodes) {
+    try {
+      await sftp.rename({
+        tabId,
+        path: node.path,
+        newPath: buildRemoteChildPath(targetDirectory.path, node.name),
+      });
+      movedNodes.push(node);
+    } catch (error) {
+      firstError =
+        firstError ||
+        (error instanceof Error ? error.message : `移动'${node.name}'失败`);
+    }
+  }
+
+  return { movedNodes, firstError };
 }
 
 /**

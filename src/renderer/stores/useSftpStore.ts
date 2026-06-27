@@ -21,8 +21,11 @@ import { isKnownEditableTextFile, isPreviewImageFile } from "../utils/file-kind"
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import {
+  canMoveRemoteNodesToDirectory,
   deleteRemoteNodes,
   getRemoteDeleteConfirmMessage,
+  getRemoteMoveConfirmMessage,
+  moveRemoteNodesToDirectory,
   refreshRemoteDirectory,
   renameRemoteNodeByName,
 } from "../utils/remote-node-actions";
@@ -31,6 +34,10 @@ import { useCoreStore } from "./useCoreStore";
 export interface DeleteRemoteNodeCallbacks {
   shouldDelete: (message: string) => boolean | Promise<boolean>;
   onDeleted?: (node: RemoteFileNode) => void;
+}
+
+export interface MoveRemoteNodeCallbacks {
+  shouldMove: (message: string) => boolean | Promise<boolean>;
 }
 
 // SFTP 域 store：管理文件树、路径跳转、远程文件探测、预览、下载与删除。
@@ -44,6 +51,8 @@ export const useSftpStore = defineStore("sftp", () => {
   const sftpPathPromptMessage = ref("");
   const sftpTrees = ref<Record<string, SftpTreeState>>({});
   const fileTreeElement = ref<HTMLElement | null>(null);
+  const fileDragSourcePaths = ref<Set<string>>(new Set());
+  const fileDragTargetPath = ref("");
   const fileContextMenu = reactive<FileContextMenuState>({
     open: false,
     x: 0,
@@ -804,6 +813,36 @@ export const useSftpStore = defineStore("sftp", () => {
     });
   }
 
+  function selectFileNodesByPaths(
+    tabId: string,
+    visibleNodes: (RemoteFileNode & { isVirtualParent?: boolean })[],
+    paths: string[],
+  ): void {
+    const tree = getSftpTree(tabId);
+
+    if (!tree) {
+      return;
+    }
+
+    const selectedPaths = new Set(paths);
+    let lastClickedIndex = -1;
+
+    for (let index = visibleNodes.length - 1; index >= 0; index--) {
+      const node = visibleNodes[index];
+
+      if (node && selectedPaths.has(node.path)) {
+        lastClickedIndex = index;
+        break;
+      }
+    }
+
+    setSftpTree(tabId, {
+      ...tree,
+      selectedPaths,
+      lastClickedIndex,
+    });
+  }
+
   function getSelectedNodes(
     tree: SftpTreeState | undefined,
   ): RemoteFileNode[] {
@@ -829,6 +868,132 @@ export const useSftpStore = defineStore("sftp", () => {
       for (const child of node.children) {
         collectNodes(child, selectedPaths, result);
       }
+    }
+  }
+
+  function getDragMoveNodes(
+    tree: SftpTreeState | undefined,
+    node: RemoteFileNode,
+  ): RemoteFileNode[] {
+    if (!tree || tree.deletingPaths.has(node.path) || node.path === tree.root.path) {
+      return [];
+    }
+
+    const selectedNodes = getSelectedNodes(tree);
+    const nodes = tree.selectedPaths.has(node.path) && selectedNodes.length > 0
+      ? selectedNodes
+      : [node];
+
+    return nodes.filter(
+      (item) => !tree.deletingPaths.has(item.path) && item.path !== tree.root.path,
+    );
+  }
+
+  function startRemoteNodeDrag(
+    tree: SftpTreeState | undefined,
+    node: RemoteFileNode,
+  ): void {
+    fileDragSourcePaths.value = new Set(
+      getDragMoveNodes(tree, node).map((item) => item.path),
+    );
+    fileDragTargetPath.value = "";
+  }
+
+  function clearRemoteNodeDrag(): void {
+    fileDragSourcePaths.value = new Set<string>();
+    fileDragTargetPath.value = "";
+  }
+
+  function clearRemoteNodeDragTarget(): void {
+    fileDragTargetPath.value = "";
+  }
+
+  function updateRemoteNodeDragTarget(
+    tree: SftpTreeState | undefined,
+    targetNode: RemoteFileNode,
+  ): boolean {
+    const sourceNodes = getSelectedNodesByPaths(tree, fileDragSourcePaths.value);
+    const canMove = canMoveRemoteNodesToDirectory(sourceNodes, targetNode);
+
+    fileDragTargetPath.value = canMove ? targetNode.path : "";
+    return canMove;
+  }
+
+  function getSelectedNodesByPaths(
+    tree: SftpTreeState | undefined,
+    selectedPaths: Set<string>,
+  ): RemoteFileNode[] {
+    if (!tree) {
+      return [];
+    }
+
+    const result: RemoteFileNode[] = [];
+    collectNodes(tree.root, selectedPaths, result);
+    return result;
+  }
+
+  async function moveDraggedRemoteNodesToDirectory(
+    tabId: string,
+    tree: SftpTreeState | undefined,
+    targetDirectory: RemoteFileNode,
+    callbacks: MoveRemoteNodeCallbacks,
+  ): Promise<void> {
+    if (!tabId || !tree || !core.orbitSSHApi) {
+      clearRemoteNodeDrag();
+      return;
+    }
+
+    const nodesToMove = getSelectedNodesByPaths(tree, fileDragSourcePaths.value);
+
+    if (!canMoveRemoteNodesToDirectory(nodesToMove, targetDirectory)) {
+      clearRemoteNodeDrag();
+      return;
+    }
+
+    if (!(await callbacks.shouldMove(getRemoteMoveConfirmMessage(nodesToMove, targetDirectory)))) {
+      clearRemoteNodeDrag();
+      return;
+    }
+
+    const { firstError } = await moveRemoteNodesToDirectory(
+      core.orbitSSHApi.sftp,
+      tabId,
+      nodesToMove,
+      targetDirectory,
+    );
+    const refreshPaths = new Set<string>([targetDirectory.path]);
+
+    for (const node of nodesToMove) {
+      refreshPaths.add(getRemoteParentPath(node.path));
+      delete fileTextProbeStates[node.path];
+    }
+
+    try {
+      for (const path of refreshPaths) {
+        await refreshRemoteDirectoryPath(tabId, path);
+      }
+
+      const latestTree = getSftpTree(tabId);
+      if (latestTree) {
+        setSftpTree(tabId, {
+          ...latestTree,
+          selectedPaths: new Set<string>(),
+          lastClickedIndex: -1,
+          error: firstError,
+        });
+      }
+    } catch (error) {
+      const latestTree = getSftpTree(tabId);
+      if (latestTree) {
+        setSftpTree(tabId, {
+          ...latestTree,
+          error:
+            firstError ||
+            (error instanceof Error ? error.message : "移动后刷新目录失败"),
+        });
+      }
+    } finally {
+      clearRemoteNodeDrag();
     }
   }
 
@@ -1202,6 +1367,7 @@ export const useSftpStore = defineStore("sftp", () => {
     blankContextMenu,
     renaming,
     fileTextProbeStates,
+    fileDragTargetPath,
     imagePreview,
     getSftpTree,
     setSftpTree,
@@ -1235,6 +1401,12 @@ export const useSftpStore = defineStore("sftp", () => {
     clearFileSelection,
     selectFileNode,
     selectAllInFileTree,
+    selectFileNodesByPaths,
+    startRemoteNodeDrag,
+    clearRemoteNodeDrag,
+    clearRemoteNodeDragTarget,
+    updateRemoteNodeDragTarget,
+    moveDraggedRemoteNodesToDirectory,
     getSelectedNodes,
     openRemoteImagePreview,
     closeImagePreview,

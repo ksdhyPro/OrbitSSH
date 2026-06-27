@@ -25,7 +25,8 @@ export function getShortcutSections(isMac: boolean): ShortcutSection[] {
         {
           id: "open-search",
           title: "打开搜索",
-          description: "优先打开文件编辑器搜索；未打开编辑器时打开当前终端搜索。",
+          description:
+            "优先打开文件编辑器搜索；未打开编辑器时打开当前终端搜索。",
           keys: [`${modKey} + F`],
         },
         {
@@ -112,7 +113,8 @@ export function getShortcutSections(isMac: boolean): ShortcutSection[] {
         {
           id: "sftp-range-select",
           title: "范围选择",
-          description: "按住 Shift 点击文件节点，选择锚点到当前节点之间的范围。",
+          description:
+            "按住 Shift 点击文件节点，选择锚点到当前节点之间的范围。",
           keys: ["Shift + Click"],
         },
         {
@@ -143,8 +145,8 @@ export function getShortcutSections(isMac: boolean): ShortcutSection[] {
     },
     {
       id: "data-transfer",
-      title: "数据传输",
-      description: "数据传输弹窗内，按当前焦点面板生效。",
+      title: "文件传输",
+      description: "文件传输弹窗内，按当前焦点面板生效。",
       shortcuts: [
         {
           id: "transfer-select-all",

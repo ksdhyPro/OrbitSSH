@@ -3,8 +3,7 @@ import Store from 'electron-store'
 import {
   defaultAppSettings,
   type AppSettings,
-  type AppThemeMode,
-  type SftpFileTreeViewMode
+  type AppThemeMode
 } from '../../shared/settings.js'
 
 const store = new Store<{ settings: AppSettings }>({
@@ -16,10 +15,6 @@ const store = new Store<{ settings: AppSettings }>({
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
-}
-
-function normalizeSftpFileTreeViewMode(value: unknown): SftpFileTreeViewMode {
-  return value === 'tree' ? 'tree' : defaultAppSettings.sftp.fileTreeViewMode
 }
 
 function normalizeThemeMode(value: unknown): AppThemeMode {
@@ -44,7 +39,6 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
   const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
   const connectionSettings = settings?.connection ?? defaultAppSettings.connection
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
-  const sftpSettings = settings?.sftp ?? defaultAppSettings.sftp
   const updateSettings = settings?.update ?? defaultAppSettings.update
 
   return {
@@ -62,9 +56,6 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
         typeof terminalSettings.selectionBackground === 'string'
           ? terminalSettings.selectionBackground
           : defaultAppSettings.terminal.selectionBackground
-    },
-    sftp: {
-      fileTreeViewMode: normalizeSftpFileTreeViewMode(sftpSettings.fileTreeViewMode)
     },
     update: {
       updateFeedUrl:

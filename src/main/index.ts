@@ -93,7 +93,7 @@ function registerMacApplicationMenu(mainWindow: BrowserWindow): void {
       label: "工具",
       submenu: [
         {
-          label: "数据传输",
+          label: "文件传输",
           click: () => sendAppMenuAction(mainWindow, "open-data-transfer"),
         },
       ],
