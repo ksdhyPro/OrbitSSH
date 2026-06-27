@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, Menu, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,7 @@ import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
+import type { AppMenuAction } from "../shared/app-menu.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +25,101 @@ const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 // Windows: 确保任务栏图标正确、通知分组正确（需在 app.whenReady 之前设置）
 if (process.platform === "win32") {
   app.setAppUserModelId("com.orbitssh.app");
+}
+
+function sendAppMenuAction(
+  fallbackWindow: BrowserWindow,
+  action: AppMenuAction,
+): void {
+  const targetWindow = BrowserWindow.getFocusedWindow() ?? fallbackWindow;
+
+  if (targetWindow.isDestroyed()) {
+    return;
+  }
+
+  targetWindow.webContents.send("app-menu:action", action);
+}
+
+function registerMacApplicationMenu(mainWindow: BrowserWindow): void {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.getName(),
+      submenu: [
+        {
+          label: `关于 ${app.getName()}`,
+          click: () => sendAppMenuAction(mainWindow, "open-about"),
+        },
+        { type: "separator" },
+        {
+          label: "设置...",
+          accelerator: "CmdOrCtrl+,",
+          click: () => sendAppMenuAction(mainWindow, "open-settings"),
+        },
+        { type: "separator" },
+        { role: "services", label: "服务" },
+        { type: "separator" },
+        { role: "hide", label: `隐藏 ${app.getName()}` },
+        { role: "hideOthers", label: "隐藏其他" },
+        { role: "unhide", label: "全部显示" },
+        { type: "separator" },
+        { role: "quit", label: `退出 ${app.getName()}` },
+      ],
+    },
+    {
+      label: "编辑",
+      submenu: [
+        {
+          label: "撤销",
+          accelerator: "CmdOrCtrl+Z",
+          click: () => sendAppMenuAction(mainWindow, "undo"),
+        },
+        {
+          label: "重做",
+          accelerator: "Shift+CmdOrCtrl+Z",
+          click: () => sendAppMenuAction(mainWindow, "redo"),
+        },
+        { type: "separator" },
+        { role: "cut", label: "剪切" },
+        { role: "copy", label: "复制" },
+        { role: "paste", label: "粘贴" },
+        { role: "selectAll", label: "全选" },
+      ],
+    },
+    {
+      label: "工具",
+      submenu: [
+        {
+          label: "数据传输",
+          click: () => sendAppMenuAction(mainWindow, "open-data-transfer"),
+        },
+      ],
+    },
+    {
+      label: "窗口",
+      submenu: [
+        { role: "minimize", label: "最小化" },
+        { role: "zoom", label: "缩放" },
+        { role: "togglefullscreen", label: "进入/退出全屏幕" },
+        { type: "separator" },
+        { role: "front", label: "全部置于前面" },
+      ],
+    },
+    {
+      label: "帮助",
+      submenu: [
+        {
+          label: `关于 ${app.getName()}`,
+          click: () => sendAppMenuAction(mainWindow, "open-about"),
+        },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 // 创建主窗口，并统一约束 Renderer 的系统访问能力。
@@ -52,6 +148,14 @@ function createMainWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow.on("enter-full-screen", () => {
+    mainWindow.webContents.send("window:fullscreen-changed", true);
+  });
+
+  mainWindow.on("leave-full-screen", () => {
+    mainWindow.webContents.send("window:fullscreen-changed", false);
   });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
@@ -105,11 +209,13 @@ app.whenReady().then(() => {
   });
   registerBaseIpc();
   const mainWindow = createMainWindow();
+  registerMacApplicationMenu(mainWindow);
   initUpdateManager(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      const activatedWindow = createMainWindow();
+      registerMacApplicationMenu(activatedWindow);
     }
   });
 });

@@ -52,5 +52,9 @@ export function getDownloadTaskStatusText(task: DownloadTask): string {
     return `${phasePrefix}已暂停`;
   }
 
+  if (task.status === "queued") {
+    return `${phasePrefix}排队中`;
+  }
+
   return `${phasePrefix}${getDownloadProgressPercent(task)}% · ${formatTransferSpeed(task.speedBytesPerSecond)}`;
 }

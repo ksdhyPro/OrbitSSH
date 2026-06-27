@@ -87,6 +87,13 @@ const orbitSSHApi = {
     close: () => ipcRenderer.invoke("window:close"),
     isMaximized: () => ipcRenderer.invoke("window:is-maximized"),
     isMinimized: () => ipcRenderer.invoke("window:is-minimized"),
+    isFullScreen: () => ipcRenderer.invoke("window:is-full-screen"),
+    onFullScreenChanged: callback => {
+      const listener = (_event, fullScreen) => callback(fullScreen);
+      ipcRenderer.on("window:fullscreen-changed", listener);
+      return () =>
+        ipcRenderer.removeListener("window:fullscreen-changed", listener);
+    },
   },
   system: {
     getStats: (tabId) => ipcRenderer.invoke("system:get-stats", tabId),
@@ -101,6 +108,13 @@ const orbitSSHApi = {
       ipcRenderer.on("update:status-changed", listener);
       return () =>
         ipcRenderer.removeListener("update:status-changed", listener);
+    },
+  },
+  appMenu: {
+    onAction: callback => {
+      const listener = (_event, action) => callback(action);
+      ipcRenderer.on("app-menu:action", listener);
+      return () => ipcRenderer.removeListener("app-menu:action", listener);
     },
   },
 };

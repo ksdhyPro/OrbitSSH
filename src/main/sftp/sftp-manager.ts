@@ -136,6 +136,13 @@ interface PausedUploadTask {
   totalBytes: number
 }
 
+interface TransferQueueItem<T> {
+  taskId: string
+  run: () => Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
 const sftpSessions = new Map<string, SftpSession>()
 const { maxEditableFileSizeBytes, textProbeSampleBytes } = appConfig.sftp.textEditor
 const idleDisconnectCheckIntervalMs = 30_000
@@ -144,6 +151,8 @@ const activeUploadTasks = new Map<string, UploadRuntimeTask>()
 const pausedUploadTasks = new Map<string, PausedUploadTask>()
 const activeRemoteTransferTasks = new Map<string, RemoteTransferRuntimeTask>()
 const pausedRemoteTransferTasks = new Map<string, PausedRemoteTransferTask>()
+const transferQueue: TransferQueueItem<unknown>[] = []
+let activeTransferCount = 0
 const imageMimeTypes: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -154,6 +163,65 @@ const imageMimeTypes: Record<string, string> = {
   '.ico': 'image/x-icon',
   '.svg': 'image/svg+xml',
   '.avif': 'image/avif'
+}
+
+function getMaxConcurrentTransferTasks(): number {
+  return Math.max(1, appConfig.sftp.transfer.maxConcurrentTasks)
+}
+
+function runNextQueuedTransfer(): void {
+  if (activeTransferCount >= getMaxConcurrentTransferTasks()) {
+    return
+  }
+
+  const item = transferQueue.shift()
+
+  if (!item) {
+    return
+  }
+
+  activeTransferCount += 1
+  writeAppLog({
+    scope: 'main.sftp',
+    message: '传输任务开始执行',
+    data: {
+      taskId: item.taskId,
+      activeTransferCount,
+      queuedTransferCount: transferQueue.length,
+      maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
+    }
+  })
+
+  void item.run()
+    .then(item.resolve)
+    .catch(item.reject)
+    .finally(() => {
+      activeTransferCount = Math.max(activeTransferCount - 1, 0)
+      runNextQueuedTransfer()
+    })
+}
+
+export function enqueueTransferTask<T>(taskId: string, run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    transferQueue.push({
+      taskId,
+      run: run as () => Promise<unknown>,
+      resolve: resolve as (value: unknown) => void,
+      reject
+    })
+
+    writeAppLog({
+      scope: 'main.sftp',
+      message: '传输任务进入队列',
+      data: {
+        taskId,
+        activeTransferCount,
+        queuedTransferCount: transferQueue.length,
+        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
+      }
+    })
+    runNextQueuedTransfer()
+  })
 }
 
 function stopRemoteTransferConnections(taskId: string, task: RemoteTransferRuntimeTask): void {
@@ -1225,7 +1293,19 @@ export async function controlRemoteUploadTask(
 ): Promise<boolean> {
   const resumePausedTask = (pausedTask: PausedUploadTask): boolean => {
     pausedUploadTasks.delete(taskId)
-    void uploadLocalPathsToRemoteDirectory(
+    onProgress?.({
+      taskId,
+      tabId: pausedTask.tabId,
+      name: pausedTask.name,
+      path: pausedTask.remoteDirectoryPath,
+      status: 'queued',
+      transferredBytes: pausedTask.transferredBytes,
+      totalBytes: pausedTask.totalBytes,
+      speedBytesPerSecond: 0,
+      localPaths: pausedTask.localPaths,
+      remoteDirectoryPath: pausedTask.remoteDirectoryPath
+    })
+    void enqueueTransferTask(taskId, () => uploadLocalPathsToRemoteDirectory(
       pausedTask.tabId,
       pausedTask.remoteDirectoryPath,
       pausedTask.localPaths,
@@ -1237,7 +1317,7 @@ export async function controlRemoteUploadTask(
         transferredBytes: pausedTask.transferredBytes,
         totalBytes: pausedTask.totalBytes
       }
-    ).catch((error) => {
+    )).catch((error) => {
       onProgress?.({
         taskId,
         tabId: pausedTask.tabId,
@@ -1944,7 +2024,21 @@ export async function controlRemoteTransferTask(
     pausedTask: PausedRemoteTransferTask
   ): boolean => {
     pausedRemoteTransferTasks.delete(taskId)
-    void transferRemoteSourcesBetweenServers(
+    onProgress?.({
+      taskId,
+      sourceServerId: pausedTask.sourceServerId,
+      targetServerId: pausedTask.targetServerId,
+      name: getRemoteTransferDisplayName(pausedTask.sources),
+      path: pausedTask.sources[0]?.path ?? '',
+      targetDirectoryPath: pausedTask.targetDirectoryPath,
+      phase: pausedTask.phase,
+      status: 'queued',
+      transferredBytes: pausedTask.transferredBytes,
+      totalBytes: pausedTask.totalBytes,
+      speedBytesPerSecond: 0,
+      sources: pausedTask.sources
+    })
+    void enqueueTransferTask(taskId, () => transferRemoteSourcesBetweenServers(
       {
         taskId,
         sourceServerId: pausedTask.sourceServerId,
@@ -1960,7 +2054,7 @@ export async function controlRemoteTransferTask(
         totalBytes: pausedTask.totalBytes,
         phase: pausedTask.phase
       }
-    ).catch((error) => {
+    )).catch((error) => {
       onProgress?.({
         taskId,
         sourceServerId: pausedTask.sourceServerId,
@@ -2168,6 +2262,7 @@ export async function downloadRemoteFile(
   }
 
   activeDownloadTasks.set(task.taskId, downloadTask)
+  emitProgress('started')
 
   try {
     const localSize = await getLocalFileSize(localPath)

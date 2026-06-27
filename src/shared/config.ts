@@ -4,6 +4,11 @@ export const appConfig = {
     scrollbackRows: 2000,
   },
   sftp: {
+    transfer: {
+      // 全局传输并发上限：上传、下载、服务器间传输共享该队列。
+      // 调大后会同时打开更多 SFTP/SSH 连接，可能增加服务器和本机压力。
+      maxConcurrentTasks: 1,
+    },
     textEditor: {
       // 大于该体积的远程文件不允许直接编辑，避免一次性读取导致卡顿或内存压力。
       maxEditableFileSizeBytes: 10 * 1024 * 1024,

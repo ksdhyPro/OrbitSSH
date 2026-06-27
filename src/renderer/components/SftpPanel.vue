@@ -55,6 +55,7 @@ const emit = defineEmits<{
   editContextFile: [];
   downloadContextFile: [];
   uploadContextFile: [sourceType: "file" | "directory"];
+  uploadToCurrentDirectory: [sourceType: "file" | "directory"];
   deleteContextFile: [];
   renameContextFile: [];
   closeFileContextMenu: [];
@@ -242,6 +243,7 @@ watch(
     <BlankContextMenu
       :menu="blankContextMenu"
       @create="emit('createBlankNode', $event)"
+      @upload="emit('uploadToCurrentDirectory', $event)"
       @close="emit('closeBlankContextMenu')" />
   </section>
 </template>

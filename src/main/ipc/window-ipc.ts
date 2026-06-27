@@ -37,4 +37,6 @@ export function registerWindowIpc(): void {
   ipcMain.handle('window:is-maximized', (event) => getWindowFromEvent(event).isMaximized())
 
   ipcMain.handle('window:is-minimized', (event) => getWindowFromEvent(event).isMinimized())
+
+  ipcMain.handle('window:is-full-screen', (event) => getWindowFromEvent(event).isFullScreen())
 }

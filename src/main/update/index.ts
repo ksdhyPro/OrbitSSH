@@ -59,6 +59,9 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
 
   applyFeedUrl();
 
+  // 只检查更新，不自动下载；下载动作交给 Renderer 的“下载更新”按钮触发。
+  autoUpdater.autoDownload = false;
+
   // 日志输出到文件但不暴露给渲染进程
   autoUpdater.logger = {
     info(message?: string): void {

@@ -987,17 +987,40 @@ export const useSftpStore = defineStore("sftp", () => {
     }
 
     closeFileContextMenu();
+    await uploadToRemoteDirectory(tabId, node.path, sourceType);
+  }
 
+  async function uploadToCurrentDirectory(
+    tabId: string,
+    sourceType: "file" | "directory",
+  ): Promise<void> {
+    const tree = getSftpTree(tabId);
+
+    if (!tabId || !tree?.homePath || !core.orbitSSHApi) {
+      return;
+    }
+
+    closeBlankContextMenu();
+    await uploadToRemoteDirectory(tabId, tree.homePath, sourceType);
+  }
+
+  async function uploadToRemoteDirectory(
+    tabId: string,
+    remoteDirectoryPath: string,
+    sourceType: "file" | "directory",
+  ): Promise<void> {
     try {
       const result = await core.orbitSSHApi.sftp.upload({
         tabId,
-        remoteDirectoryPath: node.path,
+        remoteDirectoryPath,
         sourceType,
       });
 
       if (!result.uploaded) {
         return;
       }
+
+      await refreshRemoteDirectoryPath(tabId, remoteDirectoryPath);
     } catch (error) {
       showSftpPathPrompt(
         error instanceof Error ? error.message : "文件上传失败",
@@ -1007,7 +1030,7 @@ export const useSftpStore = defineStore("sftp", () => {
         "远程目录上传失败",
         {
           tabId,
-          path: node.path,
+          path: remoteDirectoryPath,
           error: error instanceof Error ? error.message : String(error),
         },
         "error",
@@ -1219,6 +1242,7 @@ export const useSftpStore = defineStore("sftp", () => {
     downloadContextFile,
     downloadImagePreviewFile,
     uploadToContextDirectory,
+    uploadToCurrentDirectory,
     refreshRemoteDirectoryPath,
     deleteContextFile,
   };

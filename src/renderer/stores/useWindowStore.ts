@@ -7,6 +7,8 @@ import { useCoreStore } from "./useCoreStore";
 export const useWindowStore = defineStore("window", () => {
   const core = useCoreStore();
   const isWindowMaximized = ref(false);
+  const isWindowFullScreen = ref(false);
+  let stopFullScreenListener: (() => void) | null = null;
 
   async function minimizeWindow(): Promise<void> {
     await core.orbitSSHApi?.windowControls.minimize();
@@ -29,11 +31,35 @@ export const useWindowStore = defineStore("window", () => {
     }
   }
 
+  async function initFullScreen(): Promise<void> {
+    if (core.orbitSSHApi) {
+      isWindowFullScreen.value =
+        await core.orbitSSHApi.windowControls.isFullScreen();
+    }
+  }
+
+  function startFullScreenListener(): void {
+    stopFullScreenListener?.();
+    stopFullScreenListener =
+      core.orbitSSHApi?.windowControls.onFullScreenChanged(fullScreen => {
+        isWindowFullScreen.value = fullScreen;
+      }) ?? null;
+  }
+
+  function stopFullScreenListenerWatch(): void {
+    stopFullScreenListener?.();
+    stopFullScreenListener = null;
+  }
+
   return {
     isWindowMaximized,
+    isWindowFullScreen,
     minimizeWindow,
     toggleMaximizeWindow,
     closeWindow,
     initMaximized,
+    initFullScreen,
+    startFullScreenListener,
+    stopFullScreenListenerWatch,
   };
 });

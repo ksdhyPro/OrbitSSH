@@ -1,4 +1,8 @@
 import {
+  redo,
+  undo,
+} from "@codemirror/commands";
+import {
   closeSearchPanel,
   findNext,
   findPrevious,
@@ -217,6 +221,22 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     closeFileEditor();
   }
 
+  function undoFileEditor(): boolean {
+    if (!fileEditorView?.hasFocus) {
+      return false;
+    }
+
+    return undo(fileEditorView);
+  }
+
+  function redoFileEditor(): boolean {
+    if (!fileEditorView?.hasFocus) {
+      return false;
+    }
+
+    return redo(fileEditorView);
+  }
+
   function updateFileEditorSearchResult(index: number, total: number): void {
     fileEditor.searchIndex = index;
     fileEditor.searchTotal = total;
@@ -421,6 +441,8 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     saveFileEditor,
     saveAndCloseFileEditor,
     discardFileEditorChanges,
+    undoFileEditor,
+    redoFileEditor,
     applyFileEditorSearchQuery,
     openFileEditorSearch,
     closeFileEditorSearch,

@@ -1,6 +1,7 @@
 export {};
 
 import type { SystemStats } from "../main/ipc/system-ipc";
+import type { AppMenuAction } from "../shared/app-menu";
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
@@ -133,6 +134,13 @@ declare global {
         close: () => Promise<boolean>;
         isMaximized: () => Promise<boolean>;
         isMinimized: () => Promise<boolean>;
+        isFullScreen: () => Promise<boolean>;
+        onFullScreenChanged: (
+          callback: (fullScreen: boolean) => void,
+        ) => () => void;
+      };
+      appMenu: {
+        onAction: (callback: (action: AppMenuAction) => void) => () => void;
       };
     };
   }

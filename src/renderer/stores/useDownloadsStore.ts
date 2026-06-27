@@ -19,7 +19,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
   const activeDownloadCount = computed(
     () =>
       downloadTasks.value.filter(task =>
-        ["started", "progress", "paused"].includes(task.status),
+        ["queued", "started", "progress", "paused"].includes(task.status),
       ).length,
   );
 

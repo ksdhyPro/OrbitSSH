@@ -91,7 +91,7 @@ export interface SftpDownloadProgressEvent {
   tabId: string
   name: string
   path: string
-  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  status: 'queued' | 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
   transferredBytes: number
   totalBytes: number
   speedBytesPerSecond: number
@@ -104,7 +104,7 @@ export interface SftpUploadProgressEvent {
   tabId: string
   name: string
   path: string
-  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  status: 'queued' | 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
   transferredBytes: number
   totalBytes: number
   speedBytesPerSecond: number
@@ -121,7 +121,7 @@ export interface SftpRemoteTransferProgressEvent {
   path: string
   targetDirectoryPath: string
   phase: 'preparing' | 'direct' | 'download' | 'upload'
-  status: 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
+  status: 'queued' | 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
   transferredBytes: number
   totalBytes: number
   speedBytesPerSecond: number

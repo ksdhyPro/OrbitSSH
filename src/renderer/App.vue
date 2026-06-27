@@ -13,6 +13,7 @@ import {
 } from "vue";
 import "@xterm/xterm/css/xterm.css";
 
+import AboutDialog from "./components/AboutDialog.vue";
 import ConnectionDialog from "./components/ConnectionDialog.vue";
 import DataTransferDialog from "./components/DataTransferDialog.vue";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
@@ -26,6 +27,7 @@ import SftpPathPromptDialog from "./components/SftpPathPromptDialog.vue";
 import TerminalPanel from "./components/TerminalPanel.vue";
 import TitleBarTabs from "./components/TitleBarTabs.vue";
 import type { ServerConfig } from "../shared/server";
+import type { AppMenuAction } from "../shared/app-menu";
 import type { RemoteFileNode } from "../shared/sftp";
 import { getRemoteParentPath } from "./utils/path";
 import { storeToRefs } from "pinia";
@@ -61,6 +63,8 @@ const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
 const isUpdateDialogOpen = ref(false);
+const isAboutDialogOpen = ref(false);
+let stopAppMenuListener: (() => void) | null = null;
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -104,7 +108,7 @@ const {
 } = updateStore;
 
 // window
-const { isWindowMaximized } = storeToRefs(windowStore);
+const { isWindowMaximized, isWindowFullScreen } = storeToRefs(windowStore);
 const { minimizeWindow, toggleMaximizeWindow, closeWindow } = windowStore;
 
 // sidebar
@@ -208,6 +212,7 @@ const {
   downloadContextFile: downloadContextFileFromStore,
   downloadImagePreviewFile,
   uploadToContextDirectory,
+  uploadToCurrentDirectory,
   deleteContextFile: deleteContextFileFromStore,
   closeImagePreview,
 } = sftpStore;
@@ -235,6 +240,8 @@ const {
   saveFileEditor,
   saveAndCloseFileEditor,
   discardFileEditorChanges,
+  undoFileEditor,
+  redoFileEditor,
   applyFileEditorSearchQuery,
   openFileEditorSearch,
   closeFileEditorSearch,
@@ -419,6 +426,12 @@ async function uploadContextFile(
   sourceType: "file" | "directory",
 ): Promise<void> {
   await uploadToContextDirectory(activeTabId.value, sourceType);
+}
+
+async function uploadToActiveSftpDirectory(
+  sourceType: "file" | "directory",
+): Promise<void> {
+  await uploadToCurrentDirectory(activeTabId.value, sourceType);
 }
 
 async function refreshActiveDirectory(): Promise<void> {
@@ -618,6 +631,41 @@ function closeDataTransferDialog(): void {
   isDataTransferDialogOpen.value = false;
 }
 
+function handleAppMenuAction(action: AppMenuAction): void {
+  if (action === "undo") {
+    if (!undoFileEditor()) {
+      document.execCommand("undo");
+    }
+    return;
+  }
+
+  if (action === "redo") {
+    if (!redoFileEditor()) {
+      document.execCommand("redo");
+    }
+    return;
+  }
+
+  if (action === "open-settings") {
+    openSettingsDialog();
+    return;
+  }
+
+  if (action === "open-about") {
+    isAboutDialogOpen.value = true;
+    return;
+  }
+
+  if (action === "open-data-transfer") {
+    openDataTransferDialog();
+    return;
+  }
+
+  if (action === "open-update") {
+    isUpdateDialogOpen.value = true;
+  }
+}
+
 async function deleteServer(serverId: string): Promise<void> {
   await serversStore.deleteServer(serverId, () =>
     window.confirm("确认删除该服务器配置？"),
@@ -711,8 +759,12 @@ onMounted(() => {
   void settingsStore.loadAppSettings();
   void loadAppInfo();
   void windowStore.initMaximized();
+  void windowStore.initFullScreen();
+  windowStore.startFullScreenListener();
   downloadsStore.startListeners();
   terminalsStore.startListeners();
+  stopAppMenuListener =
+    orbitSSHApi.value?.appMenu.onAction(handleAppMenuAction) ?? null;
   initUpdate();
 
   window.addEventListener("resize", handleWindowResize);
@@ -749,6 +801,9 @@ watch(
 onUnmounted(() => {
   terminalsStore.cleanup();
   downloadsStore.stopListeners();
+  windowStore.stopFullScreenListenerWatch();
+  stopAppMenuListener?.();
+  stopAppMenuListener = null;
   destroyUpdate();
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
@@ -760,7 +815,9 @@ onUnmounted(() => {
   <main class="app-shell">
     <TitleBarTabs
       :is-window-maximized="isWindowMaximized"
+      :is-window-full-screen="isWindowFullScreen"
       :is-windows="isWindows"
+      :is-mac="isMac"
       :is-task-list-open="isTaskListOpen"
       :active-download-count="activeDownloadCount"
       :visible-download-tasks="visibleDownloadTasks"
@@ -770,6 +827,7 @@ onUnmounted(() => {
       @open-data-transfer="openDataTransferDialog"
       @open-settings="openSettingsDialog"
       @open-update="isUpdateDialogOpen = true"
+      @open-about="isAboutDialogOpen = true"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />
@@ -822,6 +880,7 @@ onUnmounted(() => {
           @edit-context-file="editContextFile"
           @download-context-file="downloadContextFile"
           @upload-context-file="uploadContextFile"
+          @upload-to-current-directory="uploadToActiveSftpDirectory"
           @rename-context-file="renameContextFile"
           @delete-context-file="deleteContextFile"
           @commit-rename="handleCommitRename"
@@ -940,6 +999,11 @@ onUnmounted(() => {
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
+
+    <AboutDialog
+      :open="isAboutDialogOpen"
+      :version="updateCurrentVersion"
+      @close="isAboutDialogOpen = false" />
 
     <UpdateDialog
       :open="isUpdateDialogOpen"

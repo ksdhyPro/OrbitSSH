@@ -266,8 +266,7 @@ input::placeholder {
   outline: none;
   padding: 0 34px 0 10px;
   background:
-    linear-gradient(180deg, var(--surface-gloss), transparent),
-    var(--bg-input);
+    linear-gradient(180deg, var(--surface-gloss), transparent), var(--bg-input);
   color: var(--text-primary);
   font: inherit;
   font-size: 12px;
@@ -350,7 +349,11 @@ input[type="number"] {
   width: 100vw;
   height: 100vh;
   background:
-    linear-gradient(180deg, var(--shell-gradient-start), var(--shell-gradient-end) 38%),
+    linear-gradient(
+      180deg,
+      var(--shell-gradient-start),
+      var(--shell-gradient-end) 38%
+    ),
     var(--bg-base);
 }
 
@@ -409,15 +412,11 @@ input[type="number"] {
 }
 
 .brand-mark {
-  display: grid;
-  place-items: center;
   width: 30px;
   height: 30px;
   border-radius: 7px;
-  background: var(--brand);
-  color: var(--brand-ink);
-  font-size: 11px;
-  font-weight: 800;
+  display: block;
+  object-fit: cover;
 }
 
 .header-brand h1,
@@ -510,6 +509,52 @@ input[type="number"] {
   border-radius: 6px;
   background: var(--bg-elevated-3);
   color: var(--text-muted);
+}
+
+.mac-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 100%;
+  padding-right: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.mac-window-control {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.28);
+}
+
+.mac-window-control img {
+  display: block;
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.mac-window-controls:hover .mac-window-control img {
+  opacity: 1;
+}
+
+.mac-window-close {
+  background: #ff5f57;
+}
+
+.mac-window-minimize {
+  background: #febc2e;
+}
+
+.mac-window-zoom {
+  background: #28c840;
 }
 
 .window-actions button {
@@ -996,15 +1041,15 @@ input[type="number"] {
 .tasklist-trigger strong {
   display: grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: var(--brand);
   color: var(--brand-ink);
-  font-size: 11px;
+  font-size: 8px;
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: 2px;
+  right: 2px;
 }
 
 .tasklist-panel {
@@ -1842,6 +1887,20 @@ input[type="number"] {
 .update-feed-url-reset:hover {
   background: var(--bg-elevated-3);
   color: var(--text-primary);
+}
+
+.about-dialog-content {
+  display: grid;
+  gap: 12px;
+}
+
+.about-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-link:hover {
+  text-decoration: underline;
 }
 
 .update-actions {

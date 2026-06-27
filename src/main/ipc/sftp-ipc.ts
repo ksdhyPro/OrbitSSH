@@ -10,6 +10,7 @@ import {
   createRemoteFile,
   deleteRemoteNode,
   downloadRemoteFile,
+  enqueueTransferTask,
   listRemoteDirectory,
   openSftpSession,
   previewRemoteImageFile,
@@ -93,18 +94,18 @@ export function registerSftpIpc(): void {
     }
     event.sender.send('sftp:download-progress', {
       ...baseEvent,
-      status: 'started'
+      status: 'queued'
     })
 
     // 下载任务放到后台执行，IPC 调用只负责创建任务并立即返回，避免长下载被暂停后出现 reply 未返回。
-    void downloadRemoteFile(
+    void enqueueTransferTask(taskId, () => downloadRemoteFile(
         input.tabId,
         input.path,
         filePath,
         { taskId, name: input.name },
         input.size,
         (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
-      )
+      ))
       .catch((error) => {
         event.sender.send('sftp:download-progress', {
           ...baseEvent,
@@ -153,16 +154,16 @@ export function registerSftpIpc(): void {
     }
     event.sender.send('sftp:upload-progress', {
       ...baseEvent,
-      status: 'started'
+      status: 'queued'
     })
 
-    void uploadLocalPathsToRemoteDirectory(
+    void enqueueTransferTask(taskId, () => uploadLocalPathsToRemoteDirectory(
       input.tabId,
       input.remoteDirectoryPath,
       result.filePaths,
       { taskId },
       (progressEvent) => event.sender.send('sftp:upload-progress', progressEvent)
-    ).catch((error) => {
+    )).catch((error) => {
       event.sender.send('sftp:upload-progress', {
         ...baseEvent,
         status: 'error',
@@ -202,16 +203,16 @@ export function registerSftpIpc(): void {
 
     event.sender.send('sftp:remote-transfer-progress', {
       ...baseEvent,
-      status: 'started'
+      status: 'queued'
     })
 
-    void transferRemoteSourcesBetweenServers(
+    void enqueueTransferTask(taskId, () => transferRemoteSourcesBetweenServers(
       {
         ...input,
         taskId
       },
       (progressEvent) => event.sender.send('sftp:remote-transfer-progress', progressEvent)
-    ).catch((error) => {
+    )).catch((error) => {
       event.sender.send('sftp:remote-transfer-progress', {
         ...baseEvent,
         status: 'error',

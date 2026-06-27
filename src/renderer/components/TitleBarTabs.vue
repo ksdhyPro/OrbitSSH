@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
+import appIcon from "../assets/icons/app-icon.png";
 import closeIcon from "../assets/icons/close.svg";
 import continueIcon from "../assets/icons/continue.svg";
+import macCloseIcon from "../assets/icons/mac-close.svg";
+import macMinimizeIcon from "../assets/icons/mac-minimize.svg";
+import macZoomIcon from "../assets/icons/mac-zoom.svg";
 import maximizeIcon from "../assets/icons/maximize.svg";
 import minimizeIcon from "../assets/icons/minimize.svg";
 import pauseIcon from "../assets/icons/pause.svg";
@@ -23,7 +27,9 @@ import FloatingMenu from "./FloatingMenu.vue";
 
 const props = defineProps<{
   isWindows: boolean;
+  isMac: boolean;
   isWindowMaximized: boolean;
+  isWindowFullScreen: boolean;
   isTaskListOpen: boolean;
   activeDownloadCount: number;
   visibleDownloadTasks: DownloadTask[];
@@ -39,6 +45,7 @@ const emit = defineEmits<{
   openDataTransfer: [];
   openSettings: [];
   openUpdate: [];
+  openAbout: [];
   minimizeWindow: [];
   toggleMaximizeWindow: [];
   closeWindow: [];
@@ -154,6 +161,10 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
     emit("openUpdate");
     return;
   }
+
+  if (item.key === "about") {
+    emit("openAbout");
+  }
 }
 
 function toggleTaskList(): void {
@@ -181,14 +192,43 @@ function getTaskDirectionText(task: DownloadTask): string {
 
 <template>
   <header class="topbar">
-    <section class="header-brand">
-      <div class="brand-mark">O</div>
+    <div
+      v-if="isMac && !isWindowFullScreen"
+      class="mac-window-controls"
+      aria-label="窗口控制">
+      <button
+        type="button"
+        tabindex="-1"
+        class="mac-window-control mac-window-close"
+        aria-label="关闭窗口"
+        @click="emit('closeWindow')">
+        <img :src="macCloseIcon" alt="" />
+      </button>
+      <button
+        type="button"
+        tabindex="-1"
+        class="mac-window-control mac-window-minimize"
+        aria-label="最小化窗口"
+        @click="emit('minimizeWindow')">
+        <img :src="macMinimizeIcon" alt="" />
+      </button>
+      <button
+        type="button"
+        tabindex="-1"
+        class="mac-window-control mac-window-zoom"
+        :aria-label="isWindowMaximized ? '还原窗口' : '最大化窗口'"
+        @click="emit('toggleMaximizeWindow')">
+        <img :src="macZoomIcon" alt="" />
+      </button>
+    </div>
+    <section v-if="!isMac" class="header-brand">
+      <img class="brand-mark" :src="appIcon" alt="" />
       <div>
         <h1>OrbitSSH</h1>
         <!-- <p>SSH Terminal Client</p> -->
       </div>
     </section>
-    <nav class="header-menu" aria-label="应用菜单" @click.stop>
+    <nav v-if="!isMac" class="header-menu" aria-label="应用菜单" @click.stop>
       <button
         type="button"
         tabindex="-1"

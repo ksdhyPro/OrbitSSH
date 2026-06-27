@@ -7,6 +7,7 @@ import type {
   ServerUpdateInput,
 } from "../shared/server.js";
 import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
+import type { AppMenuAction } from "../shared/app-menu.js";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -227,6 +228,27 @@ const orbitSSHApi = {
       ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
     isMinimized: () =>
       ipcRenderer.invoke("window:is-minimized") as Promise<boolean>,
+    isFullScreen: () =>
+      ipcRenderer.invoke("window:is-full-screen") as Promise<boolean>,
+    onFullScreenChanged: (callback: (fullScreen: boolean) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        fullScreen: boolean,
+      ) => callback(fullScreen);
+      ipcRenderer.on("window:fullscreen-changed", listener);
+      return () =>
+        ipcRenderer.removeListener("window:fullscreen-changed", listener);
+    },
+  },
+  appMenu: {
+    onAction: (callback: (action: AppMenuAction) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        action: AppMenuAction,
+      ) => callback(action);
+      ipcRenderer.on("app-menu:action", listener);
+      return () => ipcRenderer.removeListener("app-menu:action", listener);
+    },
   },
 };
 
