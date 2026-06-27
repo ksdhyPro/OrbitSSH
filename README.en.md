@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/node-22.17.1-yellow" alt="Node.js" />
 </p>
 
+<p align="center">
+  <a href="README.md">简体中文</a> | English
+</p>
+
 ---
 
 ## Overview
@@ -24,6 +28,8 @@
 OrbitSSH is a **desktop SSH / SFTP client** built with **Electron + Vue 3**. It integrates powerful remote connectivity, multi-tab terminal management, and visual file browsing & transfer into a clean, unified interface — designed for DevOps engineers, developers, and anyone who regularly interacts with remote Linux servers.
 
 > Design goal: deliver **near-native terminal responsiveness** locally, with the **efficiency and convenience** of a modern graphical interface.
+
+See release history: [English Changelog](docs/update.en.md) | [中文更新日志](docs/update.md)
 
 ---
 

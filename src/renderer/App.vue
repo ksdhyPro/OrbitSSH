@@ -79,6 +79,8 @@ const {
   closeSettingsDialog,
   stepTerminalNumberSetting,
   updateSftpFileTreeViewMode,
+  updateKeepaliveIntervalSeconds,
+  updateIdleDisconnectMinutes,
   updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
@@ -934,6 +936,8 @@ onUnmounted(() => {
       "
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-sftp-file-tree-view-mode="updateSftpFileTreeViewMode"
+      @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
+      @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
 

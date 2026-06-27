@@ -1,6 +1,6 @@
 {
   "name": "orbitssh",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SSH client",
   "main": "dist-electron/main/index.js",
   "private": true,
@@ -9,9 +9,13 @@
     "dev": "vite --host 127.0.0.1",
     "dev:electron": "node scripts/dev-electron.cjs",
     "build": "vue-tsc --noEmit && vite build && tsc -p tsconfig.electron.json && node scripts/copy-preload.cjs",
-    "preview": "vite preview --host 127.0.0.1",
+    "version:sync": "node scripts/sync-version-from-update.cjs",
+    "prepackage": "npm run version:sync",
     "package": "npm run build && electron-builder --win --dir",
-    "dist": "npm run build && electron-builder --win"
+    "predist": "npm run version:sync",
+    "dist": "npm run build && electron-builder --win",
+    "predist-mac": "npm run version:sync",
+    "dist-mac": "npm run build && electron-builder --mac"
   },
   "build": {
     "appId": "com.orbitssh.app",

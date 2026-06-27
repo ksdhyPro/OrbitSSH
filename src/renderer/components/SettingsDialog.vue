@@ -7,6 +7,7 @@ import type {
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import AppDialog from "./AppDialog.vue";
+import NumberStepper from "./NumberStepper.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -26,6 +27,8 @@ const emit = defineEmits<{
     delta: number,
   ];
   updateSftpFileTreeViewMode: [mode: SftpFileTreeViewMode];
+  updateKeepaliveIntervalSeconds: [value: number];
+  updateIdleDisconnectMinutes: [value: number];
   updateThemeMode: [mode: AppThemeMode];
   selectSelectionBackground: [color: string];
 }>();
@@ -176,6 +179,38 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
               </button>
             </div>
           </div>
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>SSH 保活间隔（秒）</h3>
+            <p>控制终端与 SFTP 空闲时发送保活包的频率，0 表示关闭。</p>
+          </div>
+          <NumberStepper
+            :model-value="appSettings.connection.keepaliveIntervalSeconds"
+            :min="0"
+            :max="300"
+            :step="5"
+            placeholder="10"
+            @update:model-value="
+              emit('updateKeepaliveIntervalSeconds', $event)
+            " />
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>空闲断开连接（分钟）</h3>
+            <p>终端和主 SFTP 长时间无活动后自动断开，0 表示关闭。</p>
+          </div>
+          <NumberStepper
+            :model-value="appSettings.connection.idleDisconnectMinutes"
+            :min="0"
+            :max="1440"
+            :step="5"
+            placeholder="0"
+            @update:model-value="
+              emit('updateIdleDisconnectMinutes', $event)
+            " />
         </div>
 
         <div class="settings-field">

@@ -26,8 +26,23 @@ function normalizeThemeMode(value: unknown): AppThemeMode {
   return value === 'light' ? 'light' : defaultAppSettings.appearance.themeMode
 }
 
+function normalizeKeepaliveIntervalSeconds(value: unknown): number {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue)
+    ? clampNumber(numericValue, 0, 300)
+    : defaultAppSettings.connection.keepaliveIntervalSeconds
+}
+
+function normalizeIdleDisconnectMinutes(value: unknown): number {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue)
+    ? clampNumber(numericValue, 0, 1440)
+    : defaultAppSettings.connection.idleDisconnectMinutes
+}
+
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
+  const connectionSettings = settings?.connection ?? defaultAppSettings.connection
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
   const sftpSettings = settings?.sftp ?? defaultAppSettings.sftp
   const updateSettings = settings?.update ?? defaultAppSettings.update
@@ -35,6 +50,10 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
   return {
     appearance: {
       themeMode: normalizeThemeMode(appearanceSettings.themeMode)
+    },
+    connection: {
+      keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(connectionSettings.keepaliveIntervalSeconds),
+      idleDisconnectMinutes: normalizeIdleDisconnectMinutes(connectionSettings.idleDisconnectMinutes)
     },
     terminal: {
       fontSize: clampNumber(Number(terminalSettings.fontSize), 10, 24),

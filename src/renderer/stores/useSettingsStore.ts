@@ -33,6 +33,11 @@ export const useSettingsStore = defineStore("settings", () => {
       appearance: {
         themeMode: appSettings.appearance.themeMode,
       },
+      connection: {
+        keepaliveIntervalSeconds:
+          appSettings.connection.keepaliveIntervalSeconds,
+        idleDisconnectMinutes: appSettings.connection.idleDisconnectMinutes,
+      },
       terminal: {
         fontSize: appSettings.terminal.fontSize,
         lineHeight: appSettings.terminal.lineHeight,
@@ -55,6 +60,7 @@ export const useSettingsStore = defineStore("settings", () => {
 
       if (savedSettings) {
         Object.assign(appSettings.appearance, savedSettings.appearance);
+        Object.assign(appSettings.connection, savedSettings.connection);
         Object.assign(appSettings.terminal, savedSettings.terminal);
         Object.assign(appSettings.sftp, savedSettings.sftp);
         Object.assign(appSettings.update, savedSettings.update);
@@ -85,6 +91,16 @@ export const useSettingsStore = defineStore("settings", () => {
 
   async function updateThemeMode(mode: AppThemeMode): Promise<void> {
     appSettings.appearance.themeMode = mode;
+    await saveAppSettings();
+  }
+
+  async function updateKeepaliveIntervalSeconds(value: number): Promise<void> {
+    appSettings.connection.keepaliveIntervalSeconds = value;
+    await saveAppSettings();
+  }
+
+  async function updateIdleDisconnectMinutes(value: number): Promise<void> {
+    appSettings.connection.idleDisconnectMinutes = value;
     await saveAppSettings();
   }
 
@@ -128,11 +144,13 @@ export const useSettingsStore = defineStore("settings", () => {
       }
 
       Object.assign(appSettings.appearance, savedSettings.appearance);
+      Object.assign(appSettings.connection, savedSettings.connection);
       Object.assign(appSettings.terminal, savedSettings.terminal);
       Object.assign(appSettings.sftp, savedSettings.sftp);
       Object.assign(appSettings.update, savedSettings.update);
       core.writeRendererLog("应用设置加载完成", {
         appearance: savedSettings.appearance,
+        connection: savedSettings.connection,
         terminal: savedSettings.terminal,
         sftp: savedSettings.sftp,
       });
@@ -155,6 +173,8 @@ export const useSettingsStore = defineStore("settings", () => {
     saveAppSettings,
     updateTerminalSetting,
     updateSftpFileTreeViewMode,
+    updateKeepaliveIntervalSeconds,
+    updateIdleDisconnectMinutes,
     updateThemeMode,
     stepTerminalNumberSetting,
     openSettingsDialog,

@@ -17,6 +17,10 @@
   <img src="https://img.shields.io/badge/node-22.17.1-yellow" alt="Node.js" />
 </p>
 
+<p align="center">
+  简体中文 | <a href="README.en.md">English</a>
+</p>
+
 ---
 
 ## 简介
@@ -24,6 +28,8 @@
 OrbitSSH 是一款基于 **Electron + Vue 3** 构建的**桌面端 SSH / SFTP 客户端**。它将强大的远程连接能力、多标签页终端管理、可视化文件浏览与传输集成在一个简洁的界面中，面向运维工程师、开发者以及一切需要频繁与远程 Linux 服务器交互的用户。
 
 > 设计目标：在本地获得**接近原生终端的响应速度**，同时拥有现代图形界面的**效率与便利**。
+
+查看版本更新内容：[中文更新日志](docs/update.md) | [English Changelog](docs/update.en.md)
 
 ---
 

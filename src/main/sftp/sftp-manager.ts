@@ -7,6 +7,7 @@ import { basename, dirname, extname, join as joinLocalPath, posix as posixPath, 
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
+import { getIdleDisconnectMs, getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
 import type {
@@ -29,6 +30,7 @@ interface SftpSession {
   serverId: string
   client: SftpClient
   homePath: string
+  lastActiveAt: number
 }
 
 interface RawSftpClient {
@@ -136,6 +138,7 @@ interface PausedUploadTask {
 
 const sftpSessions = new Map<string, SftpSession>()
 const { maxEditableFileSizeBytes, textProbeSampleBytes } = appConfig.sftp.textEditor
+const idleDisconnectCheckIntervalMs = 30_000
 const activeDownloadTasks = new Map<string, DownloadRuntimeTask>()
 const activeUploadTasks = new Map<string, UploadRuntimeTask>()
 const pausedUploadTasks = new Map<string, PausedUploadTask>()
@@ -373,7 +376,8 @@ function createSftpClient(name: string, server: ServerAuthConfig): Promise<SftpC
   return client
     .connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs()
     })
     .then(() => client)
 }
@@ -388,7 +392,7 @@ function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
       .connect({
         ...createServerConnectOptions(server),
         readyTimeout: 15000,
-        keepaliveInterval: 10000
+        keepaliveInterval: getSshKeepaliveIntervalMs()
       })
   })
 }
@@ -564,8 +568,53 @@ function getSftpSession(tabId: string): SftpSession {
     throw new Error('SFTP 会话不存在')
   }
 
+  session.lastActiveAt = Date.now()
   return session
 }
+
+async function closeIdleSftpSessions(): Promise<void> {
+  const idleDisconnectMs = getIdleDisconnectMs()
+
+  if (idleDisconnectMs <= 0) {
+    return
+  }
+
+  const now = Date.now()
+  const idleSessions = [...sftpSessions.values()].filter(
+    (session) => now - session.lastActiveAt >= idleDisconnectMs
+  )
+
+  await Promise.all(
+    idleSessions.map(async (session) => {
+      writeAppLog({
+        scope: 'main.sftp',
+        message: 'SFTP 会话因空闲超时关闭',
+        data: {
+          tabId: session.tabId,
+          serverId: session.serverId,
+          idleMs: now - session.lastActiveAt
+        }
+      })
+      await closeSftpSession(session.tabId).catch((error) => {
+        writeAppLog({
+          scope: 'main.sftp',
+          level: 'warn',
+          message: '关闭空闲 SFTP 会话失败',
+          data: {
+            tabId: session.tabId,
+            serverId: session.serverId,
+            error: error instanceof Error ? error.message : String(error)
+          }
+        })
+      })
+    })
+  )
+}
+
+const sftpIdleDisconnectTimer = setInterval(() => {
+  void closeIdleSftpSessions()
+}, idleDisconnectCheckIntervalMs)
+sftpIdleDisconnectTimer.unref?.()
 
 function toRemoteFileNode(item: SftpClient.FileInfo, parentPath: string): RemoteFileNode {
   const normalizedParentPath = normalizeRemotePath(parentPath)
@@ -685,7 +734,8 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
   try {
     await client.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs()
     })
   } catch (error) {
     writeAppLog({
@@ -708,7 +758,8 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
     tabId,
     serverId,
     client,
-    homePath
+    homePath,
+    lastActiveAt: Date.now()
   }
 
   sftpSessions.set(tabId, session)
@@ -1002,7 +1053,8 @@ export async function uploadLocalPathsToRemoteDirectory(
   try {
     await uploadClient.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs()
     })
     await uploadClient.mkdir(normalizedRemoteDirectoryPath, true)
 
@@ -2133,7 +2185,8 @@ export async function downloadRemoteFile(
 
     await downloadClient.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs()
     })
 
     if (resumeOffset > 0) {

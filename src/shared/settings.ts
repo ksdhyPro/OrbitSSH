@@ -4,6 +4,13 @@ export interface TerminalSettings {
   selectionBackground: string
 }
 
+export interface ConnectionSettings {
+  /** SSH/SFTP keepalive interval in seconds. 0 disables keepalive. */
+  keepaliveIntervalSeconds: number
+  /** Disconnect idle terminal and main SFTP sessions after this many minutes. 0 disables idle disconnect. */
+  idleDisconnectMinutes: number
+}
+
 export type AppThemeMode = 'dark' | 'light'
 
 export interface AppearanceSettings {
@@ -23,6 +30,7 @@ export interface UpdateSettings {
 
 export interface AppSettings {
   appearance: AppearanceSettings
+  connection: ConnectionSettings
   terminal: TerminalSettings
   sftp: SftpSettings
   update: UpdateSettings
@@ -50,6 +58,10 @@ export interface UpdateStatusInfo {
 export const defaultAppSettings: AppSettings = {
   appearance: {
     themeMode: 'dark'
+  },
+  connection: {
+    keepaliveIntervalSeconds: 10,
+    idleDisconnectMinutes: 5
   },
   terminal: {
     fontSize: 13,

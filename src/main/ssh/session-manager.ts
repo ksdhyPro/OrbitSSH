@@ -3,6 +3,10 @@ import { Client, type ClientChannel } from "ssh2";
 
 import { writeAppLog } from "../logger.js";
 import { createServerConnectOptions } from "./auth-options.js";
+import {
+  getIdleDisconnectMs,
+  getSshKeepaliveIntervalMs,
+} from "./connection-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
 import type {
   TerminalOpenResult,
@@ -17,6 +21,7 @@ interface TerminalSession {
   sshClient: Client;
   shellStream?: ClientChannel;
   status: TerminalStatusEvent["status"];
+  lastActiveAt: number;
 }
 
 export interface RemoteSystemStats {
@@ -38,6 +43,7 @@ interface CachedOSInfo {
 const terminalSessions = new Map<string, TerminalSession>();
 const remoteOSCache = new Map<string, CachedOSInfo>();
 const pathIntegrationInstallDelayMs = 120;
+const idleDisconnectCheckIntervalMs = 30_000;
 
 // ----- 远端脚本模板 -----
 
@@ -275,6 +281,48 @@ function sendStatus(
   } satisfies TerminalStatusEvent);
 }
 
+function touchTerminalSession(session: TerminalSession): void {
+  session.lastActiveAt = Date.now();
+}
+
+function closeIdleTerminalSessions(): void {
+  const idleDisconnectMs = getIdleDisconnectMs();
+
+  if (idleDisconnectMs <= 0) {
+    return;
+  }
+
+  const now = Date.now();
+
+  for (const session of terminalSessions.values()) {
+    if (session.status !== "connected") {
+      continue;
+    }
+
+    if (now - session.lastActiveAt < idleDisconnectMs) {
+      continue;
+    }
+
+    writeAppLog({
+      scope: "main.ssh",
+      message: "SSH 会话因空闲超时关闭",
+      data: {
+        tabId: session.tabId,
+        serverId: session.serverId,
+        idleMs: now - session.lastActiveAt,
+      },
+    });
+    sendStatus(session, "disconnected", "连接因长时间未操作已断开");
+    closeTerminalSession(session.tabId);
+  }
+}
+
+const terminalIdleDisconnectTimer = setInterval(
+  closeIdleTerminalSessions,
+  idleDisconnectCheckIntervalMs,
+);
+terminalIdleDisconnectTimer.unref?.();
+
 function createSafeErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -342,6 +390,7 @@ export function openTerminalSession(
     webContents,
     sshClient,
     status: "connecting",
+    lastActiveAt: Date.now(),
   };
 
   terminalSessions.set(tabId, session);
@@ -401,6 +450,7 @@ export function openTerminalSession(
           sendStatus(session, "connected");
 
           stream.on("data", (data: Buffer) => {
+            touchTerminalSession(session);
             webContents.send("terminal:data", {
               tabId,
               data: data.toString("utf8"),
@@ -454,7 +504,7 @@ export function openTerminalSession(
     sshClient.connect({
       ...createServerConnectOptions(server),
       readyTimeout: 15000,
-      keepaliveInterval: 10000,
+      keepaliveInterval: getSshKeepaliveIntervalMs(),
     });
   });
 
@@ -471,6 +521,7 @@ export function writeTerminalInput(tabId: string, data: string): void {
     return;
   }
 
+  touchTerminalSession(session);
   session.shellStream.write(data);
 }
 
