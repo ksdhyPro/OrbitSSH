@@ -11,6 +11,7 @@ const emit = defineEmits<{
 }>();
 
 const projectUrl = "https://gitee.com/ksdhy/orbit-ssh";
+const projectUrlGithub = "https://github.com/ksdhyPro/OrbitSSH";
 </script>
 
 <template>
@@ -19,7 +20,8 @@ const projectUrl = "https://gitee.com/ksdhy/orbit-ssh";
     title="关于 OrbitSSH"
     description="SSH / SFTP 客户端"
     width="medium"
-    @close="emit('close')">
+    @close="emit('close')"
+  >
     <div class="about-dialog-content">
       <div class="settings-field">
         <div>
@@ -35,8 +37,19 @@ const projectUrl = "https://gitee.com/ksdhy/orbit-ssh";
               class="about-link"
               :href="projectUrl"
               target="_blank"
-              rel="noreferrer">
+              rel="noreferrer"
+            >
               {{ projectUrl }}
+            </a>
+          </p>
+          <p>
+            <a
+              class="about-link"
+              :href="projectUrlGithub"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {{ projectUrlGithub }}
             </a>
           </p>
         </div>

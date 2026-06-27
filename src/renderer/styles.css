@@ -900,7 +900,10 @@ input[type="number"] {
   z-index: 80;
   min-width: 136px;
   margin: 0;
-  overflow: hidden;
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border-menu);
   border-radius: 7px;
   background: var(--bg-input);
