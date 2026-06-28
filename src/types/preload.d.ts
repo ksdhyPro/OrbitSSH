@@ -42,6 +42,14 @@ import type {
   TerminalResizeInput,
   TerminalStatusEvent,
 } from "../shared/terminal";
+import type {
+  AiApprovedCommandInput,
+  AiChatInput,
+  AiChatResult,
+  AiCommandApprovalInput,
+  AiCommandCard,
+  AiCommandResult,
+} from "../shared/ai";
 
 declare global {
   interface Window {
@@ -71,6 +79,19 @@ declare global {
       settings: {
         get: () => Promise<AppSettings>;
         save: (settings: AppSettings) => Promise<AppSettings>;
+      };
+      ai: {
+        chat: (input: AiChatInput) => Promise<AiChatResult>;
+        runReadonlyCommand: (
+          tabId: string,
+          command: string,
+        ) => Promise<AiCommandResult>;
+        requestCommandApproval: (
+          input: AiCommandApprovalInput,
+        ) => Promise<AiCommandCard>;
+        runApprovedCommand: (
+          input: AiApprovedCommandInput,
+        ) => Promise<AiCommandResult>;
       };
       sftp: {
         open: (tabId: string, serverId: string) => Promise<SftpInitResult>;

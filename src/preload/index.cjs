@@ -26,6 +26,15 @@ const orbitSSHApi = {
     get: () => ipcRenderer.invoke("settings:get"),
     save: settings => ipcRenderer.invoke("settings:save", settings),
   },
+  ai: {
+    chat: input => ipcRenderer.invoke("ai:chat", input),
+    runReadonlyCommand: (tabId, command) =>
+      ipcRenderer.invoke("ai:run-readonly-command", tabId, command),
+    requestCommandApproval: input =>
+      ipcRenderer.invoke("ai:request-command-approval", input),
+    runApprovedCommand: input =>
+      ipcRenderer.invoke("ai:run-approved-command", input),
+  },
   sftp: {
     open: (tabId, serverId) => ipcRenderer.invoke("sftp:open", tabId, serverId),
     list: input => ipcRenderer.invoke("sftp:list", input),

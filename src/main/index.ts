@@ -12,6 +12,7 @@ import { registerTerminalIpc } from "./ipc/terminal-ipc.js";
 import { registerSystemIpc } from "./ipc/system-ipc.js";
 import { registerWindowIpc } from "./ipc/window-ipc.js";
 import { registerUpdateIpc } from "./ipc/update-ipc.js";
+import { registerAiIpc } from "./ipc/ai-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
@@ -200,6 +201,7 @@ function registerBaseIpc(): void {
   registerSystemIpc();
   registerWindowIpc();
   registerUpdateIpc();
+  registerAiIpc();
 }
 
 app.whenReady().then(() => {

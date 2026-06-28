@@ -3,6 +3,7 @@ import Store from 'electron-store'
 import {
   defaultAppSettings,
   type AppSettings,
+  type AiSettings,
   type AppThemeMode
 } from '../../shared/settings.js'
 
@@ -35,6 +36,27 @@ function normalizeIdleDisconnectMinutes(value: unknown): number {
     : defaultAppSettings.connection.idleDisconnectMinutes
 }
 
+function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings {
+  const mode = value?.defaultMode
+
+  return {
+    enabled: Boolean(value?.enabled),
+    apiKey: typeof value?.apiKey === 'string' ? value.apiKey : defaultAppSettings.ai.apiKey,
+    model:
+      typeof value?.model === 'string' && value.model.trim()
+        ? value.model.trim()
+        : defaultAppSettings.ai.model,
+    defaultMode:
+      mode === 'suggest' || mode === 'readonly' || mode === 'approval'
+        ? mode
+        : defaultAppSettings.ai.defaultMode,
+    allowReadonlyAutoRun:
+      typeof value?.allowReadonlyAutoRun === 'boolean'
+        ? value.allowReadonlyAutoRun
+        : defaultAppSettings.ai.allowReadonlyAutoRun
+  }
+}
+
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
   const connectionSettings = settings?.connection ?? defaultAppSettings.connection
@@ -62,7 +84,8 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
         typeof updateSettings.updateFeedUrl === 'string'
           ? updateSettings.updateFeedUrl
           : defaultAppSettings.update.updateFeedUrl
-    }
+    },
+    ai: normalizeAiSettings(settings?.ai)
   }
 }
 

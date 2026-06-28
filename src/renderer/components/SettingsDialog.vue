@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import type { AppSettings, AppThemeMode } from "../../shared/settings";
+import type {
+  AiSettings,
+  AppSettings,
+  AppThemeMode,
+} from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import AppDialog from "./AppDialog.vue";
 import NumberStepper from "./NumberStepper.vue";
@@ -8,7 +12,7 @@ import NumberStepper from "./NumberStepper.vue";
 const props = defineProps<{
   open: boolean;
   appSettings: AppSettings;
-  activeSettingsSection: "general" | "shortcuts";
+  activeSettingsSection: "general" | "ai" | "shortcuts";
   isMac: boolean;
   isSelectionBackgroundDropdownOpen: boolean;
   selectionBackgroundOptions: string[];
@@ -16,7 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  updateActiveSection: [section: "general" | "shortcuts"];
+  updateActiveSection: [section: "general" | "ai" | "shortcuts"];
   updateSelectionDropdownOpen: [open: boolean];
   stepTerminalNumberSetting: [
     key: "fontSize" | "lineHeight",
@@ -24,27 +28,23 @@ const emit = defineEmits<{
   ];
   updateKeepaliveIntervalSeconds: [value: number];
   updateIdleDisconnectMinutes: [value: number];
+  updateAiSetting: [key: keyof AiSettings, value: AiSettings[keyof AiSettings]];
   updateThemeMode: [mode: AppThemeMode];
   selectSelectionBackground: [color: string];
 }>();
 
-// 快捷键页只负责展示当前已生效的快捷键，后续可在同一数据源上扩展编辑能力。
 const shortcutSections = computed(() => getShortcutSections(props.isMac));
 </script>
 
 <template>
   <AppDialog
     v-if="open"
-    title="设置"
-    :description="
-      activeSettingsSection === 'shortcuts'
-        ? '查看当前应用已启用的快捷键。'
-        : '调整应用常规选项。'
-    "
+    title="Settings"
+    description="Adjust application preferences."
     width="large"
     @close="emit('close')">
     <div class="settings-layout">
-      <aside class="settings-nav" aria-label="设置分类">
+      <aside class="settings-nav" aria-label="Settings sections">
         <button
           type="button"
           :class="[
@@ -52,7 +52,16 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
             { active: activeSettingsSection === 'general' },
           ]"
           @click="emit('updateActiveSection', 'general')">
-          常规设置
+          General
+        </button>
+        <button
+          type="button"
+          :class="[
+            'settings-nav-item',
+            { active: activeSettingsSection === 'ai' },
+          ]"
+          @click="emit('updateActiveSection', 'ai')">
+          AI
         </button>
         <button
           type="button"
@@ -61,7 +70,7 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
             { active: activeSettingsSection === 'shortcuts' },
           ]"
           @click="emit('updateActiveSection', 'shortcuts')">
-          快捷键
+          Shortcuts
         </button>
       </aside>
 
@@ -70,10 +79,10 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
         class="settings-content">
         <div class="settings-field">
           <div>
-            <h3>主题外观</h3>
-            <p>切换应用界面的深色或浅色配色。</p>
+            <h3>Theme</h3>
+            <p>Switch between dark and light appearance.</p>
           </div>
-          <div class="theme-mode-control" aria-label="主题外观">
+          <div class="theme-mode-control" aria-label="Theme">
             <button
               type="button"
               :class="[
@@ -81,7 +90,7 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
                 { active: appSettings.appearance.themeMode === 'dark' },
               ]"
               @click="emit('updateThemeMode', 'dark')">
-              深色
+              Dark
             </button>
             <button
               type="button"
@@ -90,15 +99,15 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
                 { active: appSettings.appearance.themeMode === 'light' },
               ]"
               @click="emit('updateThemeMode', 'light')">
-              浅色
+              Light
             </button>
           </div>
         </div>
 
         <div class="settings-field">
           <div>
-            <h3>终端文字字号</h3>
-            <p>控制当前和后续终端的字体大小。</p>
+            <h3>Terminal font size</h3>
+            <p>Controls the font size for current and future terminals.</p>
           </div>
           <div class="stepper-control">
             <button
@@ -117,8 +126,8 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
         <div class="settings-field">
           <div>
-            <h3>终端行高</h3>
-            <p>调整终端每行文字的垂直间距。</p>
+            <h3>Terminal line height</h3>
+            <p>Adjust vertical spacing between terminal rows.</p>
           </div>
           <div class="stepper-control">
             <button
@@ -137,8 +146,8 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
         <div class="settings-field">
           <div>
-            <h3>终端选区背景</h3>
-            <p>选择终端文本选中时的背景颜色。</p>
+            <h3>Selection color</h3>
+            <p>Choose the terminal selection background color.</p>
           </div>
           <div class="color-select">
             <button
@@ -178,8 +187,8 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
         <div class="settings-field">
           <div>
-            <h3>SSH 保活间隔（秒）</h3>
-            <p>控制终端与 SFTP 空闲时发送保活包的频率，0 表示关闭。</p>
+            <h3>SSH keepalive seconds</h3>
+            <p>0 disables SSH and SFTP keepalive packets.</p>
           </div>
           <NumberStepper
             :model-value="appSettings.connection.keepaliveIntervalSeconds"
@@ -194,8 +203,8 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
         <div class="settings-field">
           <div>
-            <h3>空闲断开连接（分钟）</h3>
-            <p>终端和主 SFTP 长时间无活动后自动断开，0 表示关闭。</p>
+            <h3>Idle disconnect minutes</h3>
+            <p>0 disables idle disconnect.</p>
           </div>
           <NumberStepper
             :model-value="appSettings.connection.idleDisconnectMinutes"
@@ -207,7 +216,111 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
               emit('updateIdleDisconnectMinutes', $event)
             " />
         </div>
+      </section>
 
+      <section
+        v-else-if="activeSettingsSection === 'ai'"
+        class="settings-content">
+        <div class="settings-field">
+          <div>
+            <h3>AI enabled</h3>
+            <p>Enable OpenAI-backed answers in the assistant panel.</p>
+          </div>
+          <label class="settings-toggle">
+            <input
+              type="checkbox"
+              :checked="appSettings.ai.enabled"
+              @change="
+                emit(
+                  'updateAiSetting',
+                  'enabled',
+                  ($event.target as HTMLInputElement).checked,
+                )
+              " />
+            <span>{{ appSettings.ai.enabled ? "On" : "Off" }}</span>
+          </label>
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>OpenAI API key</h3>
+            <p>Stored locally and never written to logs.</p>
+          </div>
+          <input
+            class="settings-text-input"
+            type="password"
+            autocomplete="off"
+            :value="appSettings.ai.apiKey"
+            placeholder="sk-..."
+            @change="
+              emit(
+                'updateAiSetting',
+                'apiKey',
+                ($event.target as HTMLInputElement).value,
+              )
+            " />
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>Model</h3>
+            <p>Model name used with the Responses API.</p>
+          </div>
+          <input
+            class="settings-text-input"
+            type="text"
+            :value="appSettings.ai.model"
+            placeholder="gpt-5-mini"
+            @change="
+              emit(
+                'updateAiSetting',
+                'model',
+                ($event.target as HTMLInputElement).value,
+              )
+            " />
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>Default mode</h3>
+            <p>Initial AI permission mode.</p>
+          </div>
+          <div class="theme-mode-control ai-mode-setting">
+            <button
+              v-for="item in ['suggest', 'readonly', 'approval']"
+              :key="item"
+              type="button"
+              :class="[
+                'theme-mode-option',
+                { active: appSettings.ai.defaultMode === item },
+              ]"
+              @click="emit('updateAiSetting', 'defaultMode', item)">
+              {{ item }}
+            </button>
+          </div>
+        </div>
+
+        <div class="settings-field">
+          <div>
+            <h3>Readonly auto-run</h3>
+            <p>Auto-run allowlisted readonly commands in Readonly mode.</p>
+          </div>
+          <label class="settings-toggle">
+            <input
+              type="checkbox"
+              :checked="appSettings.ai.allowReadonlyAutoRun"
+              @change="
+                emit(
+                  'updateAiSetting',
+                  'allowReadonlyAutoRun',
+                  ($event.target as HTMLInputElement).checked,
+                )
+              " />
+            <span>{{
+              appSettings.ai.allowReadonlyAutoRun ? "On" : "Off"
+            }}</span>
+          </label>
+        </div>
       </section>
 
       <section

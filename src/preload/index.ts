@@ -42,6 +42,14 @@ import type {
   TerminalResizeInput,
   TerminalStatusEvent,
 } from "../shared/terminal.js";
+import type {
+  AiApprovedCommandInput,
+  AiChatInput,
+  AiChatResult,
+  AiCommandApprovalInput,
+  AiCommandCard,
+  AiCommandResult,
+} from "../shared/ai.js";
 
 const orbitSSHApi = {
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
@@ -79,6 +87,26 @@ const orbitSSHApi = {
     get: () => ipcRenderer.invoke("settings:get") as Promise<AppSettings>,
     save: (settings: AppSettings) =>
       ipcRenderer.invoke("settings:save", settings) as Promise<AppSettings>,
+  },
+  ai: {
+    chat: (input: AiChatInput) =>
+      ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
+    runReadonlyCommand: (tabId: string, command: string) =>
+      ipcRenderer.invoke(
+        "ai:run-readonly-command",
+        tabId,
+        command,
+      ) as Promise<AiCommandResult>,
+    requestCommandApproval: (input: AiCommandApprovalInput) =>
+      ipcRenderer.invoke(
+        "ai:request-command-approval",
+        input,
+      ) as Promise<AiCommandCard>,
+    runApprovedCommand: (input: AiApprovedCommandInput) =>
+      ipcRenderer.invoke(
+        "ai:run-approved-command",
+        input,
+      ) as Promise<AiCommandResult>,
   },
   sftp: {
     open: (tabId: string, serverId: string) =>

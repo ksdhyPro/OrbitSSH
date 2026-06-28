@@ -21,6 +21,7 @@ import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
+import AiPanel from "./components/AiPanel.vue";
 import SftpPanel from "./components/SftpPanel.vue";
 import SftpPathPromptDialog from "./components/SftpPathPromptDialog.vue";
 import TerminalPanel from "./components/TerminalPanel.vue";
@@ -40,6 +41,7 @@ import { useSftpStore } from "./stores/useSftpStore";
 import { useFileEditorStore } from "./stores/useFileEditorStore";
 import { useServersStore } from "./stores/useServersStore";
 import { useUpdateStore } from "./stores/useUpdateStore";
+import { useAiStore } from "./stores/useAiStore";
 
 const coreStore = useCoreStore();
 const settingsStore = useSettingsStore();
@@ -51,6 +53,7 @@ const sftpStore = useSftpStore();
 const fileEditorStore = useFileEditorStore();
 const serversStore = useServersStore();
 const updateStore = useUpdateStore();
+const aiStore = useAiStore();
 
 const SERVER_OPEN_DEBOUNCE_MS = 3000;
 const serverOpenAllowedAt = new Map<string, number>();
@@ -86,6 +89,7 @@ const {
   stepTerminalNumberSetting,
   updateKeepaliveIntervalSeconds,
   updateIdleDisconnectMinutes,
+  updateAiSetting,
   updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
@@ -159,6 +163,25 @@ const {
   terminalSearchKeyword,
   terminalSearchResult,
 } = storeToRefs(terminalsStore);
+
+const {
+  isPanelOpen: isAiPanelOpen,
+  mode: aiMode,
+  inputText: aiInputText,
+  isSending: isAiSending,
+  error: aiError,
+  messages: aiMessages,
+  commandCards: aiCommandCards,
+} = storeToRefs(aiStore);
+
+const {
+  togglePanel: toggleAiPanel,
+  setMode: setAiMode,
+  sendMessage: sendAiMessage,
+  runReadonlyCommand: runAiReadonlyCommand,
+  requestApproval: requestAiApproval,
+  runApprovedCommand: runAiApprovedCommand,
+} = aiStore;
 
 const {
   applyTerminalSettings,
@@ -268,6 +291,14 @@ const activeSftpTree = computed(() => {
 
   return sftpTrees.value[activeTabId.value];
 });
+
+const aiContext = computed(() => ({
+  tabId: activeTabId.value,
+  serverName: activeTab.value?.title,
+  currentPath: activeTab.value?.currentPath,
+  status: activeTab.value?.status,
+  sftpPath: activeSftpTree.value?.homePath,
+}));
 
 function applyAppThemeMode(): void {
   document.documentElement.dataset.theme = appSettings.appearance.themeMode;
@@ -1017,6 +1048,24 @@ onUnmounted(() => {
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"
         @close-search="closeTerminalSearch"
         @open-connection-dialog="openConnectionDialog" />
+
+      <AiPanel
+        :open="isAiPanelOpen"
+        :enabled="appSettings.ai.enabled"
+        :mode="aiMode"
+        :input-text="aiInputText"
+        :is-sending="isAiSending"
+        :error="aiError"
+        :messages="aiMessages"
+        :command-cards="aiCommandCards"
+        :context="aiContext"
+        @toggle="toggleAiPanel"
+        @set-mode="setAiMode"
+        @update-input-text="aiInputText = $event"
+        @send="sendAiMessage(aiContext)"
+        @run-readonly="runAiReadonlyCommand"
+        @request-approval="requestAiApproval"
+        @run-approved="runAiApprovedCommand" />
     </div>
 
     <ConnectionDialog
@@ -1102,6 +1151,7 @@ onUnmounted(() => {
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
+      @update-ai-setting="updateAiSetting"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
 

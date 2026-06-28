@@ -359,7 +359,7 @@ input[type="number"] {
 
 .content-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width, 320px) 6px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 320px) 6px minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
 }
@@ -1816,6 +1816,265 @@ input[type="number"] {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
+}
+
+.settings-text-input {
+  height: 34px;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.ai-mode-setting {
+  grid-template-columns: repeat(3, minmax(0, 82px));
+}
+
+.ai-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: 360px;
+  min-width: 320px;
+  max-width: 420px;
+  min-height: 0;
+  border-left: 1px solid var(--border-window);
+  background: var(--bg-elevated-1);
+  -webkit-app-region: no-drag;
+}
+
+.ai-panel.collapsed {
+  display: grid;
+  place-items: start center;
+  width: 42px;
+  min-width: 42px;
+  padding-top: 14px;
+}
+
+.ai-rail {
+  width: 30px;
+  height: 54px;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--bg-elevated-3);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  writing-mode: vertical-rl;
+}
+
+.ai-rail:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.ai-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ai-panel-header h2,
+.ai-panel-header p,
+.ai-message p,
+.ai-command-card p,
+.ai-empty,
+.ai-compose p {
+  margin: 0;
+}
+
+.ai-panel-header h2 {
+  font-size: 14px;
+}
+
+.ai-panel-header p {
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.ai-panel-header button {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: var(--bg-elevated-3);
+  color: var(--text-muted);
+  font-size: 18px;
+}
+
+.ai-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.ai-mode-tabs button {
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ai-mode-tabs button:hover,
+.ai-mode-tabs button.active {
+  background: var(--bg-elevated-3);
+  color: var(--text-primary);
+}
+
+.ai-message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 12px;
+  overflow: auto;
+}
+
+.ai-empty {
+  padding: 12px;
+  border: 1px dashed var(--border-dashed);
+  border-radius: 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-message,
+.ai-command-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-elevated-2);
+}
+
+.ai-message.user {
+  background: var(--accent-fill);
+}
+
+.ai-message strong,
+.ai-command-card strong {
+  color: var(--text-heading);
+  font-size: 12px;
+}
+
+.ai-message p,
+.ai-command-card p {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ai-command-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ai-command-card header span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ai-command-card code,
+.ai-command-card pre {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  border-radius: 7px;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ai-command-card code {
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+.ai-command-card pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px;
+}
+
+.ai-command-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-command-actions button,
+.ai-compose button {
+  height: 32px;
+  border-radius: 6px;
+  padding: 0 12px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-compose {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ai-compose textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: none;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  outline: none;
+  padding: 9px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.ai-compose textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.ai-compose button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-error {
+  color: var(--danger) !important;
+  font-size: 12px;
 }
 
 /* ===== Update Settings ===== */

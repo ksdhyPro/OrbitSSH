@@ -22,11 +22,20 @@ export interface UpdateSettings {
   updateFeedUrl: string
 }
 
+export interface AiSettings {
+  enabled: boolean
+  apiKey: string
+  model: string
+  defaultMode: 'suggest' | 'readonly' | 'approval'
+  allowReadonlyAutoRun: boolean
+}
+
 export interface AppSettings {
   appearance: AppearanceSettings
   connection: ConnectionSettings
   terminal: TerminalSettings
   update: UpdateSettings
+  ai: AiSettings
 }
 
 export type UpdateStatus =
@@ -63,5 +72,12 @@ export const defaultAppSettings: AppSettings = {
   },
   update: {
     updateFeedUrl: ''
+  },
+  ai: {
+    enabled: false,
+    apiKey: '',
+    model: 'gpt-5-mini',
+    defaultMode: 'suggest',
+    allowReadonlyAutoRun: true
   }
 }

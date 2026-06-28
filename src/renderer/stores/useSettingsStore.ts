@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { reactive, ref } from "vue";
 import {
   defaultAppSettings,
+  type AiSettings,
   type AppSettings,
   type AppThemeMode,
 } from "../../shared/settings";
@@ -15,9 +16,6 @@ export const selectionBackgroundOptions = [
   "#5A2D35",
 ];
 
-// 设置域 store：只负责 appSettings 状态与持久化。
-// 终端/文件编辑器对设置变更的响应（applyTerminalSettings、CodeMirror 主题 reconfigure）
-// 由 App.vue 通过 watch(appSettings.terminal) 协调，避免本 store 反向依赖终端/编辑器 store。
 export const useSettingsStore = defineStore("settings", () => {
   const core = useCoreStore();
   const appSettings = reactive<AppSettings>(
@@ -25,7 +23,9 @@ export const useSettingsStore = defineStore("settings", () => {
   );
   const isSettingsDialogOpen = ref(false);
   const isSelectionBackgroundDropdownOpen = ref(false);
-  const activeSettingsSection = ref<"general" | "shortcuts">("general");
+  const activeSettingsSection = ref<"general" | "ai" | "shortcuts">(
+    "general",
+  );
 
   function toPlainAppSettings(): AppSettings {
     return {
@@ -45,7 +45,22 @@ export const useSettingsStore = defineStore("settings", () => {
       update: {
         updateFeedUrl: appSettings.update.updateFeedUrl,
       },
+      ai: {
+        enabled: appSettings.ai.enabled,
+        apiKey: appSettings.ai.apiKey,
+        model: appSettings.ai.model,
+        defaultMode: appSettings.ai.defaultMode,
+        allowReadonlyAutoRun: appSettings.ai.allowReadonlyAutoRun,
+      },
     };
+  }
+
+  function applySavedSettings(savedSettings: AppSettings): void {
+    Object.assign(appSettings.appearance, savedSettings.appearance);
+    Object.assign(appSettings.connection, savedSettings.connection);
+    Object.assign(appSettings.terminal, savedSettings.terminal);
+    Object.assign(appSettings.update, savedSettings.update);
+    Object.assign(appSettings.ai, savedSettings.ai);
   }
 
   async function saveAppSettings(): Promise<void> {
@@ -55,14 +70,11 @@ export const useSettingsStore = defineStore("settings", () => {
       );
 
       if (savedSettings) {
-        Object.assign(appSettings.appearance, savedSettings.appearance);
-        Object.assign(appSettings.connection, savedSettings.connection);
-        Object.assign(appSettings.terminal, savedSettings.terminal);
-        Object.assign(appSettings.update, savedSettings.update);
+        applySavedSettings(savedSettings);
       }
     } catch (error) {
       core.writeRendererLog(
-        "保存设置失败",
+        "Failed to save settings",
         { error: error instanceof Error ? error.message : String(error) },
         "error",
       );
@@ -89,6 +101,14 @@ export const useSettingsStore = defineStore("settings", () => {
 
   async function updateIdleDisconnectMinutes(value: number): Promise<void> {
     appSettings.connection.idleDisconnectMinutes = value;
+    await saveAppSettings();
+  }
+
+  async function updateAiSetting<K extends keyof AiSettings>(
+    key: K,
+    value: AiSettings[K],
+  ): Promise<void> {
+    appSettings.ai[key] = value;
     await saveAppSettings();
   }
 
@@ -131,18 +151,22 @@ export const useSettingsStore = defineStore("settings", () => {
         return;
       }
 
-      Object.assign(appSettings.appearance, savedSettings.appearance);
-      Object.assign(appSettings.connection, savedSettings.connection);
-      Object.assign(appSettings.terminal, savedSettings.terminal);
-        Object.assign(appSettings.update, savedSettings.update);
-      core.writeRendererLog("应用设置加载完成", {
+      applySavedSettings(savedSettings);
+      core.writeRendererLog("Settings loaded", {
         appearance: savedSettings.appearance,
         connection: savedSettings.connection,
         terminal: savedSettings.terminal,
+        ai: {
+          enabled: savedSettings.ai.enabled,
+          model: savedSettings.ai.model,
+          defaultMode: savedSettings.ai.defaultMode,
+          allowReadonlyAutoRun: savedSettings.ai.allowReadonlyAutoRun,
+          hasApiKey: Boolean(savedSettings.ai.apiKey),
+        },
       });
     } catch (error) {
       core.writeRendererLog(
-        "应用设置加载失败",
+        "Failed to load settings",
         { error: error instanceof Error ? error.message : String(error) },
         "error",
       );
@@ -160,6 +184,7 @@ export const useSettingsStore = defineStore("settings", () => {
     updateTerminalSetting,
     updateKeepaliveIntervalSeconds,
     updateIdleDisconnectMinutes,
+    updateAiSetting,
     updateThemeMode,
     stepTerminalNumberSetting,
     openSettingsDialog,

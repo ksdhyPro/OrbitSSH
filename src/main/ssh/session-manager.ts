@@ -13,6 +13,7 @@ import type {
   TerminalResizeInput,
   TerminalStatusEvent,
 } from "../../shared/terminal.js";
+import type { AiCommandResult } from "../../shared/ai.js";
 
 interface TerminalSession {
   tabId: string;
@@ -22,6 +23,7 @@ interface TerminalSession {
   shellStream?: ClientChannel;
   status: TerminalStatusEvent["status"];
   lastActiveAt: number;
+  outputBuffer: string;
 }
 
 export interface RemoteSystemStats {
@@ -44,6 +46,7 @@ const terminalSessions = new Map<string, TerminalSession>();
 const remoteOSCache = new Map<string, CachedOSInfo>();
 const pathIntegrationInstallDelayMs = 120;
 const idleDisconnectCheckIntervalMs = 30_000;
+const maxTerminalOutputBufferChars = 12_000;
 
 // ----- 远端脚本模板 -----
 
@@ -145,6 +148,114 @@ function execSshCommand(
           settled = true;
           reject(streamErr);
         }
+      });
+    });
+  });
+}
+
+function appendTerminalOutput(session: TerminalSession, chunk: string): void {
+  session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(
+    -maxTerminalOutputBufferChars,
+  );
+}
+
+export interface TerminalContextSnapshot {
+  tabId: string;
+  serverId: string;
+  status: TerminalStatusEvent["status"];
+  recentOutput: string;
+}
+
+export function getTerminalContextSnapshot(
+  tabId: string,
+): TerminalContextSnapshot | null {
+  const session = terminalSessions.get(tabId);
+
+  if (!session) {
+    return null;
+  }
+
+  return {
+    tabId: session.tabId,
+    serverId: session.serverId,
+    status: session.status,
+    recentOutput: session.outputBuffer,
+  };
+}
+
+export function executeTerminalCommand(
+  tabId: string,
+  command: string,
+  timeoutMs = 12_000,
+): Promise<AiCommandResult> {
+  const session = terminalSessions.get(tabId);
+
+  if (!session) {
+    throw new Error("Terminal session does not exist");
+  }
+
+  if (session.status !== "connected") {
+    throw new Error("SSH session is not connected");
+  }
+
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+
+    const finish = (result: Omit<AiCommandResult, "durationMs">): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      resolve({
+        ...result,
+        stdout: result.stdout.slice(0, 20_000),
+        stderr: result.stderr.slice(0, 10_000),
+        durationMs: Date.now() - startedAt,
+      });
+    };
+
+    const timer = setTimeout(() => {
+      finish({
+        stdout,
+        stderr,
+        exitCode: null,
+        timedOut: true,
+      });
+    }, timeoutMs);
+
+    session.sshClient.exec(command, (err, stream) => {
+      if (err) {
+        clearTimeout(timer);
+        reject(err);
+        return;
+      }
+
+      stream.on("data", (data: Buffer) => {
+        stdout += data.toString("utf8");
+      });
+
+      stream.stderr.on("data", (data: Buffer) => {
+        stderr += data.toString("utf8");
+      });
+
+      stream.on("close", (code: number | undefined) => {
+        clearTimeout(timer);
+        finish({
+          stdout,
+          stderr,
+          exitCode: typeof code === "number" ? code : null,
+          timedOut: false,
+        });
+      });
+
+      stream.on("error", (streamErr: Error) => {
+        clearTimeout(timer);
+        reject(streamErr);
       });
     });
   });
@@ -391,6 +502,7 @@ export function openTerminalSession(
     sshClient,
     status: "connecting",
     lastActiveAt: Date.now(),
+    outputBuffer: "",
   };
 
   terminalSessions.set(tabId, session);
@@ -451,6 +563,7 @@ export function openTerminalSession(
 
           stream.on("data", (data: Buffer) => {
             touchTerminalSession(session);
+            appendTerminalOutput(session, data.toString("utf8"));
             webContents.send("terminal:data", {
               tabId,
               data: data.toString("utf8"),
