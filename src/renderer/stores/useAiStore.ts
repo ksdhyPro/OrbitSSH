@@ -3,6 +3,7 @@ import { computed, ref } from "vue";
 
 import type {
   AiCommandCard,
+  AiChatResult,
   AiContextInput,
   AiMessage,
   AiMode,
@@ -17,6 +18,27 @@ function createMessage(role: AiMessage["role"], content: string): AiMessage {
     content,
     createdAt: Date.now(),
   };
+}
+
+// IPC 只能传递可结构化克隆的数据，避免把 Vue 响应式 Proxy 传给主进程。
+function toPlainAiContext(context: AiContextInput): AiContextInput {
+  return {
+    tabId: context.tabId || "",
+    serverName: context.serverName,
+    currentPath: context.currentPath,
+    status: context.status,
+    sftpPath: context.sftpPath,
+  };
+}
+
+// 聊天历史来自响应式数组，发送前转成普通对象，避免 Electron IPC 克隆失败。
+function toPlainAiHistory(history: AiMessage[]): AiMessage[] {
+  return history.map(message => ({
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt,
+  }));
 }
 
 export const useAiStore = defineStore("ai", () => {
@@ -47,6 +69,35 @@ export const useAiStore = defineStore("ai", () => {
     );
   }
 
+  function mergeCommandCards(cards: AiCommandCard[]): void {
+    const nextCards = [...commandCards.value];
+
+    for (const card of cards) {
+      const index = nextCards.findIndex(item => item.id === card.id);
+
+      if (index >= 0) {
+        nextCards[index] = card;
+      } else {
+        nextCards.push(card);
+      }
+    }
+
+    commandCards.value = nextCards;
+  }
+
+  function applyAiChatResult(result: AiChatResult): void {
+    const normalizedCards = result.commandCards.map(card => ({
+      ...card,
+      createdAt:
+        card.status === "requires_approval"
+          ? result.message.createdAt + 1
+          : card.createdAt,
+    }));
+
+    messages.value = [...messages.value, result.message];
+    mergeCommandCards(normalizedCards);
+  }
+
   async function sendMessage(context: AiContextInput): Promise<void> {
     const content = inputText.value.trim();
 
@@ -55,7 +106,7 @@ export const useAiStore = defineStore("ai", () => {
     }
 
     if (!context.tabId) {
-      error.value = "Open a terminal tab before using server-aware AI.";
+      error.value = "请先打开一个终端标签页，再使用服务器上下文 AI。";
       return;
     }
 
@@ -67,27 +118,17 @@ export const useAiStore = defineStore("ai", () => {
     messages.value = [...messages.value, userMessage];
 
     try {
+      const plainContext = toPlainAiContext(context);
+
       const result = await core.orbitSSHApi.ai.chat({
-        tabId: context.tabId,
+        tabId: plainContext.tabId,
         mode: mode.value,
         message: content,
-        context,
-        history: messages.value.slice(-10),
+        context: plainContext,
+        history: toPlainAiHistory(messages.value.slice(-10)),
       });
 
-      messages.value = [...messages.value, result.message];
-      commandCards.value = [...result.commandCards, ...commandCards.value];
-
-      if (
-        settingsStore.appSettings.ai.allowReadonlyAutoRun &&
-        mode.value === "readonly"
-      ) {
-        for (const card of result.commandCards) {
-          if (card.status === "pending") {
-            await runReadonlyCommand(card);
-          }
-        }
-      }
+      applyAiChatResult(result);
     } catch (sendError) {
       error.value =
         sendError instanceof Error ? sendError.message : String(sendError);
@@ -96,57 +137,7 @@ export const useAiStore = defineStore("ai", () => {
     }
   }
 
-  async function runReadonlyCommand(card: AiCommandCard): Promise<void> {
-    updateCommandCard({ ...card, status: "running", error: undefined });
-
-    try {
-      const result = await core.orbitSSHApi.ai.runReadonlyCommand(
-        card.tabId,
-        card.command,
-      );
-      updateCommandCard({ ...card, status: "completed", result });
-    } catch (runError) {
-      updateCommandCard({
-        ...card,
-        status: "failed",
-        error: runError instanceof Error ? runError.message : String(runError),
-      });
-    }
-  }
-
-  async function requestApproval(card: AiCommandCard): Promise<void> {
-    try {
-      const approvedCard = await core.orbitSSHApi.ai.requestCommandApproval({
-        tabId: card.tabId,
-        command: card.command,
-        reason: card.reason,
-        risk: card.risk,
-      });
-      updateCommandCard({ ...card, approvalId: approvedCard.approvalId });
-    } catch (approvalError) {
-      updateCommandCard({
-        ...card,
-        status: "failed",
-        error:
-          approvalError instanceof Error
-            ? approvalError.message
-            : String(approvalError),
-      });
-    }
-  }
-
   async function runApprovedCommand(card: AiCommandCard): Promise<void> {
-    if (!card.approvalId) {
-      await requestApproval(card);
-      const refreshedCard = commandCards.value.find(item => item.id === card.id);
-
-      if (!refreshedCard?.approvalId) {
-        return;
-      }
-
-      card = refreshedCard;
-    }
-
     const approvalId = card.approvalId;
 
     if (!approvalId) {
@@ -154,6 +145,7 @@ export const useAiStore = defineStore("ai", () => {
     }
 
     updateCommandCard({ ...card, status: "running", error: undefined });
+    isSending.value = true;
 
     try {
       const result = await core.orbitSSHApi.ai.runApprovedCommand({
@@ -161,13 +153,30 @@ export const useAiStore = defineStore("ai", () => {
         command: card.command,
         approvalId,
       });
-      updateCommandCard({ ...card, status: "completed", result });
+      applyAiChatResult(result);
     } catch (runError) {
       updateCommandCard({
         ...card,
         status: "failed",
         error: runError instanceof Error ? runError.message : String(runError),
       });
+    } finally {
+      isSending.value = false;
+    }
+  }
+
+  async function rejectApproval(card: AiCommandCard): Promise<void> {
+    if (!card.approvalId) {
+      updateCommandCard({ ...card, status: "rejected" });
+      return;
+    }
+
+    try {
+      await core.orbitSSHApi.ai.rejectCommandApproval({
+        approvalId: card.approvalId,
+      });
+    } finally {
+      updateCommandCard({ ...card, status: "rejected" });
     }
   }
 
@@ -183,8 +192,7 @@ export const useAiStore = defineStore("ai", () => {
     togglePanel,
     setMode,
     sendMessage,
-    runReadonlyCommand,
-    requestApproval,
     runApprovedCommand,
+    rejectApproval,
   };
 });

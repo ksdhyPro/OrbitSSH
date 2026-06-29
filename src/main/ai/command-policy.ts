@@ -23,6 +23,38 @@ const DENIED_PREFIXES = [
   "halt",
 ];
 
+const MUST_APPROVE_PREFIXES = [
+  ...DENIED_PREFIXES,
+  "apt",
+  "apt-get",
+  "yum",
+  "dnf",
+  "pacman",
+  "zypper",
+  "brew",
+  "npm",
+  "pnpm",
+  "yarn",
+  "pip",
+  "pip3",
+  "useradd",
+  "userdel",
+  "usermod",
+  "passwd",
+  "chmod",
+  "chown",
+];
+
+const MUST_APPROVE_DOCKER_PATTERNS = [
+  /^docker\s+(rm|rmi|stop|restart|kill|exec)\b/,
+  /^docker\s+compose\s+(down|restart|stop|rm|exec)\b/,
+];
+
+const MUST_APPROVE_SERVICE_PATTERNS = [
+  /^(systemctl|service)\s+\S+\s+(stop|restart|reload|disable|enable)\b/,
+  /^systemctl\s+(stop|restart|reload|disable|enable)\s+\S+/,
+];
+
 const READONLY_PATTERNS: RegExp[] = [
   /^pwd$/,
   /^whoami$/,
@@ -81,35 +113,56 @@ function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ");
 }
 
+export function isReadonlyAllowedCommand(command: string): boolean {
+  const normalized = normalizeCommand(command);
+  return READONLY_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+export function requiresMandatoryApproval(
+  command: string,
+  risk: "low" | "medium" | "high" = "medium",
+): boolean {
+  const normalized = normalizeCommand(command);
+  const firstWord = normalized.split(" ")[0]?.toLowerCase() ?? "";
+
+  return (
+    risk === "high" ||
+    MUST_APPROVE_PREFIXES.includes(firstWord) ||
+    DANGEROUS_TOKENS.some(token => normalized.includes(token)) ||
+    MUST_APPROVE_DOCKER_PATTERNS.some(pattern => pattern.test(normalized)) ||
+    MUST_APPROVE_SERVICE_PATTERNS.some(pattern => pattern.test(normalized))
+  );
+}
+
 export function evaluateAiCommand(command: string): AiCommandPolicyResult {
   const normalized = normalizeCommand(command);
 
   if (!normalized) {
-    return { decision: "deny", reason: "Empty command" };
+    return { decision: "deny", reason: "命令为空" };
   }
 
   const firstWord = normalized.split(" ")[0]?.toLowerCase() ?? "";
 
   if (DENIED_PREFIXES.includes(firstWord)) {
     return {
-      decision: "deny",
-      reason: "Destructive command prefix is denied",
+      decision: "requires_approval",
+      reason: "检测到高危命令前缀，必须确认",
     };
   }
 
   if (DANGEROUS_TOKENS.some(token => normalized.includes(token))) {
     return {
       decision: "requires_approval",
-      reason: "Command contains shell control or elevated-access syntax",
+      reason: "命令包含 Shell 控制符或高权限语法，需要确认",
     };
   }
 
-  if (READONLY_PATTERNS.some(pattern => pattern.test(normalized))) {
-    return { decision: "allow_readonly", reason: "Matches readonly allowlist" };
+  if (isReadonlyAllowedCommand(normalized)) {
+    return { decision: "allow_readonly", reason: "命中只读命令允许列表" };
   }
 
   return {
     decision: "requires_approval",
-    reason: "Command is not in the readonly allowlist",
+    reason: "命令不在只读允许列表中，需要确认",
   };
 }

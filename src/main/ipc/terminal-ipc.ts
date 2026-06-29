@@ -3,6 +3,7 @@ import { ipcMain } from 'electron'
 import {
   closeTerminalSession,
   openTerminalSession,
+  reconnectTerminalSession,
   resizeTerminal,
   writeTerminalInput
 } from '../ssh/session-manager.js'
@@ -24,6 +25,11 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('terminal:close', (_event, tabId: string) => {
     closeTerminalSession(tabId)
+    return true
+  })
+
+  ipcMain.handle('terminal:reconnect', (_event, tabId: string) => {
+    reconnectTerminalSession(tabId)
     return true
   })
 }

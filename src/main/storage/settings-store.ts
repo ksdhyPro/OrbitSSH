@@ -4,6 +4,7 @@ import {
   defaultAppSettings,
   type AppSettings,
   type AiSettings,
+  type AiProvider,
   type AppThemeMode
 } from '../../shared/settings.js'
 
@@ -36,20 +37,41 @@ function normalizeIdleDisconnectMinutes(value: unknown): number {
     : defaultAppSettings.connection.idleDisconnectMinutes
 }
 
+function normalizeAiProvider(value: unknown): AiProvider {
+  return value === 'deepseek' ? value : defaultAppSettings.ai.provider
+}
+
+function normalizeAiMode(value: unknown): AiSettings['defaultMode'] {
+  if (value === 'ask' || value === 'auto' || value === 'full') {
+    return value
+  }
+
+  if (value === 'readonly') {
+    return 'auto'
+  }
+
+  if (value === 'suggest' || value === 'approval') {
+    return 'ask'
+  }
+
+  return defaultAppSettings.ai.defaultMode
+}
+
 function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings {
-  const mode = value?.defaultMode
+  const mode = (value as { defaultMode?: unknown } | undefined)?.defaultMode
+  const provider = normalizeAiProvider(value?.provider)
+  const rawModel = typeof value?.model === 'string' ? value.model.trim() : ''
+  const model =
+    rawModel && rawModel !== 'gpt-5-mini'
+      ? rawModel
+      : defaultAppSettings.ai.model
 
   return {
     enabled: Boolean(value?.enabled),
+    provider,
     apiKey: typeof value?.apiKey === 'string' ? value.apiKey : defaultAppSettings.ai.apiKey,
-    model:
-      typeof value?.model === 'string' && value.model.trim()
-        ? value.model.trim()
-        : defaultAppSettings.ai.model,
-    defaultMode:
-      mode === 'suggest' || mode === 'readonly' || mode === 'approval'
-        ? mode
-        : defaultAppSettings.ai.defaultMode,
+    model,
+    defaultMode: normalizeAiMode(mode),
     allowReadonlyAutoRun:
       typeof value?.allowReadonlyAutoRun === 'boolean'
         ? value.allowReadonlyAutoRun

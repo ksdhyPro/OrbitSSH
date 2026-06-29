@@ -12,11 +12,13 @@ import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
 import closeIcon from "../assets/icons/close.svg";
 import copyIcon from "../assets/icons/copy.svg";
 import pasteIcon from "../assets/icons/paste.svg";
+import reconnectIcon from "../assets/icons/reconnect.svg";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { TerminalTab } from "../types/terminal";
 import { getStatusText } from "../utils/status-text";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { resolveMenuPlacement } from "../utils/menu-position";
+import { useTerminalsStore } from "../stores/useTerminalsStore";
 import ContextMenu from "./ContextMenu.vue";
 import StatusBar from "./StatusBar.vue";
 
@@ -46,6 +48,8 @@ const emit = defineEmits<{
   closeTab: [tabId: string];
   openConnectionDialog: [];
 }>();
+
+const terminalsStore = useTerminalsStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const terminalContextMenu = reactive({
@@ -152,7 +156,16 @@ watch(
           @keydown.enter.prevent="emit('activateTab', tab.id)"
           @keydown.space.prevent="emit('activateTab', tab.id)">
           <span>{{ tab.title }}</span>
-          <small>{{ getStatusText(tab.status) }}</small>
+          <small :class="{ 'status-disconnected': tab.status === 'disconnected' }">{{ getStatusText(tab.status) }}</small>
+          <button
+            v-if="tab.status === 'disconnected' || tab.status === 'error'"
+            type="button"
+            class="session-tab-reconnect"
+            aria-label="重新连接"
+            title="重新连接"
+            @click.stop="terminalsStore.reconnectTerminal(tab.id)">
+            <img :src="reconnectIcon" alt="" />
+          </button>
           <button
             type="button"
             class="session-tab-close"

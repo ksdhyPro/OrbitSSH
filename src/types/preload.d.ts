@@ -46,9 +46,7 @@ import type {
   AiApprovedCommandInput,
   AiChatInput,
   AiChatResult,
-  AiCommandApprovalInput,
-  AiCommandCard,
-  AiCommandResult,
+  AiRejectedCommandInput,
 } from "../shared/ai";
 
 declare global {
@@ -82,16 +80,12 @@ declare global {
       };
       ai: {
         chat: (input: AiChatInput) => Promise<AiChatResult>;
-        runReadonlyCommand: (
-          tabId: string,
-          command: string,
-        ) => Promise<AiCommandResult>;
-        requestCommandApproval: (
-          input: AiCommandApprovalInput,
-        ) => Promise<AiCommandCard>;
         runApprovedCommand: (
           input: AiApprovedCommandInput,
-        ) => Promise<AiCommandResult>;
+        ) => Promise<AiChatResult>;
+        rejectCommandApproval: (
+          input: AiRejectedCommandInput,
+        ) => Promise<boolean>;
       };
       sftp: {
         open: (tabId: string, serverId: string) => Promise<SftpInitResult>;
@@ -144,6 +138,7 @@ declare global {
         write: (tabId: string, data: string) => Promise<boolean>;
         resize: (input: TerminalResizeInput) => Promise<boolean>;
         close: (tabId: string) => Promise<boolean>;
+        reconnect: (tabId: string) => Promise<boolean>;
         onData: (callback: (event: TerminalDataEvent) => void) => () => void;
         onStatus: (
           callback: (event: TerminalStatusEvent) => void,

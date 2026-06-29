@@ -22,11 +22,14 @@ export interface UpdateSettings {
   updateFeedUrl: string
 }
 
+export type AiProvider = 'deepseek'
+
 export interface AiSettings {
   enabled: boolean
+  provider: AiProvider
   apiKey: string
   model: string
-  defaultMode: 'suggest' | 'readonly' | 'approval'
+  defaultMode: 'ask' | 'auto' | 'full'
   allowReadonlyAutoRun: boolean
 }
 
@@ -75,9 +78,10 @@ export const defaultAppSettings: AppSettings = {
   },
   ai: {
     enabled: false,
+    provider: 'deepseek',
     apiKey: '',
-    model: 'gpt-5-mini',
-    defaultMode: 'suggest',
+    model: 'deepseek-chat',
+    defaultMode: 'auto',
     allowReadonlyAutoRun: true
   }
 }

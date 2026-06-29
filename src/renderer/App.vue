@@ -178,9 +178,8 @@ const {
   togglePanel: toggleAiPanel,
   setMode: setAiMode,
   sendMessage: sendAiMessage,
-  runReadonlyCommand: runAiReadonlyCommand,
-  requestApproval: requestAiApproval,
   runApprovedCommand: runAiApprovedCommand,
+  rejectApproval: rejectAiApproval,
 } = aiStore;
 
 const {
@@ -1063,9 +1062,8 @@ onUnmounted(() => {
         @set-mode="setAiMode"
         @update-input-text="aiInputText = $event"
         @send="sendAiMessage(aiContext)"
-        @run-readonly="runAiReadonlyCommand"
-        @request-approval="requestAiApproval"
-        @run-approved="runAiApprovedCommand" />
+        @run-approved="runAiApprovedCommand"
+        @reject-approval="rejectAiApproval" />
     </div>
 
     <ConnectionDialog

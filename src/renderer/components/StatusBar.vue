@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { useTerminalsStore } from "../stores/useTerminalsStore";
 
 interface StatsEntry {
   cpuUsage: number;
@@ -14,6 +15,18 @@ interface StatsEntry {
 const props = defineProps<{
   activeTabId: string;
 }>();
+
+const terminalsStore = useTerminalsStore();
+
+// 当前激活 Tab 的连接状态
+const activeTab = computed(() =>
+  terminalsStore.tabs.find(tab => tab.id === props.activeTabId),
+);
+
+const isDisconnected = computed(() => {
+  if (!activeTab.value) return false;
+  return activeTab.value.status === "disconnected" || activeTab.value.status === "error";
+});
 
 // 按 tabId 缓存最近一次成功拉取的数据，切换回来时立即显示，避免闪烁。
 const statsCache = reactive<Record<string, StatsEntry>>({});
@@ -100,7 +113,7 @@ function isWindowHidden(): boolean {
 }
 
 function startPolling(): void {
-  if (isWindowHidden() || !props.activeTabId) return;
+  if (isWindowHidden() || !props.activeTabId || isDisconnected.value) return;
   stopPolling();
 
   // 立即拉取一次
@@ -143,6 +156,16 @@ function handleVisibilityChange(): void {
   }
 }
 
+// 连接断开时立即停止轮询，避免继续向远端探测；
+// 恢复连接后重新开始拉取系统指标。
+watch(isDisconnected, disconnected => {
+  if (disconnected) {
+    stopPolling();
+  } else if (!isWindowHidden() && props.activeTabId) {
+    startPolling();
+  }
+});
+
 // 切换标签时同步重启轮询，目标 Tab 改变。
 watch(
   () => props.activeTabId,
@@ -170,47 +193,55 @@ onUnmounted(() => {
 
 <template>
   <div v-if="activeTabId" class="status-bar" aria-label="系统状态栏">
-    <div class="status-bar-item">
-      <span class="status-bar-label">CPU</span>
-      <span class="status-bar-value">
-        <template v-if="currentStats">
-          <span :class="['status-dot', dotClass(currentStats.cpuUsage)]"></span>
-          {{ currentStats.cpuUsage }}%
-        </template>
-        <template v-else>--</template>
-      </span>
-    </div>
-    <div class="status-bar-item">
-      <span class="status-bar-label">内存</span>
-      <span class="status-bar-value">
-        <template v-if="currentStats">
-          <span
-            :class="['status-dot', dotClass(currentStats.memoryUsage)]"></span>
-          {{ currentStats.memoryUsage }}%
-          <small>
-            {{ formatBytes(currentStats.memoryUsed) }} /
-            {{ formatBytes(currentStats.memoryTotal) }}
-          </small>
-        </template>
-        <template v-else>--</template>
-      </span>
-    </div>
-    <div class="status-bar-item">
-      <span class="status-bar-label">磁盘</span>
-      <span class="status-bar-value">
-        <template v-if="currentStats && currentStats.diskTotal > 0">
-          <span :class="['status-dot', dotClass(diskUsage)]"></span>
-          {{ diskUsage }}%
-          <small>
-            {{ formatBytes(currentStats.diskTotal - currentStats.diskFree) }} /
-            {{ formatBytes(currentStats.diskTotal) }}
-          </small>
-        </template>
-        <template v-else>--</template>
-      </span>
-    </div>
-    <div class="status-bar-os">
-      <template v-if="currentStats?.osName">{{ currentStats.osName }}</template>
-    </div>
+    <template v-if="isDisconnected">
+      <div class="status-bar-item status-bar-disconnected">
+        <span class="status-dot dot-danger"></span>
+        <span>连接已断开</span>
+      </div>
+    </template>
+    <template v-else>
+      <div class="status-bar-item">
+        <span class="status-bar-label">CPU</span>
+        <span class="status-bar-value">
+          <template v-if="currentStats">
+            <span :class="['status-dot', dotClass(currentStats.cpuUsage)]"></span>
+            {{ currentStats.cpuUsage }}%
+          </template>
+          <template v-else>--</template>
+        </span>
+      </div>
+      <div class="status-bar-item">
+        <span class="status-bar-label">内存</span>
+        <span class="status-bar-value">
+          <template v-if="currentStats">
+            <span
+              :class="['status-dot', dotClass(currentStats.memoryUsage)]"></span>
+            {{ currentStats.memoryUsage }}%
+            <small>
+              {{ formatBytes(currentStats.memoryUsed) }} /
+              {{ formatBytes(currentStats.memoryTotal) }}
+            </small>
+          </template>
+          <template v-else>--</template>
+        </span>
+      </div>
+      <div class="status-bar-item">
+        <span class="status-bar-label">磁盘</span>
+        <span class="status-bar-value">
+          <template v-if="currentStats && currentStats.diskTotal > 0">
+            <span :class="['status-dot', dotClass(diskUsage)]"></span>
+            {{ diskUsage }}%
+            <small>
+              {{ formatBytes(currentStats.diskTotal - currentStats.diskFree) }} /
+              {{ formatBytes(currentStats.diskTotal) }}
+            </small>
+          </template>
+          <template v-else>--</template>
+        </span>
+      </div>
+      <div class="status-bar-os">
+        <template v-if="currentStats?.osName">{{ currentStats.osName }}</template>
+      </div>
+    </template>
   </div>
 </template>

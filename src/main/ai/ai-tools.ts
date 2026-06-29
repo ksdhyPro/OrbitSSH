@@ -40,7 +40,7 @@ export async function runReadonlyAiCommand(
 
   writeAppLog({
     scope: "main.ai",
-    message: "AI readonly command policy evaluated",
+    message: "AI 只读命令策略评估完成",
     data: { tabId, command, policy },
   });
 
@@ -52,7 +52,7 @@ export async function runReadonlyAiCommand(
 
   writeAppLog({
     scope: "main.ai",
-    message: "AI readonly command executed",
+    message: "AI 只读命令执行完成",
     data: { tabId, command, ...summarizeOutput(result) },
   });
 
@@ -71,7 +71,7 @@ export function requestAiCommandApproval(
 
   writeAppLog({
     scope: "main.ai",
-    message: "AI command approval requested",
+    message: "AI 命令授权已创建",
     data: {
       tabId: input.tabId,
       command: input.command,
@@ -87,6 +87,7 @@ export function requestAiCommandApproval(
     reason: input.reason,
     risk: input.risk,
     status: "requires_approval",
+    createdAt: Date.now(),
     approvalId,
   };
 }
@@ -97,24 +98,24 @@ export async function runApprovedAiCommand(
   const approval = approvals.get(input.approvalId);
 
   if (!approval) {
-    throw new Error("Command approval is missing or already used");
+    throw new Error("命令授权不存在或已被使用");
   }
 
   approvals.delete(input.approvalId);
 
   if (approval.expiresAt < Date.now()) {
-    throw new Error("Command approval expired");
+    throw new Error("命令授权已过期");
   }
 
   if (approval.tabId !== input.tabId || approval.command !== input.command.trim()) {
-    throw new Error("Command approval does not match this command");
+    throw new Error("命令授权与当前命令不匹配");
   }
 
   const result = await executeTerminalCommand(input.tabId, input.command, 20_000);
 
   writeAppLog({
     scope: "main.ai",
-    message: "AI approved command executed",
+    message: "AI 已授权命令执行完成",
     data: { tabId: input.tabId, command: input.command, ...summarizeOutput(result) },
   });
 

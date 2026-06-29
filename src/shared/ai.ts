@@ -1,13 +1,15 @@
-export type AiMode = "suggest" | "readonly" | "approval";
+export type AiMode = "ask" | "auto" | "full";
 
 export type AiMessageRole = "user" | "assistant" | "system";
 
 export type AiCommandStatus =
+  | "suggested"
   | "pending"
   | "running"
   | "completed"
   | "failed"
-  | "requires_approval";
+  | "requires_approval"
+  | "rejected";
 
 export interface AiMessage {
   id: string;
@@ -23,6 +25,7 @@ export interface AiCommandCard {
   reason: string;
   risk: "low" | "medium" | "high";
   status: AiCommandStatus;
+  createdAt: number;
   approvalId?: string;
   result?: AiCommandResult;
   error?: string;
@@ -72,5 +75,9 @@ export interface AiCommandApprovalInput {
 export interface AiApprovedCommandInput {
   tabId: string;
   command: string;
+  approvalId: string;
+}
+
+export interface AiRejectedCommandInput {
   approvalId: string;
 }

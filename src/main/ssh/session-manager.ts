@@ -670,6 +670,119 @@ export function closeTerminalSession(tabId: string): void {
   });
 }
 
+// 重新连接已存在的终端会话：复用原 tabId 和 serverId，
+// 清理旧连接后以相同凭证建立新 SSH 连接。
+export function reconnectTerminalSession(tabId: string): void {
+  const existing = terminalSessions.get(tabId);
+
+  if (!existing) {
+    writeAppLog({
+      scope: "main.ssh",
+      level: "warn",
+      message: "重连失败：终端会话不存在",
+      data: { tabId },
+    });
+    return;
+  }
+
+  const { webContents, serverId } = existing;
+  const server = getServerAuthConfig(serverId);
+  const startedAt = Date.now();
+
+  // 清理旧连接资源
+  existing.shellStream?.end();
+  existing.sshClient.end();
+  remoteOSCache.delete(tabId);
+
+  writeAppLog({
+    scope: "main.ssh",
+    message: "开始重连 SSH 会话",
+    data: { tabId, serverId, host: server.host, port: server.port },
+  });
+
+  const sshClient = new Client();
+  const session: TerminalSession = {
+    tabId,
+    serverId,
+    webContents,
+    sshClient,
+    status: "connecting",
+    lastActiveAt: Date.now(),
+    outputBuffer: existing.outputBuffer,
+  };
+
+  terminalSessions.set(tabId, session);
+  sendStatus(session, "connecting");
+
+  sshClient
+    .on("ready", () => {
+      const readyAt = Date.now();
+      writeAppLog({
+        scope: "main.ssh",
+        message: "SSH 重连已 ready，开始打开 shell",
+        data: { tabId, serverId, connectReadyMs: readyAt - startedAt },
+      });
+      sshClient.shell(
+        { term: "xterm-256color", cols: 80, rows: 24 },
+        (error, stream) => {
+          if (error) {
+            sendStatus(session, "error", createSafeErrorMessage(error));
+            closeTerminalSession(tabId);
+            return;
+          }
+
+          session.shellStream = stream;
+          writeAppLog({
+            scope: "main.ssh",
+            message: "SSH 重连 shell 已打开",
+            data: { tabId, serverId, totalMs: Date.now() - startedAt },
+          });
+          sendStatus(session, "connected");
+
+          stream.on("data", (data: Buffer) => {
+            touchTerminalSession(session);
+            appendTerminalOutput(session, data.toString("utf8"));
+            webContents.send("terminal:data", {
+              tabId,
+              data: data.toString("utf8"),
+            });
+          });
+
+          stream.on("close", () => {
+            sendStatus(session, "disconnected");
+            closeTerminalSession(tabId);
+          });
+
+          installShellPathIntegration(session);
+        },
+      );
+    })
+    .on("error", error => {
+      writeAppLog({
+        scope: "main.ssh",
+        level: "error",
+        message: "SSH 重连错误",
+        data: { tabId, serverId, error: createSafeErrorMessage(error) },
+      });
+      sendStatus(session, "error", createSafeErrorMessage(error));
+      closeTerminalSession(tabId);
+    })
+    .on("close", () => {
+      if (terminalSessions.has(tabId)) {
+        sendStatus(session, "disconnected");
+        terminalSessions.delete(tabId);
+      }
+    });
+
+  setImmediate(() => {
+    sshClient.connect({
+      ...createServerConnectOptions(server),
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs(),
+    });
+  });
+}
+
 export function closeAllTerminalSessions(): void {
   for (const tabId of terminalSessions.keys()) {
     closeTerminalSession(tabId);

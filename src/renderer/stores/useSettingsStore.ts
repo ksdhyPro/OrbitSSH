@@ -47,6 +47,7 @@ export const useSettingsStore = defineStore("settings", () => {
       },
       ai: {
         enabled: appSettings.ai.enabled,
+        provider: appSettings.ai.provider,
         apiKey: appSettings.ai.apiKey,
         model: appSettings.ai.model,
         defaultMode: appSettings.ai.defaultMode,
@@ -158,6 +159,7 @@ export const useSettingsStore = defineStore("settings", () => {
         terminal: savedSettings.terminal,
         ai: {
           enabled: savedSettings.ai.enabled,
+          provider: savedSettings.ai.provider,
           model: savedSettings.ai.model,
           defaultMode: savedSettings.ai.defaultMode,
           allowReadonlyAutoRun: savedSettings.ai.allowReadonlyAutoRun,

@@ -28,12 +28,10 @@ const orbitSSHApi = {
   },
   ai: {
     chat: input => ipcRenderer.invoke("ai:chat", input),
-    runReadonlyCommand: (tabId, command) =>
-      ipcRenderer.invoke("ai:run-readonly-command", tabId, command),
-    requestCommandApproval: input =>
-      ipcRenderer.invoke("ai:request-command-approval", input),
     runApprovedCommand: input =>
       ipcRenderer.invoke("ai:run-approved-command", input),
+    rejectCommandApproval: input =>
+      ipcRenderer.invoke("ai:reject-command-approval", input),
   },
   sftp: {
     open: (tabId, serverId) => ipcRenderer.invoke("sftp:open", tabId, serverId),
@@ -79,6 +77,7 @@ const orbitSSHApi = {
     write: (tabId, data) => ipcRenderer.invoke("terminal:write", tabId, data),
     resize: input => ipcRenderer.invoke("terminal:resize", input),
     close: tabId => ipcRenderer.invoke("terminal:close", tabId),
+    reconnect: tabId => ipcRenderer.invoke("terminal:reconnect", tabId),
     onData: callback => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("terminal:data", listener);

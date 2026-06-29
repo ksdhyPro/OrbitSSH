@@ -637,6 +637,27 @@ export const useTerminalsStore = defineStore("terminals", () => {
     }
   }
 
+  // 重新连接已断开的终端会话：复用原 tabId，
+  // 状态更新由 handleTerminalStatus 统一处理。
+  async function reconnectTerminal(tabId: string): Promise<void> {
+    const tab = tabs.value.find(t => t.id === tabId);
+    if (!tab) return;
+
+    tabs.value = tabs.value.map(t =>
+      t.id === tabId ? { ...t, status: "connecting" as const } : t,
+    );
+
+    try {
+      await core.orbitSSHApi?.terminals.reconnect(tabId);
+    } catch (error) {
+      core.writeRendererLog(
+        "终端重连失败",
+        { tabId, error: error instanceof Error ? error.message : String(error) },
+        "error",
+      );
+    }
+  }
+
   function handleTerminalData(event: { tabId: string; data: string }): void {
     terminalInstances.get(event.tabId)?.terminal.write(event.data);
   }
@@ -732,6 +753,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     openServerTerminal,
     activateTerminalTab,
     closeTerminalTab,
+    reconnectTerminal,
     handleTerminalData,
     handleTerminalStatus,
     startListeners,
