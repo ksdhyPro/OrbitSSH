@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import copyIcon from "../assets/icons/copy.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
@@ -80,17 +81,30 @@ function updateRenameValue(value: string): void {
     props.renaming.value = value;
   }
 }
+
+const isSftpDisconnected = computed(() =>
+  Boolean(
+    props.activeSftpTree?.disconnected ||
+      props.activeTab?.status === "disconnected" ||
+      props.activeTab?.status === "error",
+  ),
+);
 </script>
 
 <template>
   <section class="panel file-panel">
     <div class="panel-header">
-      <h2>远程文件</h2>
+      <h2>
+        远程文件
+        <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
+          已断开
+        </span>
+      </h2>
       <button
         type="button"
         class="icon-button"
         aria-label="刷新目录"
-        :disabled="!activeTab"
+        :disabled="!activeTab || isSftpDisconnected"
         @click="emit('refresh')">
         <img :src="refreshIcon" alt="" />
       </button>
@@ -102,7 +116,7 @@ function updateRenameValue(value: string): void {
         class="file-path-input"
         type="text"
         spellcheck="false"
-        :disabled="!activeTab || !activeSftpTree"
+        :disabled="!activeTab || !activeSftpTree || isSftpDisconnected"
         :placeholder="filePanelHint"
         aria-label="远程路径"
         @input="
@@ -112,7 +126,7 @@ function updateRenameValue(value: string): void {
       <button
         type="button"
         class="path-action-button"
-        :disabled="!activeSftpTree?.homePath"
+        :disabled="!activeSftpTree?.homePath || isSftpDisconnected"
         title="复制当前路径"
         aria-label="复制当前路径"
         @click="emit('copyPath')">
@@ -121,7 +135,7 @@ function updateRenameValue(value: string): void {
       <button
         type="button"
         class="path-action-button"
-        :disabled="!activeTab?.currentPath"
+        :disabled="!activeTab?.currentPath || isSftpDisconnected"
         title="同步到当前终端路径"
         aria-label="同步到当前终端路径"
         @click="emit('syncPath')">
@@ -135,7 +149,7 @@ function updateRenameValue(value: string): void {
       list-class="file-tree"
       row-class="file-node"
       aria-label="远程文件列表"
-      empty-text="当前目录为空"
+      :empty-text="isSftpDisconnected ? 'SFTP 已断开' : '当前目录为空'"
       :selected-paths="activeSftpTree?.selectedPaths ?? new Set<string>()"
       :deleting-paths="activeSftpTree?.deletingPaths ?? new Set<string>()"
       :drop-target-path="fileDragTargetPath"

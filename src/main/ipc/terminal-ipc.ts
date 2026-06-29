@@ -28,8 +28,7 @@ export function registerTerminalIpc(): void {
     return true
   })
 
-  ipcMain.handle('terminal:reconnect', (_event, tabId: string) => {
-    reconnectTerminalSession(tabId)
-    return true
-  })
+  ipcMain.handle('terminal:reconnect', (event, tabId: string, serverId?: string) =>
+    reconnectTerminalSession(event.sender, tabId, serverId)
+  )
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import type {
   AiCommandCard,
   AiCommandStatus,
@@ -7,11 +7,14 @@ import type {
   AiMode,
 } from "../../shared/ai";
 import type { ContextMenuItem } from "../types/context-menu";
+import arrowUpIcon from "../assets/icons/arrow-up.svg";
+import closeIcon from "../assets/icons/close.svg";
 import collapseIcon from "../assets/icons/collapse.svg";
 import aiAskIcon from "../assets/icons/ai-ask.svg";
 import aiAutoIcon from "../assets/icons/ai-auto.svg";
 import aiFullIcon from "../assets/icons/ai-full.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
+import { renderMarkdown } from "../utils/markdown";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import ContextMenu from "./ContextMenu.vue";
 
@@ -54,11 +57,18 @@ const modeMenuItems = computed<ContextMenuItem[]>(() =>
     key: opt.value,
     label: opt.label,
     icon: opt.icon,
+    desc: modeDescs[opt.value],
   })),
 );
 
-const currentModeOption = computed(() =>
-  modeOptions.find(opt => opt.value === props.mode)!,
+const modeDescs: Record<AiMode, string> = {
+  ask: "所有命令均会询问确认",
+  auto: "常规命令自动执行",
+  full: "除高危命令均自动执行",
+};
+
+const currentModeOption = computed(
+  () => modeOptions.find(opt => opt.value === props.mode)!,
 );
 
 function closeModeMenu(): void {
@@ -67,14 +77,21 @@ function closeModeMenu(): void {
 
 function openModeMenu(event: MouseEvent): void {
   event.stopPropagation();
+
+  // 如果菜单已打开，点击按钮关闭（toggle 行为）
+  if (modeMenu.open) {
+    closeModeMenu();
+    return;
+  }
+
   closeFloatingMenus();
-  modeMenu.open = true;
   const placement = resolveMenuPlacement(
     { x: event.clientX, y: event.clientY },
     modeMenuItems.value.length,
   );
   modeMenu.x = placement.x;
   modeMenu.y = placement.y;
+  modeMenu.open = true;
 }
 
 function selectMode(item: ContextMenuItem): void {
@@ -112,7 +129,9 @@ const hasPendingApproval = computed(() =>
 );
 
 const hasRunningCommand = computed(() =>
-  props.commandCards.some(card => card.status === "running" || card.status === "pending"),
+  props.commandCards.some(
+    card => card.status === "running" || card.status === "pending",
+  ),
 );
 
 const isProcessExpanded = ref(false);
@@ -122,7 +141,10 @@ const processCreatedAt = computed(() => {
     0,
     ...props.commandCards.map(card => card.createdAt),
   );
-  const latestMessageTime = Math.max(0, ...props.messages.map(message => message.createdAt));
+  const latestMessageTime = Math.max(
+    0,
+    ...props.messages.map(message => message.createdAt),
+  );
 
   if (latestCardTime > 0) {
     return latestCardTime;
@@ -166,8 +188,12 @@ const processStatusText = computed(() => {
   const completed = props.commandCards.filter(
     card => card.status === "completed",
   ).length;
-  const failed = props.commandCards.filter(card => card.status === "failed").length;
-  const rejected = props.commandCards.filter(card => card.status === "rejected").length;
+  const failed = props.commandCards.filter(
+    card => card.status === "failed",
+  ).length;
+  const rejected = props.commandCards.filter(
+    card => card.status === "rejected",
+  ).length;
 
   if (failed > 0 || waiting > 0 || rejected > 0) {
     return `处理完成，${completed} 条完成，${failed} 条失败，${rejected} 条已拒绝`;
@@ -179,17 +205,50 @@ const processStatusText = computed(() => {
 // ----- 自动滚动到最新消息 -----
 
 const messageListEl = ref<HTMLElement | null>(null);
+let scrollFrameId = 0;
 
-function scrollToBottom(): void {
+function isNearMessageBottom(): boolean {
   const el = messageListEl.value;
-  if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  if (!el) return true;
+
+  // 用户停留在底部附近时才自动跟随，避免查看历史消息时被新内容拉回底部。
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 }
 
-// 消息或命令卡片有变化时在下一帧滚动到底部，避免生硬跳转。
+function scrollToBottom(behavior: ScrollBehavior = "auto"): void {
+  const el = messageListEl.value;
+  if (!el) return;
+  el.scrollTo({ top: el.scrollHeight, behavior });
+}
+
+async function scheduleScrollToBottom(
+  behavior: ScrollBehavior = "auto",
+): Promise<void> {
+  await nextTick();
+  if (scrollFrameId) {
+    cancelAnimationFrame(scrollFrameId);
+  }
+
+  // 等浏览器完成文本换行和卡片高度计算后再滚动到底部。
+  scrollFrameId = requestAnimationFrame(() => {
+    scrollFrameId = 0;
+    scrollToBottom(behavior);
+  });
+}
+
+// 消息、流式文本或命令卡片有变化时，在贴底状态下继续跟随最新内容。
 watch(
-  () => [props.messages.length, props.commandCards.length] as const,
-  () => { void nextTick(scrollToBottom); },
+  () => [
+    props.messages.map(message => `${message.id}:${message.content.length}`).join("|"),
+    props.commandCards
+      .map(card => `${card.id}:${card.status}:${card.reason.length}`)
+      .join("|"),
+  ] as const,
+  () => {
+    if (isNearMessageBottom()) {
+      void scheduleScrollToBottom();
+    }
+  },
 );
 
 watch(
@@ -197,7 +256,19 @@ watch(
   sending => {
     // 发送开始后稍作等待，确保 AI 回复区域的 DOM 已插入再滚动。
     if (sending) {
-      setTimeout(scrollToBottom, 80);
+      setTimeout(() => {
+        void scheduleScrollToBottom("smooth");
+      }, 80);
+    }
+  },
+);
+
+// 展开/收起过程卡片时重新滚动，确保内容可见
+watch(
+  () => isProcessExpanded.value,
+  () => {
+    if (isNearMessageBottom()) {
+      void scheduleScrollToBottom("smooth");
     }
   },
 );
@@ -212,6 +283,12 @@ watch(
     }
   },
 );
+
+onBeforeUnmount(() => {
+  if (scrollFrameId) {
+    cancelAnimationFrame(scrollFrameId);
+  }
+});
 
 function getCommandAuditText(card: AiCommandCard): string {
   if (card.status === "requires_approval") {
@@ -256,23 +333,40 @@ function getCommandAuditText(card: AiCommandCard): string {
         </button>
       </header>
 
-      <section ref="messageListEl" class="ai-message-list" :aria-busy="isSending">
+      <section
+        ref="messageListEl"
+        class="ai-message-list"
+        :aria-busy="isSending">
         <div v-if="!enabled" class="ai-empty">
           请先在设置中启用 AI 后再使用所选 AI 服务。常见诊断仍会提供本地建议。
         </div>
         <div v-else-if="messages.length === 0" class="ai-empty">
-          可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。
+          可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。请注意AI回复具有不确定性，请谨慎执行命令。
         </div>
 
         <template v-for="item in timelineItems" :key="item.id">
           <article
-            v-if="item.type === 'message' && (item.message.role !== 'assistant' || item.message.content)"
-            :class="['ai-message', item.message.role, { streaming: item.message.id === streamingMessageId }]">
+            v-if="
+              item.type === 'message' &&
+              (item.message.role !== 'assistant' || item.message.content)
+            "
+            :class="[
+              'ai-message',
+              item.message.role,
+              { streaming: item.message.id === streamingMessageId },
+            ]">
             <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
-            <p>{{ item.message.content }}</p>
+            <div
+              v-if="item.message.role === 'assistant'"
+              class="ai-markdown"
+              v-html="renderMarkdown(item.message.content)">
+            </div>
+            <p v-else>{{ item.message.content }}</p>
           </article>
 
-          <section v-if="item.type === 'process'" :class="['ai-process', { expanded: isProcessExpanded }]">
+          <section
+            v-if="item.type === 'process'"
+            :class="['ai-process', { expanded: isProcessExpanded }]">
             <button
               type="button"
               class="ai-process-toggle"
@@ -322,7 +416,6 @@ function getCommandAuditText(card: AiCommandCard): string {
             </div>
           </section>
         </template>
-
       </section>
 
       <footer class="ai-compose">
@@ -333,7 +426,10 @@ function getCommandAuditText(card: AiCommandCard): string {
           placeholder="向 AI 询问这台服务器..."
           :disabled="isSending"
           @input="
-            emit('updateInputText', ($event.target as HTMLTextAreaElement).value)
+            emit(
+              'updateInputText',
+              ($event.target as HTMLTextAreaElement).value,
+            )
           "
           @keydown.enter.exact.prevent="emit('send')"></textarea>
         <div class="ai-compose-actions">
@@ -345,6 +441,7 @@ function getCommandAuditText(card: AiCommandCard): string {
             :disabled="isSending"
             @click="openModeMenu">
             <img :src="currentModeOption.icon" alt="" />
+            <span>{{ currentModeOption.label }}</span>
           </button>
           <ContextMenu
             :menu="modeMenu"
@@ -352,19 +449,21 @@ function getCommandAuditText(card: AiCommandCard): string {
             @select="selectMode"
             @close="closeModeMenu" />
           <button
+            v-if="!isSending"
             type="button"
-            class="ai-send-btn"
-            :disabled="isSending || !inputText.trim()"
+            class="ai-action-btn"
+            title="发送"
+            :disabled="!inputText.trim()"
             @click="emit('send')">
-            {{ isSending ? "思考中..." : "发送" }}
+            <img :src="arrowUpIcon" alt="发送" />
           </button>
           <button
-            v-if="isSending"
+            v-else
             type="button"
-            class="ai-stop-btn"
+            class="ai-action-btn ai-stop-btn"
             title="终止"
             @click="emit('stop')">
-            终止
+            <img :src="closeIcon" alt="终止" />
           </button>
         </div>
       </footer>

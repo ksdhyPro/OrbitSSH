@@ -363,6 +363,7 @@ input[type="number"] {
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -985,13 +986,30 @@ input[type="number"] {
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 32px;
+  min-height: 32px;
   margin: 0;
-  padding: 0 11px;
+  padding: 6px 11px;
   border-radius: 0;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
+}
+
+.context-menu button .menu-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.context-menu button .menu-item-label {
+  line-height: 1.3;
+}
+
+.context-menu button small {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.3;
 }
 
 .context-menu button:hover:not(:disabled) {
@@ -1307,6 +1325,21 @@ input[type="number"] {
 
 .session-tab small.status-disconnected {
   color: #e74856;
+}
+
+.sftp-disconnected-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid rgba(231, 72, 86, 0.32);
+  border-radius: 5px;
+  background: rgba(231, 72, 86, 0.1);
+  color: #e74856;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .session-tab-close {
@@ -1912,14 +1945,15 @@ input[type="number"] {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 56px;
-  padding: 12px 14px;
+  min-height: 50px;
+  padding: 7px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .ai-panel-header h2,
 .ai-panel-header p,
 .ai-message p,
+.ai-markdown > :first-child,
 .ai-command-card p,
 .ai-empty,
 .ai-compose p {
@@ -1962,7 +1996,13 @@ input[type="number"] {
   padding: 12px;
   overflow-y: auto;
   overflow-x: hidden;
-  scroll-behavior: smooth;
+}
+
+/* 消息卡片必须按内容撑高，滚动统一交给外层消息列表处理。 */
+.ai-message-list > .ai-message,
+.ai-message-list > .ai-process,
+.ai-message-list > .ai-empty {
+  flex: 0 0 auto;
 }
 
 .ai-empty {
@@ -2006,8 +2046,101 @@ input[type="number"] {
   white-space: pre-wrap;
 }
 
+.ai-markdown {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.ai-markdown > * {
+  margin: 8px 0 0;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  color: var(--text-heading);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ai-markdown ul,
+.ai-markdown ol {
+  padding-left: 18px;
+}
+
+.ai-markdown li + li {
+  margin-top: 4px;
+}
+
+.ai-markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.ai-markdown a:hover {
+  text-decoration: underline;
+}
+
+.ai-markdown blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--border-default);
+  color: var(--text-tertiary);
+}
+
+.ai-markdown code {
+  border-radius: 5px;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.ai-markdown :not(pre) > code {
+  padding: 1px 4px;
+}
+
+.ai-markdown pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 7px;
+  background: var(--bg-deep);
+}
+
+.ai-markdown pre code {
+  padding: 0;
+  background: transparent;
+  white-space: pre;
+}
+
+.ai-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+  border-collapse: collapse;
+}
+
+.ai-markdown th,
+.ai-markdown td {
+  padding: 6px 8px;
+  border: 1px solid var(--border-default);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ai-markdown th {
+  color: var(--text-heading);
+  background: var(--bg-elevated-3);
+}
+
 /* 流式回复：渐变光扫过文字，模拟字符逐个缓缓亮起 */
-.ai-message.assistant.streaming p {
+.ai-message.assistant.streaming .ai-markdown p,
+.ai-message.assistant.streaming .ai-markdown li,
+.ai-message.assistant.streaming .ai-markdown blockquote {
   background: linear-gradient(
     90deg,
     var(--text-tertiary) 0%,
@@ -2118,8 +2251,7 @@ input[type="number"] {
   flex-wrap: wrap;
 }
 
-.ai-command-actions button,
-.ai-compose .ai-send-btn {
+.ai-command-actions button {
   height: 32px;
   border-radius: 6px;
   padding: 0 12px;
@@ -2151,17 +2283,19 @@ input[type="number"] {
   display: flex;
   gap: 6px;
   align-items: center;
+  justify-content: space-between;
 }
 
 .ai-mode-trigger {
-  width: 32px;
-  height: 32px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
   background: var(--bg-elevated-3);
-  padding: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .ai-mode-trigger:hover {
@@ -2180,8 +2314,45 @@ input[type="number"] {
   display: block;
 }
 
-.ai-compose .ai-send-btn {
-  flex: 1;
+.ai-mode-trigger span {
+  white-space: nowrap;
+}
+
+.ai-compose .ai-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.ai-compose .ai-action-btn img {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.ai-compose .ai-action-btn:hover {
+  filter: brightness(1.12);
+}
+
+.ai-compose .ai-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-compose .ai-action-btn.ai-stop-btn {
+  background: var(--danger-bg, #d84d42);
+  color: #fff;
+}
+
+.ai-compose .ai-action-btn.ai-stop-btn:hover {
+  filter: brightness(1.12);
 }
 
 .ai-process {
@@ -2218,9 +2389,7 @@ input[type="number"] {
 .ai-process-body {
   display: grid;
   gap: 8px;
-  max-height: 280px;
   padding: 8px;
-  overflow: auto;
 }
 
 .ai-process .ai-command-card {
@@ -2251,26 +2420,6 @@ input[type="number"] {
 .ai-compose textarea:disabled {
   cursor: not-allowed;
   opacity: 0.72;
-}
-
-.ai-compose .ai-send-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.ai-compose .ai-stop-btn {
-  height: 32px;
-  border-radius: 6px;
-  padding: 0 12px;
-  border: 1px solid var(--danger-bg, #d84d42);
-  background: transparent;
-  color: var(--danger-bg, #d84d42);
-  font-size: 12px;
-}
-
-.ai-compose .ai-stop-btn:hover {
-  background: var(--danger-bg, #d84d42);
-  color: #fff;
 }
 
 .ai-error {

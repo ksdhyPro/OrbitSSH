@@ -219,6 +219,7 @@ const {
   loadSftpHome,
   removeSftpTree,
   closeSftpSession,
+  markSftpDisconnected,
   refreshActiveDirectory: refreshSftpDirectory,
   closeSftpPathPrompt: closeSftpPathPromptFromStore,
   submitFilePathInput: submitFilePathInputFromStore,
@@ -311,6 +312,10 @@ const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
     return [];
   }
 
+  if (tree.disconnected) {
+    return [];
+  }
+
   const parentNode = createParentDirectoryNode(tree.root.path);
   const currentLevelNodes = (tree.root.children ?? []).map(node => ({
     ...node,
@@ -369,6 +374,10 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
 function getFilePanelHint(): string {
   if (!activeTab.value) {
     return "打开 SSH 会话后显示远程目录";
+  }
+
+  if (activeTab.value.status === "disconnected" || activeTab.value.status === "error") {
+    return "SFTP 已断开";
   }
 
   const tree = activeSftpTree.value;
@@ -878,6 +887,24 @@ watch(
 watch(sidebarWidth, () => {
   scheduleTerminalFit();
 });
+
+watch(
+  tabs,
+  currentTabs => {
+    currentTabs.forEach(tab => {
+      if (tab.status === "disconnected" || tab.status === "error") {
+        markSftpDisconnected(tab.id);
+        return;
+      }
+
+      // 终端重连成功后恢复主 SFTP 会话，避免左侧停留在断开空态。
+      if (tab.status === "connected" && sftpTrees.value[tab.id]?.disconnected) {
+        void loadSftpHome(tab);
+      }
+    });
+  },
+  { deep: true },
+);
 
 onMounted(() => {
   writeRendererLog("Renderer mounted", {

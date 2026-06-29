@@ -8,6 +8,8 @@ export interface VisibleRemoteFileNode extends RemoteFileNode {
 export interface SftpTreeState {
   homePath: string;
   root: RemoteFileNode;
+  /** SFTP 会话是否已断开，用于清空文件列表并提示用户当前状态。 */
+  disconnected: boolean;
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
   deletingPaths: Set<string>;

@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
@@ -156,7 +150,10 @@ watch(
           @keydown.enter.prevent="emit('activateTab', tab.id)"
           @keydown.space.prevent="emit('activateTab', tab.id)">
           <span>{{ tab.title }}</span>
-          <small :class="{ 'status-disconnected': tab.status === 'disconnected' }">{{ getStatusText(tab.status) }}</small>
+          <small
+            :class="{ 'status-disconnected': tab.status === 'disconnected' }"
+            >{{ getStatusText(tab.status) }}</small
+          >
           <button
             v-if="tab.status === 'disconnected' || tab.status === 'error'"
             type="button"
@@ -237,9 +234,7 @@ watch(
       <div v-if="tabs.length === 0" class="terminal-empty">
         <p class="eyebrow">READY</p>
         <h2>选择服务器开始 SSH 会话</h2>
-        <p>
-          点击左侧服务器会创建终端 Tab，并通过 Main Process 建立 SSH shell。
-        </p>
+        <p>点击左侧服务器建立 SSH shell。</p>
         <button type="button" @click="emit('openConnectionDialog')">
           新增连接
         </button>

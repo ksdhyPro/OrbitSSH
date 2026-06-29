@@ -648,12 +648,27 @@ export const useTerminalsStore = defineStore("terminals", () => {
     );
 
     try {
-      await core.orbitSSHApi?.terminals.reconnect(tabId);
+      const ok = await core.orbitSSHApi?.terminals.reconnect(tabId, tab.serverId);
+
+      if (!ok) {
+        // 主进程会同时回写错误状态；这里兜底避免 IPC 异常丢失时卡在连接中。
+        tabs.value = tabs.value.map(t =>
+          t.id === tabId
+            ? { ...t, status: "error" as const, message: "终端重连失败" }
+            : t,
+        );
+      }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       core.writeRendererLog(
         "终端重连失败",
-        { tabId, error: error instanceof Error ? error.message : String(error) },
+        { tabId, error: message },
         "error",
+      );
+      tabs.value = tabs.value.map(t =>
+        t.id === tabId
+          ? { ...t, status: "error" as const, message: `终端重连失败：${message}` }
+          : t,
       );
     }
   }

@@ -220,8 +220,12 @@ const orbitSSHApi = {
       ipcRenderer.invoke("terminal:resize", input) as Promise<boolean>,
     close: (tabId: string) =>
       ipcRenderer.invoke("terminal:close", tabId) as Promise<boolean>,
-    reconnect: (tabId: string) =>
-      ipcRenderer.invoke("terminal:reconnect", tabId) as Promise<boolean>,
+    reconnect: (tabId: string, serverId: string) =>
+      ipcRenderer.invoke(
+        "terminal:reconnect",
+        tabId,
+        serverId,
+      ) as Promise<boolean>,
     onData: (callback: (event: TerminalDataEvent) => void) => {
       const listener = (
         _event: Electron.IpcRendererEvent,

@@ -396,6 +396,25 @@ function touchTerminalSession(session: TerminalSession): void {
   session.lastActiveAt = Date.now();
 }
 
+// 判断回调所属会话是否仍是当前有效会话，避免旧连接事件影响新连接。
+function isCurrentTerminalSession(session: TerminalSession): boolean {
+  return terminalSessions.get(session.tabId) === session;
+}
+
+function sendTerminalStatusToWebContents(
+  webContents: WebContents,
+  tabId: string,
+  status: TerminalStatusEvent["status"],
+  message?: string,
+): void {
+  // 会话不存在时也要回写状态，避免 Renderer 停留在连接中。
+  webContents.send("terminal:status", {
+    tabId,
+    status,
+    message,
+  } satisfies TerminalStatusEvent);
+}
+
 function closeIdleTerminalSessions(): void {
   const idleDisconnectMs = getIdleDisconnectMs();
 
@@ -571,6 +590,10 @@ export function openTerminalSession(
           });
 
           stream.on("close", () => {
+            if (!isCurrentTerminalSession(session)) {
+              return;
+            }
+
             sendStatus(session, "disconnected");
             closeTerminalSession(tabId);
           });
@@ -590,9 +613,10 @@ export function openTerminalSession(
       closeTerminalSession(tabId);
     })
     .on("close", () => {
-      if (terminalSessions.has(tabId)) {
+      if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
         terminalSessions.delete(tabId);
+        remoteOSCache.delete(tabId);
       }
     });
 
@@ -670,28 +694,51 @@ export function closeTerminalSession(tabId: string): void {
   });
 }
 
-// 重新连接已存在的终端会话：复用原 tabId 和 serverId，
-// 清理旧连接后以相同凭证建立新 SSH 连接。
-export function reconnectTerminalSession(tabId: string): void {
+// 重新连接终端会话：优先复用现有会话信息；断线清理后用 Renderer 传回的 serverId 恢复连接。
+export function reconnectTerminalSession(
+  webContents: WebContents,
+  tabId: string,
+  fallbackServerId?: string,
+): boolean {
   const existing = terminalSessions.get(tabId);
 
-  if (!existing) {
+  const serverId = existing?.serverId ?? fallbackServerId;
+
+  if (!serverId) {
+    const message = "重连失败：终端会话不存在";
     writeAppLog({
       scope: "main.ssh",
       level: "warn",
-      message: "重连失败：终端会话不存在",
+      message,
       data: { tabId },
     });
-    return;
+    sendTerminalStatusToWebContents(webContents, tabId, "error", message);
+    return false;
   }
 
-  const { webContents, serverId } = existing;
-  const server = getServerAuthConfig(serverId);
-  const startedAt = Date.now();
+  let server: ReturnType<typeof getServerAuthConfig>;
 
-  // 清理旧连接资源
-  existing.shellStream?.end();
-  existing.sshClient.end();
+  try {
+    server = getServerAuthConfig(serverId);
+  } catch (error) {
+    const message = `重连失败：${createSafeErrorMessage(error)}`;
+    writeAppLog({
+      scope: "main.ssh",
+      level: "error",
+      message,
+      data: { tabId, serverId },
+    });
+    sendTerminalStatusToWebContents(webContents, tabId, "error", message);
+    return false;
+  }
+
+  const startedAt = Date.now();
+  const sessionWebContents = existing?.webContents ?? webContents;
+  const outputBuffer = existing?.outputBuffer ?? "";
+
+  // 清理旧连接资源；后续 close 回调通过会话身份判断，避免误删新连接。
+  existing?.shellStream?.end();
+  existing?.sshClient.end();
   remoteOSCache.delete(tabId);
 
   writeAppLog({
@@ -704,11 +751,11 @@ export function reconnectTerminalSession(tabId: string): void {
   const session: TerminalSession = {
     tabId,
     serverId,
-    webContents,
+    webContents: sessionWebContents,
     sshClient,
     status: "connecting",
     lastActiveAt: Date.now(),
-    outputBuffer: existing.outputBuffer,
+    outputBuffer,
   };
 
   terminalSessions.set(tabId, session);
@@ -742,13 +789,17 @@ export function reconnectTerminalSession(tabId: string): void {
           stream.on("data", (data: Buffer) => {
             touchTerminalSession(session);
             appendTerminalOutput(session, data.toString("utf8"));
-            webContents.send("terminal:data", {
+            sessionWebContents.send("terminal:data", {
               tabId,
               data: data.toString("utf8"),
             });
           });
 
           stream.on("close", () => {
+            if (!isCurrentTerminalSession(session)) {
+              return;
+            }
+
             sendStatus(session, "disconnected");
             closeTerminalSession(tabId);
           });
@@ -768,19 +819,27 @@ export function reconnectTerminalSession(tabId: string): void {
       closeTerminalSession(tabId);
     })
     .on("close", () => {
-      if (terminalSessions.has(tabId)) {
+      if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
         terminalSessions.delete(tabId);
+        remoteOSCache.delete(tabId);
       }
     });
 
   setImmediate(() => {
-    sshClient.connect({
-      ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs(),
-    });
+    try {
+      sshClient.connect({
+        ...createServerConnectOptions(server),
+        readyTimeout: 15000,
+        keepaliveInterval: getSshKeepaliveIntervalMs(),
+      });
+    } catch (error) {
+      sendStatus(session, "error", createSafeErrorMessage(error));
+      closeTerminalSession(tabId);
+    }
   });
+
+  return true;
 }
 
 export function closeAllTerminalSessions(): void {

@@ -116,6 +116,8 @@ export const useAiStore = defineStore("ai", () => {
 
     const userMessage = createMessage("user", content);
     const assistantPlaceholder = createMessage("assistant", "");
+    // 发送给主进程的历史只包含既有对话，避免把当前空占位回复传给模型。
+    const requestHistory = toPlainAiHistory(messages.value.slice(-8));
     messages.value = [...messages.value, userMessage, assistantPlaceholder];
 
     // 监听主进程推送的流式 chunk，实时更新占位消息
@@ -139,7 +141,7 @@ export const useAiStore = defineStore("ai", () => {
         mode: mode.value,
         message: content,
         context: plainContext,
-        history: toPlainAiHistory(messages.value.slice(-10)),
+        history: requestHistory,
       });
 
       // 用主进程返回的完整消息替换占位消息（保留流式累积的文本作为兜底）

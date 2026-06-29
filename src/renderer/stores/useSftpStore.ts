@@ -127,6 +127,7 @@ export const useSftpStore = defineStore("sftp", () => {
     setSftpTree(tab.id, {
       homePath: "加载中...",
       root: pendingRoot,
+      disconnected: false,
       expandedPaths: new Set<string>(),
       loadingPaths: new Set<string>([pendingRoot.path]),
       deletingPaths: new Set<string>(),
@@ -155,6 +156,7 @@ export const useSftpStore = defineStore("sftp", () => {
       setSftpTree(tab.id, {
         homePath: result.homePath,
         root,
+        disconnected: false,
         expandedPaths: new Set<string>([root.path]),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
@@ -174,6 +176,7 @@ export const useSftpStore = defineStore("sftp", () => {
       setSftpTree(tab.id, {
         homePath: "",
         root: pendingRoot,
+        disconnected: false,
         expandedPaths: new Set<string>(),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
@@ -360,6 +363,7 @@ export const useSftpStore = defineStore("sftp", () => {
       setSftpTree(tab.id, {
         homePath: targetPath,
         root,
+        disconnected: false,
         expandedPaths: new Set<string>([targetPath]),
         loadingPaths: new Set<string>(),
         deletingPaths: new Set<string>(),
@@ -398,6 +402,41 @@ export const useSftpStore = defineStore("sftp", () => {
     }
 
     await openSftpDirectoryPath(tab, filePathInput.value, "路径不存在或无法访问");
+  }
+
+  function markSftpDisconnected(tabId: string): void {
+    const tree = getSftpTree(tabId);
+
+    if (!tree || tree.disconnected) {
+      return;
+    }
+
+    const root: RemoteFileNode = {
+      ...tree.root,
+      loaded: true,
+      children: [],
+    };
+
+    // SSH 断开后主 SFTP 会话也不可继续使用，立即清空旧目录，避免用户误操作陈旧文件列表。
+    setSftpTree(tabId, {
+      ...tree,
+      root,
+      disconnected: true,
+      expandedPaths: new Set<string>(),
+      loadingPaths: new Set<string>(),
+      deletingPaths: new Set<string>(),
+      selectedPaths: new Set<string>(),
+      lastClickedIndex: -1,
+      error: "SFTP 已断开",
+    });
+
+    if (renaming.value?.tabId === tabId) {
+      renaming.value = null;
+    }
+
+    closeFileContextMenu();
+    closeBlankContextMenu();
+    clearRemoteNodeDrag();
   }
 
   async function copyActiveSftpPath(
@@ -1380,6 +1419,7 @@ export const useSftpStore = defineStore("sftp", () => {
     closeSftpPathPrompt,
     openSftpDirectoryPath,
     submitFilePathInput,
+    markSftpDisconnected,
     copyActiveSftpPath,
     syncFileTreeToTerminalPath,
     canDownloadRemoteFile,

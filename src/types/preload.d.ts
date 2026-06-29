@@ -144,7 +144,7 @@ declare global {
         write: (tabId: string, data: string) => Promise<boolean>;
         resize: (input: TerminalResizeInput) => Promise<boolean>;
         close: (tabId: string) => Promise<boolean>;
-        reconnect: (tabId: string) => Promise<boolean>;
+        reconnect: (tabId: string, serverId: string) => Promise<boolean>;
         onData: (callback: (event: TerminalDataEvent) => void) => () => void;
         onStatus: (
           callback: (event: TerminalStatusEvent) => void,

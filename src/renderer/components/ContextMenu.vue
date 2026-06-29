@@ -39,10 +39,13 @@ function selectMenuItem(item: ContextMenuItem): void {
       tabindex="-1"
       role="menuitem"
       :disabled="item.disabled"
-      :class="{ disabled: item.disabled, danger: item.danger }"
+      :class="{ disabled: item.disabled, danger: item.danger, 'has-desc': item.desc }"
       @click="selectMenuItem(item)">
       <img v-if="item.icon" :src="item.icon" alt="" />
-      <span>{{ item.label }}</span>
+      <span class="menu-item-text">
+        <span class="menu-item-label">{{ item.label }}</span>
+        <small v-if="item.desc">{{ item.desc }}</small>
+      </span>
     </button>
   </FloatingMenu>
 </template>

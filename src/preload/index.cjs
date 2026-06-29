@@ -83,7 +83,8 @@ const orbitSSHApi = {
     write: (tabId, data) => ipcRenderer.invoke("terminal:write", tabId, data),
     resize: input => ipcRenderer.invoke("terminal:resize", input),
     close: tabId => ipcRenderer.invoke("terminal:close", tabId),
-    reconnect: tabId => ipcRenderer.invoke("terminal:reconnect", tabId),
+    reconnect: (tabId, serverId) =>
+      ipcRenderer.invoke("terminal:reconnect", tabId, serverId),
     onData: callback => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("terminal:data", listener);
