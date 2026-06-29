@@ -22,13 +22,23 @@ export interface UpdateSettings {
   updateFeedUrl: string
 }
 
-export type AiProvider = 'deepseek'
+export type AiProvider = 'deepseek' | 'glm' | 'other'
+export type AiApiSpec = 'openai'
+
+export interface AiModelConfig {
+  id: string
+  name: string
+  spec: AiApiSpec
+  provider: AiProvider
+  baseUrl: string
+  apiKey: string
+  model: string
+}
 
 export interface AiSettings {
   enabled: boolean
-  provider: AiProvider
-  apiKey: string
-  model: string
+  activeConfigId: string
+  configs: AiModelConfig[]
   defaultMode: 'ask' | 'auto' | 'full'
   allowReadonlyAutoRun: boolean
 }
@@ -78,9 +88,8 @@ export const defaultAppSettings: AppSettings = {
   },
   ai: {
     enabled: false,
-    provider: 'deepseek',
-    apiKey: '',
-    model: 'deepseek-chat',
+    activeConfigId: '',
+    configs: [],
     defaultMode: 'auto',
     allowReadonlyAutoRun: true
   }

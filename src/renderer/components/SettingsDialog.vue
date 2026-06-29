@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import type {
+  AiModelConfig,
   AiSettings,
   AppSettings,
   AppThemeMode,
@@ -8,7 +9,6 @@ import type {
 import { getShortcutSections } from "../config/shortcuts";
 import AppDialog from "./AppDialog.vue";
 import NumberStepper from "./NumberStepper.vue";
-import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -30,6 +30,7 @@ const emit = defineEmits<{
   updateKeepaliveIntervalSeconds: [value: number];
   updateIdleDisconnectMinutes: [value: number];
   updateAiSetting: [key: keyof AiSettings, value: AiSettings[keyof AiSettings]];
+  updateAiSettings: [value: AiSettings];
   updateThemeMode: [mode: AppThemeMode];
   selectSelectionBackground: [color: string];
 }>();
@@ -48,9 +49,216 @@ const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
   full: "完全访问",
 };
 
-const aiProviderOptions: AppSelectOption[] = [
-  { value: "deepseek", label: "DeepSeek" },
-];
+const aiConfigDraft = ref<AiModelConfig[]>([]);
+const isAiConfigDialogOpen = ref(false);
+const editingAiConfigId = ref<string | null>(null);
+const aiConfigMessage = ref("");
+const aiConfigForm = ref({
+  model: "",
+  baseUrl: "",
+  apiKey: "",
+});
+
+const activeAiConfig = computed(() =>
+  props.appSettings.ai.configs.find(
+    config => config.id === props.appSettings.ai.activeConfigId,
+  ),
+);
+
+const aiConfigSummary = computed(() => {
+  const count = props.appSettings.ai.configs.length;
+  if (count === 0) {
+    return "未配置模型";
+  }
+
+  return activeAiConfig.value
+    ? `${activeAiConfig.value.model}（共 ${count} 个）`
+    : `共 ${count} 个，未选择当前模型`;
+});
+
+const isEditingAiConfig = computed(() => Boolean(editingAiConfigId.value));
+
+const aiConfigFormError = computed(() =>
+  validateAiConfigForm(
+    aiConfigForm.value.model,
+    aiConfigForm.value.baseUrl,
+    aiConfigForm.value.apiKey,
+  ),
+);
+
+const canSaveAiConfigForm = computed(() => !aiConfigFormError.value);
+
+watch(
+  () => props.open,
+  open => {
+    if (open) {
+      resetAiConfigDraft();
+    }
+  },
+  { immediate: true },
+);
+
+// 复制配置草稿，避免用户输入未完成时直接写入全局设置。
+function cloneAiConfigs(configs: AiModelConfig[]): AiModelConfig[] {
+  return configs.map(config => ({ ...config }));
+}
+
+// 打开设置页时从当前设置同步一份可编辑草稿。
+function resetAiConfigDraft(): void {
+  aiConfigDraft.value = cloneAiConfigs(props.appSettings.ai.configs);
+  resetAiConfigForm();
+  aiConfigMessage.value = "";
+}
+
+// 去掉尾部斜杠，避免拼接 /chat/completions 时生成重复路径分隔符。
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, "");
+}
+
+// 校验 baseUrl 是否为可请求的 HTTP(S) 地址。
+function isValidBaseUrl(value: string): boolean {
+  if (!value || /\s/.test(value)) return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+// 校验新增/编辑表单，只有完整填写后才允许保存模型配置。
+function validateAiConfigForm(
+  model: string,
+  baseUrl: string,
+  apiKey: string,
+): string {
+  const normalizedModel = model.trim();
+  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const normalizedApiKey = apiKey.trim();
+
+  if (!normalizedModel || /\s/.test(normalizedModel) || normalizedModel.length > 120) {
+    return "模型名不能为空、不能包含空格，且不超过 120 个字符。";
+  }
+
+  if (!isValidBaseUrl(normalizedBaseUrl)) {
+    return "Base URL 必须是 http 或 https 地址，且不能包含空格。";
+  }
+
+  if (!normalizedApiKey || /\s/.test(normalizedApiKey) || normalizedApiKey.length < 8) {
+    return "API Key 至少 8 位，且不能包含空格。";
+  }
+
+  return "";
+}
+
+function resetAiConfigForm(): void {
+  editingAiConfigId.value = null;
+  aiConfigForm.value = {
+    model: "",
+    baseUrl: "",
+    apiKey: "",
+  };
+}
+
+function openAiConfigDialog(): void {
+  resetAiConfigDraft();
+  isAiConfigDialogOpen.value = true;
+}
+
+function closeAiConfigDialog(): void {
+  isAiConfigDialogOpen.value = false;
+  resetAiConfigForm();
+  aiConfigMessage.value = "";
+}
+
+function startAddAiConfig(): void {
+  editingAiConfigId.value = null;
+  aiConfigForm.value = {
+    model: "",
+    baseUrl: "",
+    apiKey: "",
+  };
+  aiConfigMessage.value = "";
+}
+
+function startEditAiConfig(config: AiModelConfig): void {
+  editingAiConfigId.value = config.id;
+  aiConfigForm.value = {
+    model: config.model,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+  };
+  aiConfigMessage.value = "";
+}
+
+function maskApiKey(apiKey: string): string {
+  const value = apiKey.trim();
+  if (!value) return "-";
+  if (value.length <= 8) return "*".repeat(value.length);
+
+  return `${value.slice(0, 3)}${"*".repeat(Math.min(value.length - 6, 12))}${value.slice(-3)}`;
+}
+
+function persistAiConfigs(configs: AiModelConfig[], activeConfigId: string): void {
+  emit("updateAiSettings", {
+    ...props.appSettings.ai,
+    activeConfigId,
+    configs,
+  });
+  aiConfigDraft.value = cloneAiConfigs(configs);
+}
+
+function saveAiConfigForm(): void {
+  const error = validateAiConfigForm(
+    aiConfigForm.value.model,
+    aiConfigForm.value.baseUrl,
+    aiConfigForm.value.apiKey,
+  );
+  if (error) {
+    aiConfigMessage.value = error;
+    return;
+  }
+
+  const normalizedConfig: AiModelConfig = {
+    id: editingAiConfigId.value ?? `ai-${crypto.randomUUID()}`,
+    name: aiConfigForm.value.model.trim(),
+    spec: "openai",
+    provider: "other",
+    baseUrl: normalizeBaseUrl(aiConfigForm.value.baseUrl),
+    apiKey: aiConfigForm.value.apiKey.trim(),
+    model: aiConfigForm.value.model.trim(),
+  };
+  const nextConfigs = editingAiConfigId.value
+    ? aiConfigDraft.value.map(config =>
+        config.id === editingAiConfigId.value ? normalizedConfig : config,
+      )
+    : [...aiConfigDraft.value, normalizedConfig];
+  const nextActiveConfigId = props.appSettings.ai.activeConfigId || normalizedConfig.id;
+
+  persistAiConfigs(nextConfigs, nextActiveConfigId);
+  resetAiConfigForm();
+  aiConfigMessage.value = "模型配置已保存。";
+}
+
+function selectAiConfig(configId: string): void {
+  persistAiConfigs(aiConfigDraft.value, configId);
+  aiConfigMessage.value = "当前模型已更新。";
+}
+
+function removeAiConfig(configId: string): void {
+  const nextConfigs = aiConfigDraft.value.filter(config => config.id !== configId);
+  const nextActiveConfigId =
+    props.appSettings.ai.activeConfigId === configId
+      ? nextConfigs[0]?.id ?? ""
+      : props.appSettings.ai.activeConfigId;
+
+  persistAiConfigs(nextConfigs, nextActiveConfigId);
+  if (editingAiConfigId.value === configId) {
+    resetAiConfigForm();
+  }
+  aiConfigMessage.value = "模型配置已删除。";
+}
 </script>
 
 <template>
@@ -260,55 +468,15 @@ const aiProviderOptions: AppSelectOption[] = [
 
         <div class="settings-field">
           <div>
-            <h3>API 服务商</h3>
-            <p>当前内置支持 DeepSeek，后续可扩展更多服务商。</p>
+            <h3>模型配置</h3>
+            <p>{{ aiConfigSummary }}</p>
           </div>
-          <AppSelect
-            :model-value="appSettings.ai.provider"
-            :options="aiProviderOptions"
-            ariaLabel="API 服务商"
-            @update:model-value="
-              emit('updateAiSetting', 'provider', $event)
-            " />
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>API 密钥</h3>
-            <p>填写所选服务商的 API 密钥，仅保存在本地，不会写入日志。</p>
-          </div>
-          <input
-            class="settings-text-input"
-            type="password"
-            autocomplete="off"
-            :value="appSettings.ai.apiKey"
-            placeholder="sk-..."
-            @change="
-              emit(
-                'updateAiSetting',
-                'apiKey',
-                ($event.target as HTMLInputElement).value,
-              )
-            " />
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>模型</h3>
-            <p>DeepSeek 默认可使用 deepseek-chat。</p>
-          </div>
-          <input
-            class="settings-text-input"
-            type="text"
-            :value="appSettings.ai.model"
-            placeholder="deepseek-chat"
-            @change="
-              emit(
-                'updateAiSetting',
-                'model',
-                ($event.target as HTMLInputElement).value,
-              )
-            " />
+          <button
+            type="button"
+            class="settings-primary-button"
+            @click="openAiConfigDialog">
+            查看
+          </button>
         </div>
 
         <div class="settings-field">
@@ -335,7 +503,7 @@ const aiProviderOptions: AppSelectOption[] = [
 
       <section
         v-else-if="activeSettingsSection === 'shortcuts'"
-        class="settings-content shortcuts-settings-content">
+        class="settings-content">
         <div
           v-for="section in shortcutSections"
           :key="section.id"
@@ -364,6 +532,107 @@ const aiProviderOptions: AppSelectOption[] = [
           </div>
         </div>
       </section>
+    </div>
+  </AppDialog>
+
+  <AppDialog
+    v-if="isAiConfigDialogOpen"
+    title="模型配置"
+    description="管理 OpenAI 兼容模型配置。"
+    width="large"
+    @close="closeAiConfigDialog">
+    <div class="ai-config-dialog">
+      <div class="ai-config-toolbar">
+        <p>{{ aiConfigMessage || "API Key 仅本地保存，列表中以星号展示。" }}</p>
+        <button type="button" class="settings-primary-button" @click="startAddAiConfig">
+          新增
+        </button>
+      </div>
+
+      <div class="ai-config-table-wrap">
+        <table class="ai-config-table">
+          <thead>
+            <tr>
+              <th>模型名</th>
+              <th>Base URL</th>
+              <th>API Key</th>
+              <th>当前</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="aiConfigDraft.length === 0">
+              <td colspan="5" class="ai-config-empty">暂无模型配置</td>
+            </tr>
+            <tr v-for="config in aiConfigDraft" :key="config.id">
+              <td>{{ config.model }}</td>
+              <td>{{ config.baseUrl }}</td>
+              <td>{{ maskApiKey(config.apiKey) }}</td>
+              <td>
+                <span v-if="config.id === appSettings.ai.activeConfigId">是</span>
+                <button v-else type="button" @click="selectAiConfig(config.id)">
+                  使用
+                </button>
+              </td>
+              <td>
+                <div class="ai-config-actions">
+                  <button type="button" @click="startEditAiConfig(config)">
+                    编辑
+                  </button>
+                  <button type="button" @click="removeAiConfig(config.id)">
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <form class="ai-config-form" @submit.prevent="saveAiConfigForm">
+        <header>
+          <h3>{{ isEditingAiConfig ? "编辑模型" : "新增模型" }}</h3>
+          <p>{{ aiConfigFormError || "填写完整后保存。" }}</p>
+        </header>
+
+        <label>
+          <span>模型名</span>
+          <input
+            v-model="aiConfigForm.model"
+            class="settings-text-input"
+            type="text"
+            placeholder="deepseek-chat" />
+        </label>
+
+        <label>
+          <span>Base URL</span>
+          <input
+            v-model="aiConfigForm.baseUrl"
+            class="settings-text-input"
+            type="url"
+            placeholder="https://api.example.com" />
+        </label>
+
+        <label>
+          <span>API Key</span>
+          <input
+            v-model="aiConfigForm.apiKey"
+            class="settings-text-input"
+            type="password"
+            autocomplete="off"
+            placeholder="sk-..." />
+        </label>
+
+        <div class="ai-config-form-actions">
+          <button type="button" @click="resetAiConfigForm">取消</button>
+          <button
+            type="submit"
+            class="settings-primary-button"
+            :disabled="!canSaveAiConfigForm">
+            保存
+          </button>
+        </div>
+      </form>
     </div>
   </AppDialog>
 </template>

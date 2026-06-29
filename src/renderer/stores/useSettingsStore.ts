@@ -47,9 +47,8 @@ export const useSettingsStore = defineStore("settings", () => {
       },
       ai: {
         enabled: appSettings.ai.enabled,
-        provider: appSettings.ai.provider,
-        apiKey: appSettings.ai.apiKey,
-        model: appSettings.ai.model,
+        activeConfigId: appSettings.ai.activeConfigId,
+        configs: appSettings.ai.configs.map(config => ({ ...config })),
         defaultMode: appSettings.ai.defaultMode,
         allowReadonlyAutoRun: appSettings.ai.allowReadonlyAutoRun,
       },
@@ -113,6 +112,18 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveAppSettings();
   }
 
+  // 保存完整 AI 配置，供设置页在前端校验通过后一次性写入。
+  async function updateAiSettings(value: AiSettings): Promise<void> {
+    Object.assign(appSettings.ai, {
+      enabled: value.enabled,
+      activeConfigId: value.activeConfigId,
+      configs: value.configs.map(config => ({ ...config })),
+      defaultMode: value.defaultMode,
+      allowReadonlyAutoRun: value.allowReadonlyAutoRun,
+    });
+    await saveAppSettings();
+  }
+
   async function stepTerminalNumberSetting(
     key: "fontSize" | "lineHeight",
     delta: number,
@@ -159,11 +170,15 @@ export const useSettingsStore = defineStore("settings", () => {
         terminal: savedSettings.terminal,
         ai: {
           enabled: savedSettings.ai.enabled,
-          provider: savedSettings.ai.provider,
-          model: savedSettings.ai.model,
+          activeConfigId: savedSettings.ai.activeConfigId,
+          configCount: savedSettings.ai.configs.length,
           defaultMode: savedSettings.ai.defaultMode,
           allowReadonlyAutoRun: savedSettings.ai.allowReadonlyAutoRun,
-          hasApiKey: Boolean(savedSettings.ai.apiKey),
+          hasActiveApiKey: Boolean(
+            savedSettings.ai.configs.find(
+              config => config.id === savedSettings.ai.activeConfigId,
+            )?.apiKey,
+          ),
         },
       });
     } catch (error) {
@@ -187,6 +202,7 @@ export const useSettingsStore = defineStore("settings", () => {
     updateKeepaliveIntervalSeconds,
     updateIdleDisconnectMinutes,
     updateAiSetting,
+    updateAiSettings,
     updateThemeMode,
     stepTerminalNumberSetting,
     openSettingsDialog,

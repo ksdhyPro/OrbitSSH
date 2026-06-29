@@ -1565,7 +1565,7 @@ input[type="number"] {
   width: min(960px, 100%);
   height: min(720px, calc(100vh - 92px));
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .app-dialog-editor {
@@ -1631,7 +1631,8 @@ input[type="number"] {
 .settings-layout {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
-  min-height: 340px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .settings-nav {
@@ -1641,6 +1642,7 @@ input[type="number"] {
   padding: 14px;
   border-right: 1px solid var(--border-subtle);
   background: var(--bg-elevated-1);
+  overflow-y: auto;
 }
 
 .settings-nav-item {
@@ -1664,11 +1666,8 @@ input[type="number"] {
   align-content: start;
   gap: 12px;
   padding: 18px;
-}
-
-.shortcuts-settings-content {
-  max-height: min(62vh, 620px);
-  overflow: auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .settings-field {
@@ -1881,6 +1880,154 @@ input[type="number"] {
   height: 34px;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
+}
+
+.settings-primary-button {
+  height: 34px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-primary-button:hover:not(:disabled) {
+  border-color: var(--border-hover-strong);
+  background: var(--bg-hover-cool);
+}
+
+.settings-primary-button:disabled {
+  cursor: not-allowed;
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+
+.settings-primary-button {
+  justify-self: end;
+  min-width: 92px;
+  padding: 0 14px;
+  border-color: var(--accent);
+  background: var(--accent-fill);
+}
+
+.ai-config-save-field p {
+  overflow-wrap: anywhere;
+}
+
+.ai-config-dialog {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.ai-config-toolbar,
+.ai-config-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-config-toolbar p,
+.ai-config-form header h3,
+.ai-config-form header p {
+  margin: 0;
+}
+
+.ai-config-toolbar p,
+.ai-config-form header p {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ai-config-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-elevated-3);
+}
+
+.ai-config-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.ai-config-table th,
+.ai-config-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.ai-config-table th {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.ai-config-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.ai-config-table button,
+.ai-config-form-actions button {
+  height: 30px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-config-table button:hover,
+.ai-config-form-actions button:hover {
+  border-color: var(--border-hover-strong);
+  background: var(--bg-hover-cool);
+}
+
+.ai-config-empty {
+  height: 72px;
+  text-align: center;
+}
+
+.ai-config-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-config-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-elevated-3);
+}
+
+.ai-config-form header,
+.ai-config-form-actions {
+  grid-column: 1 / -1;
+}
+
+.ai-config-form header {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-config-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .settings-toggle {

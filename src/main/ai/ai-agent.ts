@@ -9,7 +9,7 @@ import type {
   AiRejectedCommandInput,
   AiStreamChunkEvent,
 } from "../../shared/ai.js";
-import type { AiProvider, AppSettings } from "../../shared/settings.js";
+import type { AiModelConfig, AiProvider, AppSettings } from "../../shared/settings.js";
 import type { WebContents } from "electron";
 import { writeAppLog } from "../logger.js";
 import { executeTerminalCommand } from "../ssh/session-manager.js";
@@ -19,12 +19,6 @@ import {
   isAutoAllowedQueryCommand,
   requiresMandatoryApproval,
 } from "./command-policy.js";
-
-interface AiProviderConfig {
-  name: string;
-  baseUrl: string;
-  chatCompletionsPath: string;
-}
 
 interface ParsedAssistantResponse {
   reply?: string;
@@ -59,12 +53,10 @@ interface PendingApprovalState {
   createdAt: number;
 }
 
-const aiProviderConfigs: Record<AiProvider, AiProviderConfig> = {
-  deepseek: {
-    name: "DeepSeek",
-    baseUrl: "https://api.deepseek.com",
-    chatCompletionsPath: "/chat/completions",
-  },
+const aiProviderLabels: Record<AiProvider, string> = {
+  deepseek: "DeepSeek",
+  glm: "GLM",
+  other: "其他",
 };
 
 interface StreamedToolCall {
@@ -363,6 +355,31 @@ function createAiRequestErrorResponse(error: unknown): ParsedAssistantResponse {
   return {
     reply: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。",
     commands: [],
+  };
+}
+
+// 获取当前启用的 AI 配置；配置不完整时回退本地建议，避免发起无效网络请求。
+function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
+  const activeConfig = settings.ai.configs.find(
+    config => config.id === settings.ai.activeConfigId,
+  ) ?? settings.ai.configs[0];
+
+  if (
+    !settings.ai.enabled ||
+    !activeConfig ||
+    activeConfig.spec !== "openai" ||
+    !activeConfig.baseUrl.trim() ||
+    !activeConfig.apiKey.trim() ||
+    !activeConfig.model.trim()
+  ) {
+    return null;
+  }
+
+  return {
+    ...activeConfig,
+    baseUrl: activeConfig.baseUrl.trim().replace(/\/+$/, ""),
+    apiKey: activeConfig.apiKey.trim(),
+    model: activeConfig.model.trim(),
   };
 }
 
@@ -764,20 +781,23 @@ async function requestAiTurn(
     executedCommands,
   );
 
-  if (!settings.ai.enabled || !settings.ai.apiKey.trim()) {
+  const activeConfig = getActiveAiConfig(settings);
+
+  if (!activeConfig) {
     return createLocalFallback(input, executedCommands);
   }
 
-  const providerConfig = aiProviderConfigs[settings.ai.provider];
-  const requestUrl = `${providerConfig.baseUrl}${providerConfig.chatCompletionsPath}`;
+  const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
+  const requestUrl = `${activeConfig.baseUrl}/chat/completions`;
 
   try {
     writeAppLog({
       scope: "main.ai",
       message: "AI 对话请求开始",
       data: {
-        provider: providerConfig.name,
-        model: settings.ai.model || "deepseek-chat",
+        provider: providerName,
+        configName: activeConfig.name,
+        model: activeConfig.model,
         tabId: input.tabId,
         mode: input.mode,
         executedCommandCount: executedCommands.length,
@@ -786,7 +806,7 @@ async function requestAiTurn(
     });
 
     const fetchBody: Record<string, unknown> = {
-      model: settings.ai.model || "deepseek-chat",
+      model: activeConfig.model,
       messages: buildAiMessages(input, systemPrompt),
       tools: aiTools,
     };
@@ -799,7 +819,7 @@ async function requestAiTurn(
     const response = await fetch(requestUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${settings.ai.apiKey.trim()}`,
+        Authorization: `Bearer ${activeConfig.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(fetchBody),
@@ -811,7 +831,7 @@ async function requestAiTurn(
         scope: "main.ai",
         message: "AI 对话请求返回异常状态",
         data: {
-          provider: providerConfig.name,
+          provider: providerName,
           status: response.status,
           tabId: input.tabId,
         },
@@ -847,7 +867,7 @@ async function requestAiTurn(
           level: "warn",
           message: "AI 工具调用参数未解析出命令",
           data: {
-            provider: providerConfig.name,
+            provider: providerName,
             tabId: input.tabId,
             toolCalls: summarizeToolCalls(normalizedToolCalls),
           },
@@ -858,7 +878,7 @@ async function requestAiTurn(
         scope: "main.ai",
         message: "AI 流式对话完成",
         data: {
-          provider: providerConfig.name,
+          provider: providerName,
           tabId: input.tabId,
           contentLength: contentText.length,
           toolCallCount: toolCalls.length,
@@ -910,7 +930,7 @@ async function requestAiTurn(
         level: "warn",
         message: "AI 工具调用参数未解析出命令",
         data: {
-          provider: providerConfig.name,
+          provider: providerName,
           tabId: input.tabId,
           toolCalls: summarizeToolCalls(
             normalizedToolCalls as Array<{
@@ -927,7 +947,7 @@ async function requestAiTurn(
       scope: "main.ai",
       message: "AI 对话请求完成",
       data: {
-        provider: providerConfig.name,
+        provider: providerName,
         tabId: input.tabId,
         contentLength: reply.length,
         toolCallCount: normalizedToolCalls.length,
@@ -951,7 +971,7 @@ async function requestAiTurn(
       scope: "main.ai",
       message: "AI 对话请求失败",
       data: {
-        provider: providerConfig.name,
+        provider: providerName,
         tabId: input.tabId,
         error: error instanceof Error ? error.message : String(error),
       },

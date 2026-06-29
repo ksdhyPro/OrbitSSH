@@ -90,6 +90,7 @@ const {
   updateKeepaliveIntervalSeconds,
   updateIdleDisconnectMinutes,
   updateAiSetting,
+  updateAiSettings,
   updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
@@ -1179,6 +1180,7 @@ onUnmounted(() => {
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
       @update-ai-setting="updateAiSetting"
+      @update-ai-settings="updateAiSettings"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
 
