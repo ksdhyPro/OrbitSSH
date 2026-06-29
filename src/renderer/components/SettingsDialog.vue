@@ -50,7 +50,10 @@ const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
 };
 
 const aiConfigDraft = ref<AiModelConfig[]>([]);
+// 模型列表弹窗
 const isAiConfigDialogOpen = ref(false);
+// 新增/编辑表单子弹窗（与列表弹窗分离，避免常驻表单撑高弹窗）
+const isAiConfigFormDialogOpen = ref(false);
 const editingAiConfigId = ref<string | null>(null);
 const aiConfigMessage = ref("");
 const aiConfigForm = ref({
@@ -77,6 +80,10 @@ const aiConfigSummary = computed(() => {
 });
 
 const isEditingAiConfig = computed(() => Boolean(editingAiConfigId.value));
+
+const aiConfigFormDialogTitle = computed(() =>
+  isEditingAiConfig.value ? "编辑模型" : "新增模型",
+);
 
 const aiConfigFormError = computed(() =>
   validateAiConfigForm(
@@ -169,7 +176,14 @@ function openAiConfigDialog(): void {
 function closeAiConfigDialog(): void {
   isAiConfigDialogOpen.value = false;
   resetAiConfigForm();
+  isAiConfigFormDialogOpen.value = false;
   aiConfigMessage.value = "";
+}
+
+// 关闭新增/编辑子弹窗并清空表单。
+function closeAiConfigFormDialog(): void {
+  isAiConfigFormDialogOpen.value = false;
+  resetAiConfigForm();
 }
 
 function startAddAiConfig(): void {
@@ -180,6 +194,7 @@ function startAddAiConfig(): void {
     apiKey: "",
   };
   aiConfigMessage.value = "";
+  isAiConfigFormDialogOpen.value = true;
 }
 
 function startEditAiConfig(config: AiModelConfig): void {
@@ -190,6 +205,7 @@ function startEditAiConfig(config: AiModelConfig): void {
     apiKey: config.apiKey,
   };
   aiConfigMessage.value = "";
+  isAiConfigFormDialogOpen.value = true;
 }
 
 function maskApiKey(apiKey: string): string {
@@ -237,6 +253,7 @@ function saveAiConfigForm(): void {
   const nextActiveConfigId = props.appSettings.ai.activeConfigId || normalizedConfig.id;
 
   persistAiConfigs(nextConfigs, nextActiveConfigId);
+  isAiConfigFormDialogOpen.value = false;
   resetAiConfigForm();
   aiConfigMessage.value = "模型配置已保存。";
 }
@@ -562,24 +579,44 @@ function removeAiConfig(configId: string): void {
           </thead>
           <tbody>
             <tr v-if="aiConfigDraft.length === 0">
-              <td colspan="5" class="ai-config-empty">暂无模型配置</td>
+              <td colspan="5" class="ai-config-empty">暂无模型配置，点击「新增」开始配置</td>
             </tr>
-            <tr v-for="config in aiConfigDraft" :key="config.id">
+            <tr
+              v-for="config in aiConfigDraft"
+              :key="config.id"
+              :class="{
+                'ai-config-row-active':
+                  config.id === appSettings.ai.activeConfigId,
+              }">
               <td>{{ config.model }}</td>
               <td>{{ config.baseUrl }}</td>
               <td>{{ maskApiKey(config.apiKey) }}</td>
               <td>
-                <span v-if="config.id === appSettings.ai.activeConfigId">是</span>
-                <button v-else type="button" @click="selectAiConfig(config.id)">
+                <span
+                  v-if="config.id === appSettings.ai.activeConfigId"
+                  class="ai-config-current-badge">
+                  当前
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="ai-config-mini-button"
+                  @click="selectAiConfig(config.id)">
                   使用
                 </button>
               </td>
               <td>
                 <div class="ai-config-actions">
-                  <button type="button" @click="startEditAiConfig(config)">
+                  <button
+                    type="button"
+                    class="ai-config-mini-button"
+                    @click="startEditAiConfig(config)">
                     编辑
                   </button>
-                  <button type="button" @click="removeAiConfig(config.id)">
+                  <button
+                    type="button"
+                    class="ai-config-mini-button ai-config-danger-button"
+                    @click="removeAiConfig(config.id)">
                     删除
                   </button>
                 </div>
@@ -588,51 +625,63 @@ function removeAiConfig(configId: string): void {
           </tbody>
         </table>
       </div>
-
-      <form class="ai-config-form" @submit.prevent="saveAiConfigForm">
-        <header>
-          <h3>{{ isEditingAiConfig ? "编辑模型" : "新增模型" }}</h3>
-          <p>{{ aiConfigFormError || "填写完整后保存。" }}</p>
-        </header>
-
-        <label>
-          <span>模型名</span>
-          <input
-            v-model="aiConfigForm.model"
-            class="settings-text-input"
-            type="text"
-            placeholder="deepseek-chat" />
-        </label>
-
-        <label>
-          <span>Base URL</span>
-          <input
-            v-model="aiConfigForm.baseUrl"
-            class="settings-text-input"
-            type="url"
-            placeholder="https://api.example.com" />
-        </label>
-
-        <label>
-          <span>API Key</span>
-          <input
-            v-model="aiConfigForm.apiKey"
-            class="settings-text-input"
-            type="password"
-            autocomplete="off"
-            placeholder="sk-..." />
-        </label>
-
-        <div class="ai-config-form-actions">
-          <button type="button" @click="resetAiConfigForm">取消</button>
-          <button
-            type="submit"
-            class="settings-primary-button"
-            :disabled="!canSaveAiConfigForm">
-            保存
-          </button>
-        </div>
-      </form>
     </div>
+  </AppDialog>
+
+  <!-- 新增/编辑模型：独立子弹窗，避免常驻表单撑高列表弹窗 -->
+  <AppDialog
+    v-if="isAiConfigFormDialogOpen"
+    :title="aiConfigFormDialogTitle"
+    :description="isEditingAiConfig ? '修改当前模型配置。' : '添加一个 OpenAI 兼容模型。'"
+    width="medium"
+    @close="closeAiConfigFormDialog">
+    <form class="ai-config-form" @submit.prevent="saveAiConfigForm">
+      <p class="ai-config-form-tip" :class="{ 'is-error': aiConfigFormError }">
+        {{ aiConfigFormError || "填写完整后保存，API Key 仅本地保存。" }}
+      </p>
+
+      <label>
+        <span>模型名</span>
+        <input
+          v-model="aiConfigForm.model"
+          class="settings-text-input"
+          type="text"
+          placeholder="deepseek-chat" />
+      </label>
+
+      <label>
+        <span>Base URL</span>
+        <input
+          v-model="aiConfigForm.baseUrl"
+          class="settings-text-input"
+          type="url"
+          placeholder="https://api.example.com" />
+      </label>
+
+      <label>
+        <span>API Key</span>
+        <input
+          v-model="aiConfigForm.apiKey"
+          class="settings-text-input"
+          type="password"
+          autocomplete="off"
+          placeholder="sk-..." />
+      </label>
+
+      <div class="ai-config-form-actions">
+        <button
+          type="button"
+          class="ai-config-mini-button"
+          @click="closeAiConfigFormDialog">
+          取消
+        </button>
+        <button
+          type="submit"
+          class="settings-primary-button"
+          :disabled="!canSaveAiConfigForm">
+          保存
+        </button>
+      </div>
+    </form>
   </AppDialog>
 </template>

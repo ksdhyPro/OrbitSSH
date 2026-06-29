@@ -1917,26 +1917,23 @@ input[type="number"] {
 
 .ai-config-dialog {
   display: grid;
+  /* toolbar 紧凑、表格区吃掉剩余高度并内部滚动，避免工具栏被拉伸 */
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   padding: 18px;
+  min-height: 0;
+  height: 100%;
 }
 
-.ai-config-toolbar,
-.ai-config-form-actions {
+.ai-config-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
-.ai-config-toolbar p,
-.ai-config-form header h3,
-.ai-config-form header p {
+.ai-config-toolbar p {
   margin: 0;
-}
-
-.ai-config-toolbar p,
-.ai-config-form header p {
   color: var(--text-tertiary);
   font-size: 12px;
 }
@@ -1974,24 +1971,6 @@ input[type="number"] {
   border-bottom: 0;
 }
 
-.ai-config-table button,
-.ai-config-form-actions button {
-  height: 30px;
-  border: 1px solid var(--border-input);
-  border-radius: 7px;
-  padding: 0 10px;
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.ai-config-table button:hover,
-.ai-config-form-actions button:hover {
-  border-color: var(--border-hover-strong);
-  background: var(--bg-hover-cool);
-}
-
 .ai-config-empty {
   height: 72px;
   text-align: center;
@@ -2002,24 +1981,70 @@ input[type="number"] {
   gap: 8px;
 }
 
+/* 当前选中模型：整行高亮 */
+.ai-config-table tr.ai-config-row-active td {
+  background: var(--accent-fill);
+}
+
+.ai-config-current-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent-fill);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* 表格内的统一小按钮 */
+.ai-config-mini-button {
+  height: 28px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  padding: 0 12px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ai-config-mini-button:hover {
+  border-color: var(--border-hover-strong);
+  background: var(--bg-hover-cool);
+}
+
+.ai-config-mini-button.ai-config-danger-button:hover {
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--danger-overlay);
+}
+
 .ai-config-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--bg-elevated-3);
+  padding: 18px;
 }
 
-.ai-config-form header,
 .ai-config-form-actions {
-  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 2px;
 }
 
-.ai-config-form header {
-  display: grid;
-  gap: 4px;
+.ai-config-form-tip {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ai-config-form-tip.is-error {
+  color: var(--danger);
 }
 
 .ai-config-form label {
@@ -2462,6 +2487,18 @@ input[type="number"] {
 }
 
 .ai-mode-trigger span {
+  white-space: nowrap;
+}
+
+/* 模型切换触发器：紧邻发送按钮靠右，模型名过长时省略 */
+.ai-model-trigger {
+  margin-left: auto;
+  max-width: 160px;
+}
+
+.ai-model-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

@@ -6,6 +6,7 @@ import type {
   AiContextInput,
   AiMode,
 } from "../../shared/ai";
+import type { AiModelConfig } from "../../shared/settings";
 import type { ContextMenuItem } from "../types/context-menu";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import closeIcon from "../assets/icons/close.svg";
@@ -28,6 +29,8 @@ const props = defineProps<{
   messages: { id: string; role: string; content: string; createdAt: number }[];
   commandCards: AiCommandCard[];
   context: AiContextInput;
+  configs: AiModelConfig[];
+  activeConfigId: string;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +41,7 @@ const emit = defineEmits<{
   stop: [];
   runApproved: [card: AiCommandCard];
   rejectApproval: [card: AiCommandCard];
+  selectModel: [configId: string];
 }>();
 
 const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
@@ -98,6 +102,74 @@ function selectMode(item: ContextMenuItem): void {
   closeModeMenu();
   emit("setMode", item.key as AiMode);
 }
+
+// ----- 模型切换 -----
+const modelMenu = reactive({
+  open: false,
+  x: 0,
+  y: 0,
+});
+
+const modelMenuItems = computed<ContextMenuItem[]>(() =>
+  props.configs.map(config => ({
+    key: config.id,
+    label: config.model,
+    desc: config.baseUrl,
+  })),
+);
+
+const currentModelLabel = computed(() => {
+  const active = props.configs.find(
+    config => config.id === props.activeConfigId,
+  );
+  return active?.model ?? "选择模型";
+});
+
+function closeModelMenu(): void {
+  modelMenu.open = false;
+}
+
+function openModelMenu(event: MouseEvent): void {
+  event.stopPropagation();
+
+  if (modelMenu.open) {
+    closeModelMenu();
+    return;
+  }
+
+  // 没有可用模型时不展开，避免空菜单
+  if (props.configs.length === 0) {
+    return;
+  }
+
+  closeFloatingMenus();
+  const placement = resolveMenuPlacement(
+    { x: event.clientX, y: event.clientY },
+    modelMenuItems.value.length,
+  );
+  modelMenu.x = placement.x;
+  modelMenu.y = placement.y;
+  modelMenu.open = true;
+}
+
+function selectModel(item: ContextMenuItem): void {
+  closeModelMenu();
+  emit("selectModel", item.key);
+}
+
+// 面板展开时，若当前选中的模型已失效（被删除或从未设置），默认落到第一个配置。
+watch(
+  () => props.open,
+  isOpen => {
+    if (!isOpen) return;
+    const exists = props.configs.some(
+      config => config.id === props.activeConfigId,
+    );
+    if (!exists && props.configs.length > 0) {
+      emit("selectModel", props.configs[0].id);
+    }
+  },
+);
 
 const statusLabels: Record<AiCommandStatus, string> = {
   suggested: "建议命令",
@@ -448,6 +520,20 @@ function getCommandAuditText(card: AiCommandCard): string {
             :items="modeMenuItems"
             @select="selectMode"
             @close="closeModeMenu" />
+          <button
+            type="button"
+            class="ai-mode-trigger ai-model-trigger"
+            data-floating-menu-trigger
+            :title="currentModelLabel"
+            :disabled="isSending || configs.length === 0"
+            @click="openModelMenu">
+            <span class="ai-model-trigger-label">{{ currentModelLabel }}</span>
+          </button>
+          <ContextMenu
+            :menu="modelMenu"
+            :items="modelMenuItems"
+            @select="selectModel"
+            @close="closeModelMenu" />
           <button
             v-if="!isSending"
             type="button"

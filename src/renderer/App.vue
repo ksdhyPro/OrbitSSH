@@ -1087,13 +1087,16 @@ onUnmounted(() => {
         :messages="aiMessages"
         :command-cards="aiCommandCards"
         :context="aiContext"
+        :configs="appSettings.ai.configs"
+        :active-config-id="appSettings.ai.activeConfigId"
         @toggle="toggleAiPanel"
         @set-mode="setAiMode"
         @update-input-text="aiInputText = $event"
         @send="sendAiMessage(aiContext)"
         @stop="cancelAiMessage(aiContext)"
         @run-approved="runAiApprovedCommand"
-        @reject-approval="rejectAiApproval" />
+        @reject-approval="rejectAiApproval"
+        @select-model="updateAiSetting('activeConfigId', $event)" />
     </div>
 
     <ConnectionDialog
