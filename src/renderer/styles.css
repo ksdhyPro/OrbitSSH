@@ -1962,6 +1962,7 @@ input[type="number"] {
   padding: 12px;
   overflow-y: auto;
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
 .ai-empty {
@@ -2003,6 +2004,31 @@ input[type="number"] {
   font-size: 12px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+/* 流式回复：渐变光扫过文字，模拟字符逐个缓缓亮起 */
+.ai-message.assistant.streaming p {
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 0%,
+    var(--text-secondary) 40%,
+    var(--text-primary) 60%,
+    var(--text-secondary) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: ai-text-illuminate 13.6s ease-in-out infinite;
+}
+
+@keyframes ai-text-illuminate {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: 100% 0;
+  }
 }
 
 .ai-command-card .ai-command-hint {
@@ -2230,6 +2256,21 @@ input[type="number"] {
 .ai-compose .ai-send-btn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.ai-compose .ai-stop-btn {
+  height: 32px;
+  border-radius: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--danger-bg, #d84d42);
+  background: transparent;
+  color: var(--danger-bg, #d84d42);
+  font-size: 12px;
+}
+
+.ai-compose .ai-stop-btn:hover {
+  background: var(--danger-bg, #d84d42);
+  color: #fff;
 }
 
 .ai-error {

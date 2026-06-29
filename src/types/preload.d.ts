@@ -44,9 +44,11 @@ import type {
 } from "../shared/terminal";
 import type {
   AiApprovedCommandInput,
+  AiCancelInput,
   AiChatInput,
   AiChatResult,
   AiRejectedCommandInput,
+  AiStreamChunkEvent,
 } from "../shared/ai";
 
 declare global {
@@ -86,6 +88,10 @@ declare global {
         rejectCommandApproval: (
           input: AiRejectedCommandInput,
         ) => Promise<boolean>;
+        cancel: (input: AiCancelInput) => Promise<boolean>;
+        onStreamChunk: (
+          callback: (event: AiStreamChunkEvent) => void,
+        ) => () => void;
       };
       sftp: {
         open: (tabId: string, serverId: string) => Promise<SftpInitResult>;

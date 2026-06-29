@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import type {
   AiCommandCard,
   AiCommandStatus,
@@ -32,6 +32,7 @@ const emit = defineEmits<{
   setMode: [mode: AiMode];
   updateInputText: [value: string];
   send: [];
+  stop: [];
   runApproved: [card: AiCommandCard];
   rejectApproval: [card: AiCommandCard];
 }>();
@@ -94,6 +95,13 @@ const statusLabels: Record<AiCommandStatus, string> = {
 const sortedCommandCards = computed(() =>
   [...props.commandCards].sort((a, b) => a.createdAt - b.createdAt),
 );
+
+// 正在流式接收中的最后一条 assistant 消息 ID，用于添加打字光标
+const streamingMessageId = computed(() => {
+  if (!props.isSending) return null;
+  const assistantMessages = props.messages.filter(m => m.role === "assistant");
+  return assistantMessages.at(-1)?.id ?? null;
+});
 
 const hasProcess = computed(
   () => props.isSending || props.commandCards.length > 0,
@@ -168,6 +176,32 @@ const processStatusText = computed(() => {
   return "处理完成";
 });
 
+// ----- 自动滚动到最新消息 -----
+
+const messageListEl = ref<HTMLElement | null>(null);
+
+function scrollToBottom(): void {
+  const el = messageListEl.value;
+  if (!el) return;
+  el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+}
+
+// 消息或命令卡片有变化时在下一帧滚动到底部，避免生硬跳转。
+watch(
+  () => [props.messages.length, props.commandCards.length] as const,
+  () => { void nextTick(scrollToBottom); },
+);
+
+watch(
+  () => props.isSending,
+  sending => {
+    // 发送开始后稍作等待，确保 AI 回复区域的 DOM 已插入再滚动。
+    if (sending) {
+      setTimeout(scrollToBottom, 80);
+    }
+  },
+);
+
 watch(
   () => hasPendingApproval.value,
   hasPending => {
@@ -222,7 +256,7 @@ function getCommandAuditText(card: AiCommandCard): string {
         </button>
       </header>
 
-      <section class="ai-message-list" :aria-busy="isSending">
+      <section ref="messageListEl" class="ai-message-list" :aria-busy="isSending">
         <div v-if="!enabled" class="ai-empty">
           请先在设置中启用 AI 后再使用所选 AI 服务。常见诊断仍会提供本地建议。
         </div>
@@ -232,13 +266,13 @@ function getCommandAuditText(card: AiCommandCard): string {
 
         <template v-for="item in timelineItems" :key="item.id">
           <article
-            v-if="item.type === 'message'"
-            :class="['ai-message', item.message.role]">
+            v-if="item.type === 'message' && (item.message.role !== 'assistant' || item.message.content)"
+            :class="['ai-message', item.message.role, { streaming: item.message.id === streamingMessageId }]">
             <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
             <p>{{ item.message.content }}</p>
           </article>
 
-          <section v-else :class="['ai-process', { expanded: isProcessExpanded }]">
+          <section v-if="item.type === 'process'" :class="['ai-process', { expanded: isProcessExpanded }]">
             <button
               type="button"
               class="ai-process-toggle"
@@ -323,6 +357,14 @@ function getCommandAuditText(card: AiCommandCard): string {
             :disabled="isSending || !inputText.trim()"
             @click="emit('send')">
             {{ isSending ? "思考中..." : "发送" }}
+          </button>
+          <button
+            v-if="isSending"
+            type="button"
+            class="ai-stop-btn"
+            title="终止"
+            @click="emit('stop')">
+            终止
           </button>
         </div>
       </footer>

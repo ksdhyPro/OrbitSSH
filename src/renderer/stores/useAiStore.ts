@@ -115,7 +115,21 @@ export const useAiStore = defineStore("ai", () => {
     isSending.value = true;
 
     const userMessage = createMessage("user", content);
-    messages.value = [...messages.value, userMessage];
+    const assistantPlaceholder = createMessage("assistant", "");
+    messages.value = [...messages.value, userMessage, assistantPlaceholder];
+
+    // 监听主进程推送的流式 chunk，实时更新占位消息
+    let removeStreamListener = () => {};
+    if (core.orbitSSHApi?.ai?.onStreamChunk) {
+      removeStreamListener = core.orbitSSHApi.ai.onStreamChunk(event => {
+        if (event.tabId !== context.tabId) return;
+        const msgs = messages.value;
+        const last = msgs[msgs.length - 1];
+        if (last && last.id === assistantPlaceholder.id) {
+          last.content += event.chunk;
+        }
+      });
+    }
 
     try {
       const plainContext = toPlainAiContext(context);
@@ -128,11 +142,21 @@ export const useAiStore = defineStore("ai", () => {
         history: toPlainAiHistory(messages.value.slice(-10)),
       });
 
-      applyAiChatResult(result);
+      // 用主进程返回的完整消息替换占位消息（保留流式累积的文本作为兜底）
+      const finalContent = result.message.content || assistantPlaceholder.content;
+      messages.value = messages.value.map(m =>
+        m.id === assistantPlaceholder.id
+          ? { ...result.message, content: finalContent }
+          : m,
+      );
+      mergeCommandCards(result.commandCards);
     } catch (sendError) {
+      // 失败时移除占位消息
+      messages.value = messages.value.filter(m => m.id !== assistantPlaceholder.id);
       error.value =
         sendError instanceof Error ? sendError.message : String(sendError);
     } finally {
+      removeStreamListener();
       isSending.value = false;
     }
   }
@@ -147,20 +171,45 @@ export const useAiStore = defineStore("ai", () => {
     updateCommandCard({ ...card, status: "running", error: undefined });
     isSending.value = true;
 
+    // 批准后 AI 可能继续执行 agent loop，也会产生流式回复
+    const assistantPlaceholder = createMessage("assistant", "");
+    messages.value = [...messages.value, assistantPlaceholder];
+
+    let removeStreamListener = () => {};
+    if (core.orbitSSHApi?.ai?.onStreamChunk) {
+      removeStreamListener = core.orbitSSHApi.ai.onStreamChunk(event => {
+        if (event.tabId !== card.tabId) return;
+        const msgs = messages.value;
+        const last = msgs[msgs.length - 1];
+        if (last && last.id === assistantPlaceholder.id) {
+          last.content += event.chunk;
+        }
+      });
+    }
+
     try {
       const result = await core.orbitSSHApi.ai.runApprovedCommand({
         tabId: card.tabId,
         command: card.command,
         approvalId,
       });
-      applyAiChatResult(result);
+
+      const finalContent = result.message.content || assistantPlaceholder.content;
+      messages.value = messages.value.map(m =>
+        m.id === assistantPlaceholder.id
+          ? { ...result.message, content: finalContent }
+          : m,
+      );
+      mergeCommandCards(result.commandCards);
     } catch (runError) {
+      messages.value = messages.value.filter(m => m.id !== assistantPlaceholder.id);
       updateCommandCard({
         ...card,
         status: "failed",
         error: runError instanceof Error ? runError.message : String(runError),
       });
     } finally {
+      removeStreamListener();
       isSending.value = false;
     }
   }
@@ -180,6 +229,25 @@ export const useAiStore = defineStore("ai", () => {
     }
   }
 
+  async function cancelMessage(context: AiContextInput): Promise<void> {
+    if (!context.tabId || !isSending.value) return;
+
+    try {
+      await core.orbitSSHApi.ai.cancel({ tabId: context.tabId });
+    } catch (cancelError) {
+      core.writeRendererLog(
+        "终止 AI 请求失败",
+        {
+          tabId: context.tabId,
+          error: cancelError instanceof Error ? cancelError.message : String(cancelError),
+        },
+        "warn",
+      );
+    } finally {
+      isSending.value = false;
+    }
+  }
+
   return {
     isPanelOpen,
     mode,
@@ -194,5 +262,6 @@ export const useAiStore = defineStore("ai", () => {
     sendMessage,
     runApprovedCommand,
     rejectApproval,
+    cancelMessage,
   };
 });

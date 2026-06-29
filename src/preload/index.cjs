@@ -32,6 +32,12 @@ const orbitSSHApi = {
       ipcRenderer.invoke("ai:run-approved-command", input),
     rejectCommandApproval: input =>
       ipcRenderer.invoke("ai:reject-command-approval", input),
+    cancel: input => ipcRenderer.invoke("ai:cancel", input),
+    onStreamChunk: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("ai:stream-chunk", listener);
+      return () => ipcRenderer.removeListener("ai:stream-chunk", listener);
+    },
   },
   sftp: {
     open: (tabId, serverId) => ipcRenderer.invoke("sftp:open", tabId, serverId),

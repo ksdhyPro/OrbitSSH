@@ -44,11 +44,14 @@ import type {
 } from "../shared/terminal.js";
 import type {
   AiApprovedCommandInput,
+  AiCancelInput,
   AiChatInput,
   AiChatResult,
   AiCommandApprovalInput,
   AiCommandCard,
   AiCommandResult,
+  AiRejectedCommandInput,
+  AiStreamChunkEvent,
 } from "../shared/ai.js";
 
 const orbitSSHApi = {
@@ -96,7 +99,7 @@ const orbitSSHApi = {
         "ai:run-readonly-command",
         tabId,
         command,
-      ) as Promise<AiCommandResult>,
+      ) as Promise<AiChatResult>,
     requestCommandApproval: (input: AiCommandApprovalInput) =>
       ipcRenderer.invoke(
         "ai:request-command-approval",
@@ -106,7 +109,16 @@ const orbitSSHApi = {
       ipcRenderer.invoke(
         "ai:run-approved-command",
         input,
-      ) as Promise<AiCommandResult>,
+      ) as Promise<AiChatResult>,
+    rejectCommandApproval: (input: AiRejectedCommandInput) =>
+      ipcRenderer.invoke("ai:reject-command-approval", input) as Promise<boolean>,
+    cancel: (input: AiCancelInput) =>
+      ipcRenderer.invoke("ai:cancel", input) as Promise<boolean>,
+    onStreamChunk: (callback: (event: AiStreamChunkEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamChunkEvent) => callback(payload);
+      ipcRenderer.on("ai:stream-chunk", listener);
+      return () => ipcRenderer.removeListener("ai:stream-chunk", listener);
+    },
   },
   sftp: {
     open: (tabId: string, serverId: string) =>

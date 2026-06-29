@@ -1,13 +1,16 @@
 import type {
   AiApprovedCommandInput,
+  AiCancelInput,
   AiChatInput,
   AiChatResult,
   AiCommandCard,
   AiCommandResult,
   AiMessage,
   AiRejectedCommandInput,
+  AiStreamChunkEvent,
 } from "../../shared/ai.js";
 import type { AiProvider, AppSettings } from "../../shared/settings.js";
+import type { WebContents } from "electron";
 import { writeAppLog } from "../logger.js";
 import { executeTerminalCommand } from "../ssh/session-manager.js";
 import { getTerminalContextSnapshot } from "../ssh/session-manager.js";
@@ -61,6 +64,7 @@ const aiProviderConfigs: Record<AiProvider, AiProviderConfig> = {
 const maxAgentCommandCount = 6;
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new Map<string, PendingApprovalState>();
+const activeRequests = new Map<string, AbortController>();
 
 function createId(): string {
   return crypto.randomUUID();
@@ -422,10 +426,53 @@ function mergeCards(previousCards: AiCommandCard[], nextCard: AiCommandCard): Ai
   return previousCards.map(card => (card.id === nextCard.id ? nextCard : card));
 }
 
+// ----- SSE 流式解析 -----
+
+async function* parseSseStream(
+  body: ReadableStream<Uint8Array> | null,
+): AsyncGenerator<string> {
+  if (!body) return;
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+
+        const data = trimmed.slice(6).trim();
+        if (data === "[DONE]") return;
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed?.choices?.[0]?.delta?.content;
+          if (typeof content === "string" && content) yield content;
+        } catch {
+          // 跳过无法解析的行
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 async function requestAiTurn(
   input: AiChatInput,
   settings: AppSettings,
   executedCommands: ExecutedAiCommandContext[],
+  signal?: AbortSignal,
+  sendChunk?: (text: string) => void,
 ): Promise<ParsedAssistantResponse> {
   const snapshot = input.tabId
     ? getTerminalContextSnapshot(input.tabId)
@@ -453,8 +500,18 @@ async function requestAiTurn(
         tabId: input.tabId,
         mode: input.mode,
         executedCommandCount: executedCommands.length,
+        streaming: !!sendChunk,
       },
     });
+
+    const fetchBody: Record<string, unknown> = {
+      model: settings.ai.model || "deepseek-chat",
+      messages: buildAiMessages(input, systemPrompt),
+    };
+
+    if (sendChunk) {
+      fetchBody.stream = true;
+    }
 
     // 网络或代理异常不继续抛给 IPC，转成面板内可读提示。
     const response = await fetch(requestUrl, {
@@ -463,10 +520,8 @@ async function requestAiTurn(
         Authorization: `Bearer ${settings.ai.apiKey.trim()}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: settings.ai.model || "deepseek-chat",
-        messages: buildAiMessages(input, systemPrompt),
-      }),
+      body: JSON.stringify(fetchBody),
+      signal,
     });
 
     if (!response.ok) {
@@ -482,6 +537,29 @@ async function requestAiTurn(
       return createAiStatusErrorResponse(response);
     }
 
+    // 流式路径：逐 token 推送，同时累积完整文本用于最终解析
+    if (sendChunk && response.body) {
+      let fullText = "";
+
+      for await (const chunk of parseSseStream(response.body)) {
+        fullText += chunk;
+        sendChunk(chunk);
+      }
+
+      const parsed = parseAssistantResponse(fullText);
+      writeAppLog({
+        scope: "main.ai",
+        message: "AI 流式对话完成",
+        data: {
+          provider: providerConfig.name,
+          tabId: input.tabId,
+          hasCommands: Boolean(parsed.commands?.length),
+        },
+      });
+      return parsed;
+    }
+
+    // 非流式回退路径
     const payload = await response.json() as unknown;
     const parsed = parseAssistantResponse(
       extractChatCompletionText(payload) || extractOutputText(payload),
@@ -498,6 +576,10 @@ async function requestAiTurn(
 
     return parsed;
   } catch (error) {
+    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      return { reply: "[已终止]", commands: [] };
+    }
+
     writeAppLog({
       scope: "main.ai",
       message: "AI 对话请求失败",
@@ -514,6 +596,8 @@ async function requestAiTurn(
 async function runAgentLoop(
   input: AiChatInput,
   settings: AppSettings,
+  signal: AbortSignal,
+  sendChunk?: (text: string) => void,
   previousCards: AiCommandCard[] = [],
   executedCommands: ExecutedAiCommandContext[] = [],
 ): Promise<AiChatResult> {
@@ -521,7 +605,29 @@ async function runAgentLoop(
   let commandCards = [...previousCards];
 
   while (executedCommands.length < maxAgentCommandCount) {
-    const parsed = await requestAiTurn(input, settings, executedCommands);
+    if (signal.aborted) {
+      return {
+        message: createAssistantMessage(
+          `${replies.join("\n\n")}\n\n[已终止]`.trim(),
+        ),
+        commandCards,
+      };
+    }
+
+    // 多轮对话时，后续轮次的回复前插入分隔符
+    const isFirstTurn = replies.length === 0;
+    let turnFirstChunk = true;
+    const onChunk = sendChunk
+      ? (text: string) => {
+          if (!isFirstTurn && turnFirstChunk) {
+            sendChunk("\n\n");
+          }
+          turnFirstChunk = false;
+          sendChunk(text);
+        }
+      : undefined;
+
+    const parsed = await requestAiTurn(input, settings, executedCommands, signal, onChunk);
     const reply = parsed.reply?.trim();
 
     if (reply) {
@@ -639,13 +745,55 @@ async function runAgentLoop(
 export async function runAiChat(
   input: AiChatInput,
   settings: AppSettings,
+  webContents?: WebContents,
 ): Promise<AiChatResult> {
-  return runAgentLoop(input, settings);
+  // 取消同一 Tab 上正在进行的请求（如有）
+  const existing = activeRequests.get(input.tabId);
+  if (existing) {
+    existing.abort();
+  }
+
+  const controller = new AbortController();
+  activeRequests.set(input.tabId, controller);
+
+  const sendChunk = webContents
+    ? (text: string) => {
+        webContents.send("ai:stream-chunk", {
+          tabId: input.tabId,
+          chunk: text,
+        } satisfies AiStreamChunkEvent);
+      }
+    : undefined;
+
+  try {
+    return await runAgentLoop(input, settings, controller.signal, sendChunk);
+  } finally {
+    if (activeRequests.get(input.tabId) === controller) {
+      activeRequests.delete(input.tabId);
+    }
+  }
+}
+
+export function cancelAiRequest(input: AiCancelInput): boolean {
+  const controller = activeRequests.get(input.tabId);
+  if (!controller) return false;
+
+  controller.abort();
+  activeRequests.delete(input.tabId);
+
+  writeAppLog({
+    scope: "main.ai",
+    message: "AI 请求已被用户终止",
+    data: { tabId: input.tabId },
+  });
+
+  return true;
 }
 
 export async function runApprovedAiCommand(
   input: AiApprovedCommandInput,
   settings: AppSettings,
+  webContents?: WebContents,
 ): Promise<AiChatResult> {
   const approval = pendingApprovals.get(input.approvalId);
 
@@ -690,7 +838,17 @@ export async function runApprovedAiCommand(
       result,
     });
 
-    return runAgentLoop(approval.input, settings, commandCards, executedCommands);
+    // 复用当前 Tab 的 AbortSignal，允许用户在批准后仍可终止执行
+    const signal = activeRequests.get(input.tabId)?.signal ?? new AbortController().signal;
+    const sendChunk = webContents
+      ? (text: string) => {
+          webContents.send("ai:stream-chunk", {
+            tabId: input.tabId,
+            chunk: text,
+          } satisfies AiStreamChunkEvent);
+        }
+      : undefined;
+    return runAgentLoop(approval.input, settings, signal, sendChunk, commandCards, executedCommands);
   } catch (error) {
     const failedAt = Date.now();
     commandCards = mergeCards(

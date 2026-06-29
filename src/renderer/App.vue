@@ -180,6 +180,7 @@ const {
   sendMessage: sendAiMessage,
   runApprovedCommand: runAiApprovedCommand,
   rejectApproval: rejectAiApproval,
+  cancelMessage: cancelAiMessage,
 } = aiStore;
 
 const {
@@ -1062,6 +1063,7 @@ onUnmounted(() => {
         @set-mode="setAiMode"
         @update-input-text="aiInputText = $event"
         @send="sendAiMessage(aiContext)"
+        @stop="cancelAiMessage(aiContext)"
         @run-approved="runAiApprovedCommand"
         @reject-approval="rejectAiApproval" />
     </div>

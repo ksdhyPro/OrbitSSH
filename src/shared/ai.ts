@@ -81,3 +81,12 @@ export interface AiApprovedCommandInput {
 export interface AiRejectedCommandInput {
   approvalId: string;
 }
+
+export interface AiCancelInput {
+  tabId: string;
+}
+
+export interface AiStreamChunkEvent {
+  tabId: string;
+  chunk: string;
+}
