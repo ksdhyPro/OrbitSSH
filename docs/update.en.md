@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.3
+
+- Added an AI assistant panel with per-terminal-tab conversations, using the current server, terminal path, SFTP path, connection status, and recent terminal output as context.
+- Added the AI Agent diagnostic workflow with OpenAI-compatible streaming responses, real-time Markdown rendering, command process cards, and multi-turn follow-up based on command results.
+- Added AI permission modes: Ask Every Time, Auto Approval, and Full Access; includes a readonly command whitelist, mandatory approval for high-risk commands, and a 5-minute approval validity window.
+- Added an AI settings page for enabling AI, managing multiple model configurations, switching the active model, setting the default mode, and displaying API keys in masked form locally.
+- Improved AI failure and unconfigured states: when AI is disabled or model configuration is incomplete, OrbitSSH provides basic local suggestions; network and API errors now return clearer messages.
+- Improved terminal and SFTP disconnect/reconnect handling. When SSH disconnects, stale SFTP file lists are cleared and a disconnected state is shown; after terminal reconnect succeeds, the main SFTP session is restored automatically.
+- Added terminal reconnect support and fixed stale connection events affecting newly created sessions, reducing state confusion after reconnects.
+- Improved core file interactions by unifying selection, select-all, range selection, and marquee selection behavior between the main SFTP panel and file transfer dialog.
+- Strengthened parameter validation and session ownership checks for terminal, SFTP, and system status operations, reducing invalid input and cross-window call errors.
+- Improved log security by automatically redacting sensitive fields such as password, API Key, token, secret, and private key.
+- Added AI Agent execution documentation covering the conversation flow, command policy, approval process, and safety boundaries.
+
 ## v1.0.2
 
 - Improved file selection interactions in the SFTP panel and file transfer dialog with Windows-like marquee selection, click-blank-area deselection, and drag-to-`..` moves into the parent directory.
