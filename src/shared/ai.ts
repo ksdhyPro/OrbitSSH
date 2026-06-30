@@ -65,13 +65,6 @@ export interface AiChatResult {
   commandCards: AiCommandCard[];
 }
 
-export interface AiCommandApprovalInput {
-  tabId: string;
-  command: string;
-  reason: string;
-  risk: AiCommandCard["risk"];
-}
-
 export interface AiApprovedCommandInput {
   tabId: string;
   command: string;

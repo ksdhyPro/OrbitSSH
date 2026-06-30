@@ -1,3 +1,4 @@
+import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
 
@@ -11,10 +12,16 @@ import {
   type AppThemeMode
 } from '../../shared/settings.js'
 
-const store = new Store<{ settings: AppSettings }>({
+interface SettingsStoreSchema {
+  settings: AppSettings
+  aiApiKeys: Record<string, string>
+}
+
+const store = new Store<SettingsStoreSchema>({
   name: 'settings',
   defaults: {
-    settings: defaultAppSettings
+    settings: defaultAppSettings,
+    aiApiKeys: {}
   }
 })
 
@@ -68,6 +75,22 @@ function normalizeAiMode(value: unknown): AiSettings['defaultMode'] {
 
 function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function encryptSecret(value: string): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('当前系统暂不支持安全 AI Key 存储')
+  }
+
+  return safeStorage.encryptString(value).toString('base64')
+}
+
+function decryptSecret(value: string): string {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('当前系统暂不支持安全 AI Key 读取')
+  }
+
+  return safeStorage.decryptString(Buffer.from(value, 'base64'))
 }
 
 // 生成本地 AI 配置 ID，避免保存多个配置时出现空 ID 或重复 ID。
@@ -155,13 +178,84 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
   }
 }
 
+function getAiApiKeys(): Record<string, string> {
+  return store.get('aiApiKeys', {})
+}
+
+function cloneSettingsWithoutAiApiKeys(settings: AppSettings): AppSettings {
+  return {
+    ...settings,
+    ai: {
+      ...settings.ai,
+      configs: settings.ai.configs.map(config => ({
+        ...config,
+        apiKey: ''
+      }))
+    }
+  }
+}
+
+// AI Key 单独密文保存，settings 里只保留模型配置，避免明文落盘。
+function persistSettingsWithEncryptedAiKeys(settings: AppSettings): void {
+  const previousApiKeys = getAiApiKeys()
+  const nextApiKeys: Record<string, string> = {}
+
+  for (const config of settings.ai.configs) {
+    if (config.apiKey) {
+      nextApiKeys[config.id] = encryptSecret(config.apiKey)
+      continue
+    }
+
+    if (previousApiKeys[config.id]) {
+      nextApiKeys[config.id] = previousApiKeys[config.id]
+    }
+  }
+
+  store.set('aiApiKeys', nextApiKeys)
+  store.set('settings', cloneSettingsWithoutAiApiKeys(settings))
+}
+
+function hydrateAiApiKeys(settings: AppSettings): AppSettings {
+  const apiKeys = getAiApiKeys()
+
+  return {
+    ...settings,
+    ai: {
+      ...settings.ai,
+      configs: settings.ai.configs.map(config => {
+        const encryptedApiKey = apiKeys[config.id]
+
+        return {
+          ...config,
+          apiKey:
+            encryptedApiKey
+              ? decryptSecret(encryptedApiKey)
+              : config.apiKey
+        }
+      })
+    }
+  }
+}
+
+function hasPlainTextAiApiKey(settings: AppSettings): boolean {
+  return settings.ai.configs.some(config => Boolean(config.apiKey))
+}
+
 export function getSettings(): AppSettings {
-  return normalizeSettings(store.get('settings', defaultAppSettings))
+  const normalizedSettings = normalizeSettings(store.get('settings', defaultAppSettings))
+  const hydratedSettings = hydrateAiApiKeys(normalizedSettings)
+
+  // 兼容旧版本：如果 settings 里还有明文 apiKey，读取后立即迁移到密文存储。
+  if (hasPlainTextAiApiKey(normalizedSettings)) {
+    persistSettingsWithEncryptedAiKeys(hydratedSettings)
+  }
+
+  return hydratedSettings
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {
   const normalizedSettings = normalizeSettings(settings)
-  store.set('settings', normalizedSettings)
+  persistSettingsWithEncryptedAiKeys(normalizedSettings)
 
-  return normalizedSettings
+  return hydrateAiApiKeys(normalizedSettings)
 }

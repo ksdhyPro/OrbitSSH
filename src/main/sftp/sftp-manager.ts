@@ -1,5 +1,6 @@
 import SftpClient from 'ssh2-sftp-client'
 import { Client as SshClient } from 'ssh2'
+import type { WebContents } from 'electron'
 
 import { mkdir, mkdtemp, open as openLocalFile, readdir, rm, stat as statLocalFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -28,6 +29,7 @@ import type { ServerAuthConfig } from '../../shared/server.js'
 interface SftpSession {
   tabId: string
   serverId: string
+  webContents: WebContents
   client: SftpClient
   homePath: string
   lastActiveAt: number
@@ -71,6 +73,11 @@ interface UploadFileEntry {
   localPath: string
   remotePath: string
   size: number
+}
+
+interface UploadScanState {
+  entryCount: number
+  totalBytes: number
 }
 
 interface UploadRuntimeTask {
@@ -497,13 +504,29 @@ function execSshCommand(client: SshClient, command: string): Promise<{ stdout: s
 async function collectUploadFileEntries(
   localPath: string,
   remoteDirectoryPath: string,
-  rootLocalPath = localPath
+  rootLocalPath: string,
+  depth: number,
+  scanState: UploadScanState
 ): Promise<UploadFileEntry[]> {
+  if (depth > appConfig.sftp.upload.maxScanDepth) {
+    throw new Error(`上传目录层级超过 ${appConfig.sftp.upload.maxScanDepth} 层，请拆分后再上传`)
+  }
+
   const localStat = await statLocalFile(localPath)
   const rootName = basename(rootLocalPath)
 
   if (localStat.isFile()) {
     const relativePath = localPath === rootLocalPath ? basename(localPath) : relative(dirname(rootLocalPath), localPath)
+    scanState.entryCount += 1
+    scanState.totalBytes += localStat.size
+
+    if (scanState.entryCount > appConfig.sftp.upload.maxScanEntries) {
+      throw new Error(`上传文件数量超过 ${appConfig.sftp.upload.maxScanEntries} 个，请拆分后再上传`)
+    }
+
+    if (scanState.totalBytes > appConfig.sftp.upload.maxScanTotalBytes) {
+      throw new Error('上传总大小超过限制，请拆分后再上传')
+    }
 
     return [
       {
@@ -519,14 +542,15 @@ async function collectUploadFileEntries(
   }
 
   const entries = await readdir(localPath, { withFileTypes: true })
-  const files = await Promise.all(
-    entries.map((entry) =>
-      collectUploadFileEntries(joinLocalPath(localPath, entry.name), remoteDirectoryPath, rootLocalPath)
-    )
-  )
 
   // 空目录没有文件进度，但需要在远程侧保留目录本身。
   if (entries.length === 0) {
+    scanState.entryCount += 1
+
+    if (scanState.entryCount > appConfig.sftp.upload.maxScanEntries) {
+      throw new Error(`上传项目数量超过 ${appConfig.sftp.upload.maxScanEntries} 个，请拆分后再上传`)
+    }
+
     return [
       {
         localPath,
@@ -536,15 +560,41 @@ async function collectUploadFileEntries(
     ]
   }
 
-  return files.flat()
+  const files: UploadFileEntry[] = []
+
+  for (const entry of entries) {
+    const childEntries = await collectUploadFileEntries(
+      joinLocalPath(localPath, entry.name),
+      remoteDirectoryPath,
+      rootLocalPath,
+      depth + 1,
+      scanState
+    )
+    files.push(...childEntries)
+  }
+
+  return files
 }
 
 async function collectUploadEntries(localPaths: string[], remoteDirectoryPath: string): Promise<UploadFileEntry[]> {
-  const entries = await Promise.all(
-    localPaths.map((localPath) => collectUploadFileEntries(localPath, remoteDirectoryPath))
-  )
+  const scanState: UploadScanState = {
+    entryCount: 0,
+    totalBytes: 0
+  }
+  const entries: UploadFileEntry[] = []
 
-  return entries.flat()
+  for (const localPath of localPaths) {
+    const localEntries = await collectUploadFileEntries(
+      localPath,
+      remoteDirectoryPath,
+      localPath,
+      0,
+      scanState
+    )
+    entries.push(...localEntries)
+  }
+
+  return entries
 }
 
 function getCompletedUploadBytes(entries: UploadFileEntry[], completedRemotePaths: Set<string>): number {
@@ -778,7 +828,35 @@ function detectTextBuffer(buffer: Buffer): Pick<SftpProbeTextResult, 'isText' | 
   return { isText: true, reason: 'text' }
 }
 
-export async function openSftpSession(tabId: string, serverId: string): Promise<SftpInitResult> {
+export function assertSftpSessionAccess(
+  tabId: string,
+  webContents: WebContents,
+  options: { allowMissing?: boolean } = {}
+): void {
+  if (typeof tabId !== 'string' || !tabId.trim()) {
+    throw new Error('SFTP 会话 ID 无效')
+  }
+
+  const session = sftpSessions.get(tabId)
+
+  if (!session) {
+    if (options.allowMissing) {
+      return
+    }
+
+    throw new Error('SFTP 会话不存在')
+  }
+
+  if (session.webContents !== webContents) {
+    throw new Error('SFTP 会话不属于当前窗口')
+  }
+}
+
+export async function openSftpSession(
+  tabId: string,
+  serverId: string,
+  webContents: WebContents
+): Promise<SftpInitResult> {
   const startedAt = Date.now()
   writeAppLog({
     scope: 'main.sftp',
@@ -825,6 +903,7 @@ export async function openSftpSession(tabId: string, serverId: string): Promise<
   const session: SftpSession = {
     tabId,
     serverId,
+    webContents,
     client,
     homePath,
     lastActiveAt: Date.now()
@@ -954,6 +1033,13 @@ export async function probeRemoteTextFile(
 export async function readRemoteTextFile(tabId: string, path: string): Promise<SftpReadTextResult> {
   const session = getSftpSession(tabId)
   const normalizedPath = normalizeRemotePath(path)
+  const stat = await session.client.stat(normalizedPath)
+  const remoteSize = stat.size ?? 0
+
+  if (remoteSize > maxEditableFileSizeBytes) {
+    throw new Error('文件过大，暂不支持直接编辑')
+  }
+
   const data = await session.client.get(normalizedPath)
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data))
 
@@ -1007,6 +1093,15 @@ export async function previewRemoteImageFile(
     throw new Error('图片过大，暂不支持直接预览')
   }
 
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+  const stat = await session.client.stat(normalizedPath)
+  const remoteSize = stat.size ?? 0
+
+  if (remoteSize > appConfig.sftp.imagePreview.maxPreviewFileSizeBytes) {
+    throw new Error('图片过大，暂不支持直接预览')
+  }
+
   const result = await readRemoteFileBuffer(tabId, path)
 
   if (result.buffer.length > appConfig.sftp.imagePreview.maxPreviewFileSizeBytes) {
@@ -1032,6 +1127,10 @@ export async function writeRemoteTextFile(tabId: string, path: string, content: 
   const session = getSftpSession(tabId)
   const normalizedPath = normalizeRemotePath(path)
   const buffer = Buffer.from(content, 'utf8')
+
+  if (buffer.length > maxEditableFileSizeBytes) {
+    throw new Error('文件过大，暂不支持直接保存')
+  }
 
   await session.client.put(buffer, normalizedPath)
   writeAppLog({

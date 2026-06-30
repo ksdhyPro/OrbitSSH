@@ -29,6 +29,11 @@ import {
   refreshRemoteDirectory,
   renameRemoteNodeByName,
 } from "../utils/remote-node-actions";
+import {
+  selectAllRemoteFileNodes,
+  selectRemoteFileNode,
+  selectRemoteFileNodesByPaths,
+} from "../utils/remote-file-selection";
 import { useCoreStore } from "./useCoreStore";
 
 export interface DeleteRemoteNodeCallbacks {
@@ -751,77 +756,29 @@ export const useSftpStore = defineStore("sftp", () => {
     visibleNodes: (RemoteFileNode & { isVirtualParent?: boolean })[],
     event: MouseEvent,
   ): void {
-    if (node.isVirtualParent) {
-      return;
-    }
-
     const tree = getSftpTree(tabId);
 
     if (!tree) {
       return;
     }
 
-    const currentIndex = visibleNodes.findIndex(n => n.path === node.path);
-
-    if (currentIndex === -1) {
-      return;
-    }
-
-    const isCtrl = event.ctrlKey || event.metaKey;
-    const isShift = event.shiftKey;
-
-    // Shift 范围选择
-    if (isShift && tree.lastClickedIndex >= 0) {
-      event.preventDefault();
-      const basePaths = isCtrl
-        ? new Set(tree.selectedPaths)
-        : new Set<string>();
-      const start = Math.min(tree.lastClickedIndex, currentIndex);
-      const end = Math.max(tree.lastClickedIndex, currentIndex);
-
-      for (let i = start; i <= end; i++) {
-        const n = visibleNodes[i];
-        if (n && !n.isVirtualParent) {
-          basePaths.add(n.path);
-        }
-      }
-
-      setSftpTree(tabId, {
-        ...tree,
-        selectedPaths: basePaths,
-      });
-      return;
-    }
-
-    // 更新锚点
-    setSftpTree(tabId, {
-      ...tree,
-      lastClickedIndex: currentIndex,
+    const nextSelection = selectRemoteFileNode({
+      current: tree,
+      node,
+      visibleNodes,
+      event,
+      isSelectable: item =>
+        !item.isVirtualParent && !tree.deletingPaths.has(item.path),
     });
 
-    // Ctrl 切换选择
-    if (isCtrl) {
-      const nextPaths = new Set(tree.selectedPaths);
-
-      if (tree.selectedPaths.has(node.path)) {
-        nextPaths.delete(node.path);
-      } else {
-        nextPaths.add(node.path);
-      }
-
-      setSftpTree(tabId, {
-        ...tree,
-        lastClickedIndex: currentIndex,
-        selectedPaths: nextPaths,
-      });
+    if (!nextSelection) {
       return;
     }
 
-    // 普通点击：单选
     setSftpTree(tabId, {
       ...tree,
-      lastClickedIndex: currentIndex,
-      selectedPaths: new Set<string>([node.path]),
+      selectedPaths: nextSelection.selectedPaths,
+      lastClickedIndex: nextSelection.lastClickedIndex,
     });
   }
 
@@ -835,20 +792,15 @@ export const useSftpStore = defineStore("sftp", () => {
       return;
     }
 
-    const nextPaths = new Set<string>();
-
-    for (const node of visibleNodes) {
-      if (!node.isVirtualParent) {
-        nextPaths.add(node.path);
-      }
-    }
-
-    const lastIdx = visibleNodes.length - 1;
+    const nextSelection = selectAllRemoteFileNodes(
+      visibleNodes,
+      node => !node.isVirtualParent && !tree.deletingPaths.has(node.path),
+    );
 
     setSftpTree(tabId, {
       ...tree,
-      selectedPaths: nextPaths,
-      lastClickedIndex: lastIdx >= 0 ? lastIdx : -1,
+      selectedPaths: nextSelection.selectedPaths,
+      lastClickedIndex: nextSelection.lastClickedIndex,
     });
   }
 
@@ -863,22 +815,16 @@ export const useSftpStore = defineStore("sftp", () => {
       return;
     }
 
-    const selectedPaths = new Set(paths);
-    let lastClickedIndex = -1;
-
-    for (let index = visibleNodes.length - 1; index >= 0; index--) {
-      const node = visibleNodes[index];
-
-      if (node && selectedPaths.has(node.path)) {
-        lastClickedIndex = index;
-        break;
-      }
-    }
+    const nextSelection = selectRemoteFileNodesByPaths(
+      visibleNodes,
+      paths,
+      node => !node.isVirtualParent && !tree.deletingPaths.has(node.path),
+    );
 
     setSftpTree(tabId, {
       ...tree,
-      selectedPaths,
-      lastClickedIndex,
+      selectedPaths: nextSelection.selectedPaths,
+      lastClickedIndex: nextSelection.lastClickedIndex,
     });
   }
 

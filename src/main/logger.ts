@@ -15,6 +15,9 @@ const MAX_LOG_FILES = 10;
 
 const LOG_FILE_NAME = "orbitssh.log";
 let consoleEncodingConfigured = false;
+const SENSITIVE_KEY_PATTERN =
+  /(password|passphrase|api[_-]?key|token|secret|authorization|private[_-]?key)/i;
+const MAX_LOG_REDACT_DEPTH = 6;
 
 // ---------- 日志目录计算 ----------
 
@@ -130,13 +133,40 @@ function configureConsoleEncoding(): void {
 
 // ---------- 日志写入 ----------
 
+function redactLogValue(value: unknown, depth = 0): unknown {
+  if (depth > MAX_LOG_REDACT_DEPTH) {
+    return "[MaxDepth]";
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(item => redactLogValue(item, depth + 1));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_KEY_PATTERN.test(key)) {
+      result[key] = "[REDACTED]";
+      continue;
+    }
+
+    result[key] = redactLogValue(item, depth + 1);
+  }
+
+  return result;
+}
+
 function serializeData(data?: Record<string, unknown>): string {
   if (!data) {
     return "";
   }
 
   try {
-    return ` ${JSON.stringify(data)}`;
+    return ` ${JSON.stringify(redactLogValue(data))}`;
   } catch {
     return ' {"serializeError":"日志数据序列化失败"}';
   }

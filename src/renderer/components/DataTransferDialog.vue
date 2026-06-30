@@ -7,8 +7,11 @@ import {
   ref,
   watch,
 } from "vue";
+import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import editIcon from "../assets/icons/edit.svg";
+import fileIcon from "../assets/icons/file.svg";
+import folderIcon from "../assets/icons/folder.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { ServerConfig } from "../../shared/server";
 import type {
@@ -19,7 +22,9 @@ import type {
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import { resolveLocalMenuPlacement } from "../utils/menu-position";
 import { getRemoteParentPath } from "../utils/path";
+import { isPreviewImageFile } from "../utils/file-kind";
 import {
+  buildRemoteChildPath,
   canMoveRemoteNodesToDirectory,
   deleteRemoteNodes,
   getRemoteDeleteConfirmMessage,
@@ -28,6 +33,11 @@ import {
   refreshRemoteDirectory,
   renameRemoteNodeByName,
 } from "../utils/remote-node-actions";
+import {
+  selectAllRemoteFileNodes,
+  selectRemoteFileNode,
+  selectRemoteFileNodesByPaths,
+} from "../utils/remote-file-selection";
 import { useFileEditorStore } from "../stores/useFileEditorStore";
 import { useSftpStore } from "../stores/useSftpStore";
 import AppDialog from "./AppDialog.vue";
@@ -147,7 +157,9 @@ const rightServerOptions = computed<AppSelectOption[]>(() =>
 const transferMenuItems = computed<ContextMenuItem[]>(() => {
   const paneKey = transferContextMenu.paneKey ?? focusedPane.value;
   const targetKey = getOppositePaneKey(paneKey);
+  const pane = getPaneByKey(paneKey);
   const node = transferContextMenu.node;
+  const count = transferContextMenu.selectedCount;
   const multiContext = isContextMultiSelection();
   const items: ContextMenuItem[] = [
     {
@@ -157,6 +169,7 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: !canTransferFromPane(paneKey),
     },
   ];
+
   if (multiContext) {
     items.push({
       key: "delete",
@@ -167,12 +180,88 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
     });
     return items;
   }
-  items.push(
+
+  const createItems: ContextMenuItem[] =
+    !node || count === 0
+      ? [
+          {
+            key: "new-file",
+            label: "新建文件",
+            icon: fileIcon,
+          },
+          {
+            key: "new-directory",
+            label: "新建文件夹",
+            icon: folderIcon,
+          },
+        ]
+      : [];
+  const uploadItems: ContextMenuItem[] = [
     {
-      key: "edit",
-      label: sftpStore.getFileEditMenuLabel(node),
-      icon: editIcon,
-      disabled: !canEditContextNode(),
+      key: "upload-file",
+      label: "上传文件",
+      icon: arrowUpIcon,
+      disabled: node
+        ? !sftpStore.canUploadRemoteNode(node)
+        : !pane.currentPath || pane.loading,
+    },
+    {
+      key: "upload-directory",
+      label: "上传文件夹",
+      icon: arrowUpIcon,
+      disabled: node
+        ? !sftpStore.canUploadRemoteNode(node)
+        : !pane.currentPath || pane.loading,
+    },
+  ];
+
+  if (!node) {
+    items.push(...createItems, ...uploadItems);
+    return items;
+  }
+
+  if (node.type === "directory") {
+    items.push(
+      ...createItems,
+      ...uploadItems,
+      {
+        key: "rename",
+        label: "重命名",
+        icon: editIcon,
+        disabled: !canRenameContextNode(),
+      },
+      {
+        key: "delete",
+        label: "删除",
+        icon: trashIcon,
+        danger: true,
+        disabled: !canDeleteContextNodes(),
+      },
+    );
+    return items;
+  }
+
+  const primaryItem = isPreviewImageFile(node)
+    ? {
+        key: "preview",
+        label: "预览",
+        icon: fileIcon,
+      }
+    : {
+        key: "edit",
+        label: sftpStore.getFileEditMenuLabel(node),
+        icon: editIcon,
+        disabled: !canEditContextNode(),
+      };
+
+  items.push(
+    ...createItems,
+    primaryItem,
+    {
+      key: "download",
+      label: "下载",
+      icon: arrowDownIcon,
+      disabled: !sftpStore.canDownloadRemoteFile(pane.tabId, node),
     },
     {
       key: "rename",
@@ -224,24 +313,23 @@ function updatePaneRenameValue(paneKey: TransferPaneKey, value: string): void {
     renaming.value.value = value;
   }
 }
+
+function isPaneNodeSelectable(
+  pane: TransferPaneState,
+  node: RemoteFileListNode,
+): boolean {
+  return !node.isVirtualParent && !isRemoteNodeDeleting(pane, node);
+}
+
 function selectAllInPane(pane: TransferPaneState): void {
   const visibleNodes = getVisibleNodes(pane);
-  const nextSelected = new Set<string>();
+  const nextSelection = selectAllRemoteFileNodes(
+    visibleNodes,
+    node => isPaneNodeSelectable(pane, node),
+  );
 
-  for (const node of visibleNodes) {
-    if (node.isVirtualParent || isRemoteNodeDeleting(pane, node)) {
-      continue;
-    }
-    nextSelected.add(node.path);
-  }
-  pane.selectedPaths = nextSelected;
-  // 全选后把锚点放到最后一个可选项目，保证后续 Shift 范围选择可连续操作。
-  const lastSelectable = [...visibleNodes]
-    .reverse()
-    .find((node) => !node.isVirtualParent && !isRemoteNodeDeleting(pane, node));
-  if (lastSelectable) {
-    updateClickAnchor(pane, lastSelectable);
-  }
+  pane.selectedPaths = nextSelection.selectedPaths;
+  pane.lastClickedIndex = nextSelection.lastClickedIndex;
 }
 
 function clearPaneSelection(paneKey: TransferPaneKey): void {
@@ -258,33 +346,15 @@ function selectPaneNodesByPaths(
 ): void {
   const pane = getPaneByKey(paneKey);
   const visibleNodes = getVisibleNodes(pane);
-  const selectedPaths = new Set(paths);
-  let lastClickedIndex = -1;
+  const nextSelection = selectRemoteFileNodesByPaths(
+    visibleNodes,
+    paths,
+    node => isPaneNodeSelectable(pane, node),
+  );
 
   focusedPane.value = paneKey;
-
-  for (let index = visibleNodes.length - 1; index >= 0; index--) {
-    const node = visibleNodes[index];
-
-    if (node && selectedPaths.has(node.path)) {
-      lastClickedIndex = index;
-      break;
-    }
-  }
-
-  pane.selectedPaths = selectedPaths;
-  pane.lastClickedIndex = lastClickedIndex;
-}
-
-function onTransferKeydown(event: KeyboardEvent): void {
-  const isSelectAll = props.isMac
-    ? event.metaKey && event.key === "a"
-    : event.ctrlKey && event.key === "a";
-  if (!isSelectAll) {
-    return;
-  }
-  event.preventDefault();
-  selectAllInPane(getPaneByKey(focusedPane.value));
+  pane.selectedPaths = nextSelection.selectedPaths;
+  pane.lastClickedIndex = nextSelection.lastClickedIndex;
 }
 function canTransferFromPane(paneKey: TransferPaneKey): boolean {
   const sourcePane = getPaneByKey(paneKey);
@@ -471,46 +541,6 @@ async function submitPanePathInput(pane: TransferPaneState): Promise<void> {
   await openPaneDirectory(pane, pane.pathInput);
 }
 
-function isMultiSelect(event: MouseEvent): boolean {
-  return props.isMac ? event.metaKey : event.ctrlKey;
-}
-function isRangeSelect(event: MouseEvent): boolean {
-  return event.shiftKey;
-}
-
-function selectRange(
-  pane: TransferPaneState,
-  anchorIndex: number,
-  currentIndex: number,
-  baseSelectedPaths: Set<string>,
-): Set<string> {
-  const visibleNodes = getVisibleNodes(pane);
-  const start = Math.min(anchorIndex, currentIndex);
-  const end = Math.max(anchorIndex, currentIndex);
-  const nextSelectedPaths = new Set(baseSelectedPaths);
-
-  for (let i = start; i <= end; i++) {
-    const n = visibleNodes[i];
-    if (n && !n.isVirtualParent && !isRemoteNodeDeleting(pane, n)) {
-      nextSelectedPaths.add(n.path);
-    }
-  }
-
-  return nextSelectedPaths;
-}
-
-function updateClickAnchor(
-  pane: TransferPaneState,
-  node: RemoteFileNode,
-): void {
-  const visibleNodes = getVisibleNodes(pane);
-  const clickedIndex = visibleNodes.findIndex((n) => n.path === node.path);
-
-  if (clickedIndex !== -1) {
-    pane.lastClickedIndex = clickedIndex;
-  }
-}
-
 function selectPaneNode(
   event: MouseEvent,
   paneKey: TransferPaneKey,
@@ -520,57 +550,45 @@ function selectPaneNode(
   focusedPane.value = paneKey;
   closeTransferContextMenu();
 
-  if (node.isVirtualParent || isRemoteNodeDeleting(pane, node)) {
-    return;
-  }
-
   const visibleNodes = getVisibleNodes(pane);
-  const currentIndex = visibleNodes.findIndex((n) => n.path === node.path);
+  const nextSelection = selectRemoteFileNode({
+    current: pane,
+    node,
+    visibleNodes,
+    event,
+    isSelectable: item => isPaneNodeSelectable(pane, item),
+  });
 
-  if (currentIndex === -1) {
+  if (!nextSelection) {
     return;
   }
 
-  // Shift + 点击：按当前面板的可见顺序批量选择，不再限制文件类型。
-  if (isRangeSelect(event) && pane.lastClickedIndex >= 0) {
-    event.preventDefault();
-    const baseSelectedPaths = isMultiSelect(event)
-      ? new Set(pane.selectedPaths)
-      : new Set<string>();
-
-    pane.selectedPaths = selectRange(
-      pane,
-      pane.lastClickedIndex,
-      currentIndex,
-      baseSelectedPaths,
-    );
-    return;
-  }
-
-  updateClickAnchor(pane, node);
-
-  const nextSelectedPaths = isMultiSelect(event)
-    ? new Set(pane.selectedPaths)
-    : new Set<string>();
-
-  if (pane.selectedPaths.has(node.path)) {
-    nextSelectedPaths.delete(node.path);
-  } else {
-    nextSelectedPaths.add(node.path);
-  }
-
-  pane.selectedPaths = nextSelectedPaths;
+  pane.selectedPaths = nextSelection.selectedPaths;
+  pane.lastClickedIndex = nextSelection.lastClickedIndex;
 }
 
 async function openNodeByDoubleClick(
   pane: TransferPaneState,
-  node: RemoteFileNode,
+  node: RemoteFileListNode,
 ): Promise<void> {
-  if (node.type !== "directory" || isRemoteNodeDeleting(pane, node)) {
+  if (isRemoteNodeDeleting(pane, node)) {
     return;
   }
 
-  await openPaneDirectory(pane, node.path);
+  if (node.type === "directory") {
+    await openPaneDirectory(pane, node.path);
+    return;
+  }
+
+  if (isPreviewImageFile(node)) {
+    await sftpStore.openRemoteImagePreview(pane.tabId, node);
+    return;
+  }
+
+  const editable = await sftpStore.ensureEditableTextFile(pane.tabId, node);
+  if (editable) {
+    await fileEditorStore.openRemoteFileEditor(pane.tabId, node);
+  }
 }
 
 function getNodesByPaths(
@@ -842,8 +860,20 @@ async function selectTransferMenuItem(item: ContextMenuItem): Promise<void> {
   if (item.key === "transfer-to-other") {
     closeTransferContextMenu();
     await submitTransferFromPane(paneKey);
+  } else if (item.key === "preview") {
+    await previewContextNode(paneKey);
   } else if (item.key === "edit") {
     await editContextNode(paneKey);
+  } else if (item.key === "download") {
+    await downloadContextNode(paneKey);
+  } else if (item.key === "upload-file") {
+    await uploadToTransferContext(paneKey, "file");
+  } else if (item.key === "upload-directory") {
+    await uploadToTransferContext(paneKey, "directory");
+  } else if (item.key === "new-file") {
+    await createTransferNode(paneKey, "file");
+  } else if (item.key === "new-directory") {
+    await createTransferNode(paneKey, "directory");
   } else if (item.key === "rename") {
     startContextRename(paneKey);
   } else if (item.key === "delete") {
@@ -920,6 +950,18 @@ async function handleRemoteTransferProgress(
   await Promise.all(refreshes);
 }
 
+async function previewContextNode(paneKey: TransferPaneKey): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+  const node = transferContextMenu.node;
+
+  if (!node || !isPreviewImageFile(node) || isRemoteNodeDeleting(pane, node)) {
+    return;
+  }
+
+  closeTransferContextMenu();
+  await sftpStore.openRemoteImagePreview(pane.tabId, node);
+}
+
 async function editContextNode(paneKey: TransferPaneKey): Promise<void> {
   const pane = getPaneByKey(paneKey);
   const node = transferContextMenu.node;
@@ -932,6 +974,86 @@ async function editContextNode(paneKey: TransferPaneKey): Promise<void> {
   const editable = await sftpStore.ensureEditableTextFile(pane.tabId, node);
   if (editable) {
     await fileEditorStore.openRemoteFileEditor(pane.tabId, node);
+  }
+}
+
+async function downloadContextNode(paneKey: TransferPaneKey): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+  const node = transferContextMenu.node;
+
+  if (!node || !sftpStore.canDownloadRemoteFile(pane.tabId, node)) {
+    return;
+  }
+
+  closeTransferContextMenu();
+  await sftpStore.downloadRemoteFileNode(pane.tabId, node);
+}
+
+function getTransferUploadTargetPath(pane: TransferPaneState): string {
+  const node = transferContextMenu.node;
+
+  if (node?.type === "directory") {
+    return node.path;
+  }
+
+  return pane.currentPath;
+}
+
+async function uploadToTransferContext(
+  paneKey: TransferPaneKey,
+  sourceType: "file" | "directory",
+): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+  const targetPath = getTransferUploadTargetPath(pane);
+
+  if (!targetPath || pane.loading) {
+    return;
+  }
+
+  closeTransferContextMenu();
+
+  try {
+    const result = await window.orbitSSH.sftp.upload({
+      tabId: pane.tabId,
+      remoteDirectoryPath: targetPath,
+      sourceType,
+    });
+
+    if (result.uploaded) {
+      await refreshPaneDirectory(pane, pane.currentPath);
+    }
+  } catch (error) {
+    pane.error = error instanceof Error ? error.message : "上传失败";
+  }
+}
+
+async function createTransferNode(
+  paneKey: TransferPaneKey,
+  type: "file" | "directory",
+): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+
+  if (!pane.currentPath || pane.loading) {
+    return;
+  }
+
+  const placeholderName = type === "directory" ? "新建文件夹" : "新建文件.txt";
+  const newPath = buildRemoteChildPath(pane.currentPath, placeholderName);
+
+  closeTransferContextMenu();
+
+  try {
+    if (type === "directory") {
+      await window.orbitSSH.sftp.createDirectory({ tabId: pane.tabId, path: newPath });
+    } else {
+      await window.orbitSSH.sftp.createFile({ tabId: pane.tabId, path: newPath });
+    }
+
+    await refreshPaneDirectory(pane, pane.currentPath);
+    // 新建完成后复用主 SFTP 的交互：立即进入重命名态，名称默认全选。
+    renaming.value = { paneKey, path: newPath, value: placeholderName };
+  } catch (error) {
+    pane.error = error instanceof Error ? error.message : "新建失败";
   }
 }
 
@@ -1163,7 +1285,7 @@ onUnmounted(() => {
 
 <template>
   <AppDialog title="文件传输" width="large" @close="emit('close')">
-    <div class="data-transfer-dialog" @keydown="onTransferKeydown">
+    <div class="data-transfer-dialog">
       <section class="transfer-pane" @click="focusedPane = 'left'">
         <header class="transfer-pane-header">
           <strong>左侧</strong>
@@ -1207,6 +1329,7 @@ onUnmounted(() => {
             :renaming-value="getPaneRenamingValue('left')"
             empty-text="当前目录为空"
             @select-node="(event, node) => selectPaneNode(event, 'left', node)"
+            @select-all="selectAllInPane(leftPane)"
             @clear-selection="clearPaneSelection('left')"
             @marquee-select="selectPaneNodesByPaths('left', $event)"
             @open-context-menu="
@@ -1272,6 +1395,7 @@ onUnmounted(() => {
             :renaming-value="getPaneRenamingValue('right')"
             empty-text="当前目录为空"
             @select-node="(event, node) => selectPaneNode(event, 'right', node)"
+            @select-all="selectAllInPane(rightPane)"
             @clear-selection="clearPaneSelection('right')"
             @marquee-select="selectPaneNodesByPaths('right', $event)"
             @open-context-menu="

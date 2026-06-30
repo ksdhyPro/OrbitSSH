@@ -47,9 +47,6 @@ import type {
   AiCancelInput,
   AiChatInput,
   AiChatResult,
-  AiCommandApprovalInput,
-  AiCommandCard,
-  AiCommandResult,
   AiRejectedCommandInput,
   AiStreamChunkEvent,
 } from "../shared/ai.js";
@@ -94,17 +91,6 @@ const orbitSSHApi = {
   ai: {
     chat: (input: AiChatInput) =>
       ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
-    runReadonlyCommand: (tabId: string, command: string) =>
-      ipcRenderer.invoke(
-        "ai:run-readonly-command",
-        tabId,
-        command,
-      ) as Promise<AiChatResult>,
-    requestCommandApproval: (input: AiCommandApprovalInput) =>
-      ipcRenderer.invoke(
-        "ai:request-command-approval",
-        input,
-      ) as Promise<AiCommandCard>,
     runApprovedCommand: (input: AiApprovedCommandInput) =>
       ipcRenderer.invoke(
         "ai:run-approved-command",

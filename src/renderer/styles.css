@@ -2899,8 +2899,8 @@ input[type="number"] {
 }
 
 .transfer-file-list {
-  display: block;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: auto;
   padding: 6px;
@@ -2909,8 +2909,10 @@ input[type="number"] {
 
 .transfer-file-list-inner {
   display: grid;
+  flex: 1 1 auto;
   align-content: start;
   gap: 0;
+  min-height: 100%;
 }
 
 .transfer-state {

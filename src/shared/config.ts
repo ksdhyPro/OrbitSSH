@@ -114,6 +114,12 @@ export const appConfig = {
       // 预览会把图片转为 data URL，限制体积避免大图一次性占用过多内存。
       maxPreviewFileSizeBytes: 10 * 1024 * 1024,
     },
+    upload: {
+      // 上传目录前的本地扫描上限，避免误选超大目录导致主进程内存和文件句柄压力过高。
+      maxScanEntries: 20_000,
+      maxScanDepth: 32,
+      maxScanTotalBytes: 20 * 1024 * 1024 * 1024,
+    },
     download: {
       // fastGet 使用并发读取，吞吐通常明显高于普通 stream pipe。
       fastGetConcurrency: 32,

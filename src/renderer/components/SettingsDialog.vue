@@ -23,10 +23,7 @@ const emit = defineEmits<{
   close: [];
   updateActiveSection: [section: "general" | "ai" | "shortcuts"];
   updateSelectionDropdownOpen: [open: boolean];
-  stepTerminalNumberSetting: [
-    key: "fontSize" | "lineHeight",
-    delta: number,
-  ];
+  stepTerminalNumberSetting: [key: "fontSize" | "lineHeight", delta: number];
   updateKeepaliveIntervalSeconds: [value: number];
   updateIdleDisconnectMinutes: [value: number];
   updateAiSetting: [key: keyof AiSettings, value: AiSettings[keyof AiSettings]];
@@ -37,11 +34,7 @@ const emit = defineEmits<{
 
 const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
-const aiModeOptions: AiSettings["defaultMode"][] = [
-  "ask",
-  "auto",
-  "full",
-];
+const aiModeOptions: AiSettings["defaultMode"][] = ["ask", "auto", "full"];
 
 const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
   ask: "每次询问",
@@ -144,7 +137,11 @@ function validateAiConfigForm(
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedApiKey = apiKey.trim();
 
-  if (!normalizedModel || /\s/.test(normalizedModel) || normalizedModel.length > 120) {
+  if (
+    !normalizedModel ||
+    /\s/.test(normalizedModel) ||
+    normalizedModel.length > 120
+  ) {
     return "模型名不能为空、不能包含空格，且不超过 120 个字符。";
   }
 
@@ -152,7 +149,11 @@ function validateAiConfigForm(
     return "Base URL 必须是 http 或 https 地址，且不能包含空格。";
   }
 
-  if (!normalizedApiKey || /\s/.test(normalizedApiKey) || normalizedApiKey.length < 8) {
+  if (
+    !normalizedApiKey ||
+    /\s/.test(normalizedApiKey) ||
+    normalizedApiKey.length < 8
+  ) {
     return "API Key 至少 8 位，且不能包含空格。";
   }
 
@@ -216,7 +217,10 @@ function maskApiKey(apiKey: string): string {
   return `${value.slice(0, 3)}${"*".repeat(Math.min(value.length - 6, 12))}${value.slice(-3)}`;
 }
 
-function persistAiConfigs(configs: AiModelConfig[], activeConfigId: string): void {
+function persistAiConfigs(
+  configs: AiModelConfig[],
+  activeConfigId: string,
+): void {
   emit("updateAiSettings", {
     ...props.appSettings.ai,
     activeConfigId,
@@ -250,7 +254,8 @@ function saveAiConfigForm(): void {
         config.id === editingAiConfigId.value ? normalizedConfig : config,
       )
     : [...aiConfigDraft.value, normalizedConfig];
-  const nextActiveConfigId = props.appSettings.ai.activeConfigId || normalizedConfig.id;
+  const nextActiveConfigId =
+    props.appSettings.ai.activeConfigId || normalizedConfig.id;
 
   persistAiConfigs(nextConfigs, nextActiveConfigId);
   isAiConfigFormDialogOpen.value = false;
@@ -264,10 +269,12 @@ function selectAiConfig(configId: string): void {
 }
 
 function removeAiConfig(configId: string): void {
-  const nextConfigs = aiConfigDraft.value.filter(config => config.id !== configId);
+  const nextConfigs = aiConfigDraft.value.filter(
+    config => config.id !== configId,
+  );
   const nextActiveConfigId =
     props.appSettings.ai.activeConfigId === configId
-      ? nextConfigs[0]?.id ?? ""
+      ? (nextConfigs[0]?.id ?? "")
       : props.appSettings.ai.activeConfigId;
 
   persistAiConfigs(nextConfigs, nextActiveConfigId);
@@ -454,9 +461,7 @@ function removeAiConfig(configId: string): void {
             :max="1440"
             :step="5"
             placeholder="0"
-            @update:model-value="
-              emit('updateIdleDisconnectMinutes', $event)
-            " />
+            @update:model-value="emit('updateIdleDisconnectMinutes', $event)" />
         </div>
       </section>
 
@@ -515,7 +520,6 @@ function removeAiConfig(configId: string): void {
             </button>
           </div>
         </div>
-
       </section>
 
       <section
@@ -539,10 +543,7 @@ function removeAiConfig(configId: string): void {
               <p>{{ shortcut.description }}</p>
             </div>
             <div class="shortcut-key-group">
-              <kbd
-                v-for="key in shortcut.keys"
-                :key="key"
-                class="shortcut-key">
+              <kbd v-for="key in shortcut.keys" :key="key" class="shortcut-key">
                 {{ key }}
               </kbd>
             </div>
@@ -560,8 +561,11 @@ function removeAiConfig(configId: string): void {
     @close="closeAiConfigDialog">
     <div class="ai-config-dialog">
       <div class="ai-config-toolbar">
-        <p>{{ aiConfigMessage || "API Key 仅本地保存，列表中以星号展示。" }}</p>
-        <button type="button" class="settings-primary-button" @click="startAddAiConfig">
+        <p>API Key 仅本地保存，列表中以星号展示，现仅支持Open AI格式</p>
+        <button
+          type="button"
+          class="settings-primary-button"
+          @click="startAddAiConfig">
           新增
         </button>
       </div>
@@ -579,7 +583,9 @@ function removeAiConfig(configId: string): void {
           </thead>
           <tbody>
             <tr v-if="aiConfigDraft.length === 0">
-              <td colspan="5" class="ai-config-empty">暂无模型配置，点击「新增」开始配置</td>
+              <td colspan="5" class="ai-config-empty">
+                暂无模型配置，点击「新增」开始配置
+              </td>
             </tr>
             <tr
               v-for="config in aiConfigDraft"
@@ -632,7 +638,9 @@ function removeAiConfig(configId: string): void {
   <AppDialog
     v-if="isAiConfigFormDialogOpen"
     :title="aiConfigFormDialogTitle"
-    :description="isEditingAiConfig ? '修改当前模型配置。' : '添加一个 OpenAI 兼容模型。'"
+    :description="
+      isEditingAiConfig ? '修改当前模型配置。' : '添加一个 OpenAI 兼容模型。'
+    "
     width="medium"
     @close="closeAiConfigFormDialog">
     <form class="ai-config-form" @submit.prevent="saveAiConfigForm">

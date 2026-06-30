@@ -401,6 +401,30 @@ function isCurrentTerminalSession(session: TerminalSession): boolean {
   return terminalSessions.get(session.tabId) === session;
 }
 
+export function assertTerminalSessionAccess(
+  tabId: string,
+  webContents: WebContents,
+  options: { allowMissing?: boolean } = {},
+): void {
+  if (typeof tabId !== "string" || !tabId.trim()) {
+    throw new Error("终端标签页 ID 无效");
+  }
+
+  const session = terminalSessions.get(tabId);
+
+  if (!session) {
+    if (options.allowMissing) {
+      return;
+    }
+
+    throw new Error("终端会话不存在");
+  }
+
+  if (session.webContents !== webContents) {
+    throw new Error("终端会话不属于当前窗口");
+  }
+}
+
 function sendTerminalStatusToWebContents(
   webContents: WebContents,
   tabId: string,
