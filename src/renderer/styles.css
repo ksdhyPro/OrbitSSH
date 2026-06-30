@@ -2142,6 +2142,13 @@ input[type="number"] {
   font-size: 11px;
 }
 
+.ai-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
 .ai-panel-header button {
   width: 30px;
   height: 30px;
@@ -2152,6 +2159,21 @@ input[type="number"] {
   align-items: center;
   justify-content: center;
   padding: 0;
+}
+
+.ai-panel-header .ai-new-conversation-btn {
+  width: auto;
+  min-width: 58px;
+  padding: 0 9px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ai-panel-header .ai-new-conversation-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .ai-panel-header button img {

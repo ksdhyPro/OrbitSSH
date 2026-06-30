@@ -28,6 +28,7 @@ const props = defineProps<{
   error: string;
   messages: { id: string; role: string; content: string; createdAt: number }[];
   commandCards: AiCommandCard[];
+  shouldSuggestNewConversation: boolean;
   context: AiContextInput;
   configs: AiModelConfig[];
   activeConfigId: string;
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   updateInputText: [value: string];
   send: [];
   stop: [];
+  startNewConversation: [];
   runApproved: [card: AiCommandCard];
   rejectApproval: [card: AiCommandCard];
   selectModel: [configId: string];
@@ -400,9 +402,21 @@ function getCommandAuditText(card: AiCommandCard): string {
           <h2>AI 助手</h2>
           <p>{{ context.serverName || "未选择服务器" }}</p>
         </div>
-        <button type="button" title="收起面板" @click="emit('toggle')">
-          <img :src="collapseIcon" alt="收起" />
-        </button>
+        <div class="ai-panel-header-actions">
+          <button
+            type="button"
+            class="ai-new-conversation-btn"
+            title="新对话"
+            :disabled="
+              isSending || hasPendingApproval || hasRunningCommand || !context.tabId
+            "
+            @click="emit('startNewConversation')">
+            新对话
+          </button>
+          <button type="button" title="收起面板" @click="emit('toggle')">
+            <img :src="collapseIcon" alt="收起" />
+          </button>
+        </div>
       </header>
 
       <section
@@ -414,6 +428,11 @@ function getCommandAuditText(card: AiCommandCard): string {
         </div>
         <div v-else-if="messages.length === 0" class="ai-empty">
           可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。请注意AI回复具有不确定性，请谨慎执行命令。
+        </div>
+        <div
+          v-else-if="shouldSuggestNewConversation"
+          class="ai-empty ai-conversation-hint">
+          当前对话较长，建议新建对话以减少历史干扰。
         </div>
 
         <template v-for="item in timelineItems" :key="item.id">

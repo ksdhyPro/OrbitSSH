@@ -173,11 +173,15 @@ const {
   error: aiError,
   messages: aiMessages,
   commandCards: aiCommandCards,
+  shouldSuggestNewConversation,
 } = storeToRefs(aiStore);
 
 const {
   togglePanel: toggleAiPanel,
   setMode: setAiMode,
+  setActiveTabId: setAiActiveTabId,
+  startNewConversation: startNewAiConversation,
+  removeTabSession: removeAiTabSession,
   sendMessage: sendAiMessage,
   runApprovedCommand: runAiApprovedCommand,
   rejectApproval: rejectAiApproval,
@@ -852,6 +856,7 @@ async function closeTerminalTab(tabId: string): Promise<void> {
     },
     afterClose: closedTabId => {
       removeSftpTree(closedTabId);
+      removeAiTabSession(closedTabId);
     },
   });
 }
@@ -905,6 +910,15 @@ watch(
     });
   },
   { deep: true },
+);
+
+// AI 面板跟随当前终端标签页切换，确保不同服务器的对话历史互相隔离。
+watch(
+  activeTabId,
+  tabId => {
+    setAiActiveTabId(tabId);
+  },
+  { immediate: true },
 );
 
 onMounted(() => {
@@ -1086,6 +1100,7 @@ onUnmounted(() => {
         :error="aiError"
         :messages="aiMessages"
         :command-cards="aiCommandCards"
+        :should-suggest-new-conversation="shouldSuggestNewConversation"
         :context="aiContext"
         :configs="appSettings.ai.configs"
         :active-config-id="appSettings.ai.activeConfigId"
@@ -1094,6 +1109,7 @@ onUnmounted(() => {
         @update-input-text="aiInputText = $event"
         @send="sendAiMessage(aiContext)"
         @stop="cancelAiMessage(aiContext)"
+        @start-new-conversation="startNewAiConversation(activeTabId)"
         @run-approved="runAiApprovedCommand"
         @reject-approval="rejectAiApproval"
         @select-model="updateAiSetting('activeConfigId', $event)" />
