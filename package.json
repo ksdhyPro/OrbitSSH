@@ -1,6 +1,6 @@
 {
   "name": "orbitssh",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "SSH client",
   "main": "dist-electron/main/index.js",
   "private": true,
@@ -13,9 +13,9 @@
     "prepackage": "npm run version:sync",
     "package": "npm run build && electron-builder --win --dir",
     "predist": "npm run version:sync",
-    "dist": "npm run build && electron-builder --win",
+    "dist": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win",
     "predist-mac": "npm run version:sync",
-    "dist-mac": "npm run build && electron-builder --mac"
+    "dist-mac": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac"
   },
   "build": {
     "appId": "com.orbitssh.app",
