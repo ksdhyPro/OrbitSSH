@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.1
+
+- Improved the AI follow-up experience by automatically focusing the bottom input box after an AI response finishes.
+- Fixed an issue on macOS where pressing Enter while composing or selecting Chinese IME candidates could accidentally send the AI message; Enter now confirms the candidate first.
+
 ## v1.1.0
 
 - Added an AI assistant panel with per-terminal-tab conversations, using the current server, terminal path, SFTP path, connection status, and recent terminal output as context.

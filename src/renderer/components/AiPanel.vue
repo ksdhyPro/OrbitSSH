@@ -279,7 +279,11 @@ const processStatusText = computed(() => {
 // ----- 自动滚动到最新消息 -----
 
 const messageListEl = ref<HTMLElement | null>(null);
+const composeInputEl = ref<HTMLTextAreaElement | null>(null);
+const isComposingInput = ref(false);
 let scrollFrameId = 0;
+let focusFrameId = 0;
+let compositionFrameId = 0;
 
 function isNearMessageBottom(): boolean {
   const el = messageListEl.value;
@@ -310,6 +314,51 @@ async function scheduleScrollToBottom(
   });
 }
 
+async function scheduleFocusComposeInput(): Promise<void> {
+  await nextTick();
+  if (focusFrameId) {
+    cancelAnimationFrame(focusFrameId);
+  }
+
+  // 等输入框解除禁用状态并完成渲染后，再把焦点放回底部输入框。
+  focusFrameId = requestAnimationFrame(() => {
+    focusFrameId = 0;
+    if (!props.open || props.isSending) return;
+    composeInputEl.value?.focus();
+  });
+}
+
+function handleComposeCompositionStart(): void {
+  if (compositionFrameId) {
+    cancelAnimationFrame(compositionFrameId);
+    compositionFrameId = 0;
+  }
+
+  isComposingInput.value = true;
+}
+
+function handleComposeCompositionEnd(): void {
+  if (compositionFrameId) {
+    cancelAnimationFrame(compositionFrameId);
+  }
+
+  // macOS 中文输入法确认候选词时可能紧跟 Enter 事件，延后一帧再释放组合态。
+  compositionFrameId = requestAnimationFrame(() => {
+    compositionFrameId = 0;
+    isComposingInput.value = false;
+  });
+}
+
+function handleComposeEnterKeydown(event: KeyboardEvent): void {
+  // 输入法组词/选词期间，Enter 应交给 IME 确认候选词，不能触发发送。
+  if (isComposingInput.value || event.isComposing || event.keyCode === 229) {
+    return;
+  }
+
+  event.preventDefault();
+  emit("send");
+}
+
 // 消息、流式文本或命令卡片有变化时，在贴底状态下继续跟随最新内容。
 watch(
   () => [
@@ -327,12 +376,16 @@ watch(
 
 watch(
   () => props.isSending,
-  sending => {
+  (sending, wasSending) => {
     // 发送开始后稍作等待，确保 AI 回复区域的 DOM 已插入再滚动。
     if (sending) {
       setTimeout(() => {
         void scheduleScrollToBottom("smooth");
       }, 80);
+    }
+
+    if (wasSending && !sending) {
+      void scheduleFocusComposeInput();
     }
   },
 );
@@ -361,6 +414,14 @@ watch(
 onBeforeUnmount(() => {
   if (scrollFrameId) {
     cancelAnimationFrame(scrollFrameId);
+  }
+
+  if (focusFrameId) {
+    cancelAnimationFrame(focusFrameId);
+  }
+
+  if (compositionFrameId) {
+    cancelAnimationFrame(compositionFrameId);
   }
 });
 
@@ -512,6 +573,7 @@ function getCommandAuditText(card: AiCommandCard): string {
       <footer class="ai-compose">
         <p v-if="error" class="ai-error">{{ error }}</p>
         <textarea
+          ref="composeInputEl"
           :value="inputText"
           rows="3"
           placeholder="向 AI 询问这台服务器..."
@@ -522,7 +584,9 @@ function getCommandAuditText(card: AiCommandCard): string {
               ($event.target as HTMLTextAreaElement).value,
             )
           "
-          @keydown.enter.exact.prevent="emit('send')"></textarea>
+          @compositionstart="handleComposeCompositionStart"
+          @compositionend="handleComposeCompositionEnd"
+          @keydown.enter.exact="handleComposeEnterKeydown"></textarea>
         <div class="ai-compose-actions">
           <button
             type="button"
