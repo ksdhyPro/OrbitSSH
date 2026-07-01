@@ -56,6 +56,7 @@ const emit = defineEmits<{
 
 const renameInputRef = ref<HTMLInputElement | null>(null);
 const rootElement = ref<HTMLElement | null>(null);
+let renameFocusFrame = 0;
 const marquee = reactive({
   active: false,
   visible: false,
@@ -76,21 +77,46 @@ function setRootElement(element: Element | unknown): void {
   props.elementRef?.(rootElement.value);
 }
 
+function setRenameInputElement(element: Element | unknown): void {
+  renameInputRef.value = element instanceof HTMLInputElement ? element : null;
+}
+
+// 重命名输入框依赖列表渲染完成后才存在，延后一帧聚焦保证新建后可直接输入。
+async function focusRenameInput(): Promise<void> {
+  if (!props.renamingPath) {
+    return;
+  }
+
+  await nextTick();
+
+  if (renameFocusFrame) {
+    cancelAnimationFrame(renameFocusFrame);
+  }
+
+  renameFocusFrame = requestAnimationFrame(() => {
+    renameFocusFrame = 0;
+    renameInputRef.value?.focus();
+    renameInputRef.value?.select();
+  });
+}
+
 onUnmounted(() => {
   stopMarqueeSelection();
+  if (renameFocusFrame) {
+    cancelAnimationFrame(renameFocusFrame);
+    renameFocusFrame = 0;
+  }
   props.elementRef?.(null);
 });
 
 watch(
-  () => props.renamingPath,
-  async (path) => {
-    if (!path) {
-      return;
+  () => [props.renamingPath, props.nodes] as const,
+  ([path]) => {
+    if (path) {
+      void focusRenameInput();
     }
-    await nextTick();
-    renameInputRef.value?.focus();
-    renameInputRef.value?.select();
   },
+  { flush: "post" },
 );
 
 function isDeleting(node: RemoteFileListNode): boolean {
@@ -306,7 +332,7 @@ function handleMarqueePointerUp(event: PointerEvent): void {
         alt="" />
       <input
         v-if="renamingPath === node.path"
-        ref="renameInputRef"
+        :ref="setRenameInputElement"
         class="remote-file-rename-input"
         type="text"
         spellcheck="false"

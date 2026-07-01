@@ -48,7 +48,8 @@ export function registerTerminalIpc(): void {
 
   ipcMain.handle('terminal:reconnect', (event, tabId: unknown, serverId?: unknown) => {
     const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
-    assertTabAccess(event, normalizedTabId)
+    // 断开后主进程可能已清理旧会话，此时允许通过 serverId 恢复连接。
+    assertTabAccess(event, normalizedTabId, { allowMissing: true })
     return reconnectTerminalSession(
       event.sender,
       normalizedTabId,

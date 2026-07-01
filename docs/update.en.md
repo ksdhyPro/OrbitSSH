@@ -4,6 +4,8 @@
 
 - Improved the AI follow-up experience by automatically focusing the bottom input box after an AI response finishes.
 - Fixed an issue on macOS where pressing Enter while composing or selecting Chinese IME candidates could accidentally send the AI message; Enter now confirms the candidate first.
+- Fixed reconnect failures after an SSH disconnect by allowing reconnect to restore the session from the original server information after the old session is cleaned up.
+- Fixed missing focus after creating a remote file or folder; the inline name input now focuses automatically and selects the placeholder name for immediate renaming.
 
 ## v1.1.0
 
