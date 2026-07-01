@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.2
+
+- Added a default local terminal. OrbitSSH now opens a "Local" tab on startup, entering `C:\` on Windows and the user home directory on Linux and macOS.
+- Added local terminal interaction support, including input, terminal resize sync, close, reconnect, system status display, and AI command execution.
+
 ## v1.1.1
 
 - Improved the AI follow-up experience by automatically focusing the bottom input box after an AI response finishes.
