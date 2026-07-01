@@ -2349,6 +2349,12 @@ input[type="number"] {
   animation: ai-text-illuminate 13.6s ease-in-out infinite;
 }
 
+.ai-message.assistant.streaming .ai-markdown code {
+  /* 避免行内代码继承流式文字动画的透明填充，导致只显示代码背景。 */
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+
 @keyframes ai-text-illuminate {
   0% {
     background-position: 0% 0;
