@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 
 import {
   closeTerminalSession,
+  openLocalTerminalSession,
   openTerminalSession,
   reconnectTerminalSession,
   resizeTerminal,
@@ -20,6 +21,10 @@ import {
 export function registerTerminalIpc(): void {
   ipcMain.handle('terminal:open', (event, serverId: unknown) =>
     openTerminalSession(event.sender, requireNonEmptyString(serverId, '服务器 ID'))
+  )
+
+  ipcMain.handle('terminal:open-local', event =>
+    openLocalTerminalSession(event.sender)
   )
 
   ipcMain.handle('terminal:write', (event, tabId: unknown, data: unknown) => {

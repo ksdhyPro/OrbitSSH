@@ -80,6 +80,7 @@ const orbitSSHApi = {
   },
   terminals: {
     open: serverId => ipcRenderer.invoke("terminal:open", serverId),
+    openLocal: () => ipcRenderer.invoke("terminal:open-local"),
     write: (tabId, data) => ipcRenderer.invoke("terminal:write", tabId, data),
     resize: input => ipcRenderer.invoke("terminal:resize", input),
     close: tabId => ipcRenderer.invoke("terminal:close", tabId),

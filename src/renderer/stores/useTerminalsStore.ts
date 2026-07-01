@@ -8,6 +8,7 @@ import { computed, nextTick, reactive, ref } from "vue";
 import { appConfig } from "../../shared/config";
 import type { ServerConfig } from "../../shared/server";
 import type { TerminalStatusEvent } from "../../shared/terminal";
+import { LOCAL_TERMINAL_SERVER_ID } from "../../shared/terminal";
 import type {
   TerminalInstance,
   TerminalSearchMatch,
@@ -601,6 +602,48 @@ export const useTerminalsStore = defineStore("terminals", () => {
     });
   }
 
+  async function openLocalTerminal(): Promise<void> {
+    if (!core.orbitSSHApi) {
+      throw new Error("请通过 Electron 窗口启动应用");
+    }
+
+    const existingLocalTab = tabs.value.find(
+      tab => tab.serverId === LOCAL_TERMINAL_SERVER_ID,
+    );
+
+    if (existingLocalTab) {
+      await activateTerminalTab(existingLocalTab.id);
+      return;
+    }
+
+    const startedAt = performance.now();
+    const result = await core.orbitSSHApi.terminals.openLocal();
+    const ipcReturnedAt = performance.now();
+    const tab: TerminalTab = {
+      id: result.tabId,
+      serverId: result.serverId,
+      title: "本地",
+      status: "connected",
+      currentPath: result.cwd,
+    };
+
+    tabs.value = [tab, ...tabs.value];
+    activeTabId.value = tab.id;
+
+    await nextTick();
+    const beforeCreateAt = performance.now();
+    createTerminalInstance(tab);
+    const afterCreateAt = performance.now();
+    core.writeRendererLog("本地终端打开流程耗时", {
+      tabId: tab.id,
+      cwd: result.cwd,
+      ipcMs: Math.round(ipcReturnedAt - startedAt),
+      renderWaitMs: Math.round(beforeCreateAt - ipcReturnedAt),
+      createTerminalMs: Math.round(afterCreateAt - beforeCreateAt),
+      totalMs: Math.round(afterCreateAt - startedAt),
+    });
+  }
+
   async function activateTerminalTab(tabId: string): Promise<void> {
     activeTabId.value = tabId;
     await nextTick();
@@ -766,6 +809,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     scheduleTerminalFit,
     createTerminalInstance,
     openServerTerminal,
+    openLocalTerminal,
     activateTerminalTab,
     closeTerminalTab,
     reconnectTerminal,

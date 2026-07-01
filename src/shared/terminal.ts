@@ -1,6 +1,12 @@
+export const LOCAL_TERMINAL_SERVER_ID = "__local__"
+
+export type TerminalSessionKind = "ssh" | "local"
+
 export interface TerminalOpenResult {
   tabId: string
   serverId: string
+  kind: TerminalSessionKind
+  cwd?: string
 }
 
 export interface TerminalDataEvent {

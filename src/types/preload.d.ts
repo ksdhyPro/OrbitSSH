@@ -141,6 +141,7 @@ declare global {
       };
       terminals: {
         open: (serverId: string) => Promise<TerminalOpenResult>;
+        openLocal: () => Promise<TerminalOpenResult>;
         write: (tabId: string, data: string) => Promise<boolean>;
         resize: (input: TerminalResizeInput) => Promise<boolean>;
         close: (tabId: string) => Promise<boolean>;

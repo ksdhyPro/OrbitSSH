@@ -200,6 +200,8 @@ const orbitSSHApi = {
         "terminal:open",
         serverId,
       ) as Promise<TerminalOpenResult>,
+    openLocal: () =>
+      ipcRenderer.invoke("terminal:open-local") as Promise<TerminalOpenResult>,
     write: (tabId: string, data: string) =>
       ipcRenderer.invoke("terminal:write", tabId, data) as Promise<boolean>,
     resize: (input: TerminalResizeInput) =>

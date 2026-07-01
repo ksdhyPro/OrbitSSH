@@ -201,6 +201,7 @@ const {
   setTerminalHost,
   scheduleTerminalFit,
   openServerTerminal: openTerminalFromStore,
+  openLocalTerminal,
   activateTerminalTab,
   closeTerminalTab: closeTerminalTabFromStore,
 } = terminalsStore;
@@ -933,6 +934,13 @@ onMounted(() => {
   windowStore.startFullScreenListener();
   downloadsStore.startListeners();
   terminalsStore.startListeners();
+  void openLocalTerminal().catch(error => {
+    writeRendererLog(
+      "默认本地终端打开失败",
+      { error: error instanceof Error ? error.message : String(error) },
+      "error",
+    );
+  });
   stopAppMenuListener =
     orbitSSHApi.value?.appMenu.onAction(handleAppMenuAction) ?? null;
   initUpdate();
