@@ -362,12 +362,33 @@ export const useTerminalsStore = defineStore("terminals", () => {
     const isSearchShortcut =
       event.type === "keydown" &&
       (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
       event.key.toLowerCase() === "f";
 
     if (isSearchShortcut) {
       event.preventDefault();
       void openTerminalSearch();
       return false;
+    }
+
+    // 终端内复制 / 粘贴：Ctrl+Shift+C / Ctrl+Shift+V（Mac 上为 Cmd+Shift+C / Cmd+Shift+V）。
+    // 终端里的纯 Ctrl+C / Ctrl+V 通常被 shell 用作中断 / 杂交，因此用 Shift 修饰符区分。
+    if (
+      event.type === "keydown" &&
+      event.shiftKey &&
+      (event.ctrlKey || event.metaKey)
+    ) {
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        event.preventDefault();
+        void copyActiveTerminalSelection();
+        return false;
+      }
+      if (key === "v") {
+        event.preventDefault();
+        void pasteClipboardTextToActiveTerminal();
+        return false;
+      }
     }
 
     if (

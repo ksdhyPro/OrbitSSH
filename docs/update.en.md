@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.4
+
+- Added terminal copy and paste shortcuts `Ctrl+Shift+C` / `Ctrl+Shift+V` (`Cmd+Shift+C` / `Cmd+Shift+V` on macOS) to copy the current selection and paste clipboard text into the terminal.
+- Added corresponding entries for terminal copy and paste to the shortcut list in the Settings dialog.
+
 ## v1.1.3
 
 1. Fixed the SFTP context menu staying open after creating a remote file or folder.

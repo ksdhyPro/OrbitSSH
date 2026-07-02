@@ -38,6 +38,25 @@ export function getShortcutSections(isMac: boolean): ShortcutSection[] {
       ],
     },
     {
+      id: "terminal-edit",
+      title: "终端编辑",
+      description: "终端面板聚焦时可用。",
+      shortcuts: [
+        {
+          id: "terminal-copy",
+          title: "复制选区",
+          description: "把当前终端选中的文本复制到剪贴板。",
+          keys: [`${modKey} + Shift + C`],
+        },
+        {
+          id: "terminal-paste",
+          title: "粘贴文本",
+          description: "把剪贴板中的文本粘贴到当前终端。",
+          keys: [`${modKey} + Shift + V`],
+        },
+      ],
+    },
+    {
       id: "terminal",
       title: "终端搜索",
       description: "当前终端搜索栏打开后可用。",

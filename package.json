@@ -12,9 +12,7 @@
     "version:sync": "node scripts/sync-version-from-update.cjs",
     "prepackage": "npm run version:sync",
     "package": "npm run build && electron-builder --win --dir",
-    "predist": "npm run version:sync",
     "dist": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win",
-    "predist-mac": "npm run version:sync",
     "dist-mac": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac"
   },
   "build": {
