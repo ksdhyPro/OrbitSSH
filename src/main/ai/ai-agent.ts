@@ -4,10 +4,12 @@ import type {
   AiChatInput,
   AiChatResult,
   AiCommandCard,
+  AiCommandCardEvent,
   AiCommandResult,
   AiMessage,
   AiRejectedCommandInput,
   AiStreamChunkEvent,
+  AiStreamMessageStartEvent,
 } from "../../shared/ai.js";
 import type {
   AiModelConfig,
@@ -511,6 +513,7 @@ function createApprovalCard(
   risk: "low" | "medium" | "high",
   approvalId: string,
   cardId = createId(),
+  createdAt = Date.now(),
 ): AiCommandCard {
   return {
     id: cardId,
@@ -519,7 +522,29 @@ function createApprovalCard(
     reason,
     risk,
     status: "requires_approval",
-    createdAt: Date.now(),
+    createdAt,
+    approvalId,
+  };
+}
+
+// 命令开始执行时推送的"执行中"卡片，后续用相同 cardId 推 completed/failed 覆盖。
+function createRunningCard(
+  input: AiChatInput,
+  command: string,
+  reason: string,
+  risk: "low" | "medium" | "high",
+  cardId = createId(),
+  createdAt = Date.now(),
+  approvalId?: string,
+): AiCommandCard {
+  return {
+    id: cardId,
+    tabId: input.tabId,
+    command,
+    reason,
+    risk,
+    status: "running",
+    createdAt,
     approvalId,
   };
 }
@@ -902,10 +927,10 @@ async function requestAiTurn(
         },
       });
 
+      // 只有工具调用、没有自然语言文字时返回空 reply：由 runAgentLoop 决定
+      // 如何展示（它会在该轮触发的命令卡片上方补一条"执行：xxx"话术）。
       return {
-        reply:
-          contentText ||
-          (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
+        reply: contentText,
         commands,
       };
     }
@@ -975,9 +1000,9 @@ async function requestAiTurn(
       },
     });
 
+    // 同流式路径：只有命令没文字时返回空 reply，交给 runAgentLoop 展示。
     return {
-      reply:
-        reply || (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
+      reply,
       commands,
     };
   } catch (error) {
@@ -1001,38 +1026,72 @@ async function requestAiTurn(
   }
 }
 
+// 把 agent loop 的轮次边界和命令状态变迁封装成三个推送方法，
+// runAgentLoop 只依赖这个抽象，便于单测且集中管理 IPC 通道名。
+interface AgentEmitter {
+  sendMessageStart(messageId: string, createdAt: number): void;
+  sendChunk(messageId: string, text: string): void;
+  sendCommandCard(card: AiCommandCard): void;
+}
+
+function makeEmitter(
+  tabId: string,
+  webContents?: WebContents,
+): AgentEmitter | undefined {
+  if (!webContents) return undefined;
+
+  return {
+    sendMessageStart: (messageId, createdAt) => {
+      webContents.send("ai:stream-message-start", {
+        tabId,
+        messageId,
+        createdAt,
+      } satisfies AiStreamMessageStartEvent);
+    },
+    sendChunk: (messageId, text) => {
+      webContents.send("ai:stream-chunk", {
+        tabId,
+        messageId,
+        chunk: text,
+      } satisfies AiStreamChunkEvent);
+    },
+    sendCommandCard: card => {
+      webContents.send("ai:command-card", {
+        tabId,
+        card,
+      } satisfies AiCommandCardEvent);
+    },
+  };
+}
+
 async function runAgentLoop(
   input: AiChatInput,
   settings: AppSettings,
   signal: AbortSignal,
-  sendChunk?: (text: string) => void,
+  emit?: AgentEmitter,
   previousCards: AiCommandCard[] = [],
   executedCommands: ExecutedAiCommandContext[] = [],
 ): Promise<AiChatResult> {
-  const replies: string[] = [];
+  // 每一轮的 AI 回复作为独立 AiMessage 累积，前端按时间穿插展示，
+  // 而不是像旧实现那样把多轮 join 成一条。
+  const messages: AiMessage[] = [];
   let commandCards = [...previousCards];
 
   while (executedCommands.length < maxAgentCommandCount) {
     if (signal.aborted) {
-      return {
-        message: createAssistantMessage(
-          `${replies.join("\n\n")}\n\n[已终止]`.trim(),
-        ),
-        commandCards,
-      };
+      messages.push(createAssistantMessage("[已终止]"));
+      return { messages, commandCards };
     }
 
-    // 多轮对话时，后续轮次的回复前插入分隔符
-    const isFirstTurn = replies.length === 0;
-    let turnFirstChunk = true;
-    const onChunk = sendChunk
-      ? (text: string) => {
-          if (!isFirstTurn && turnFirstChunk) {
-            sendChunk("\n\n");
-          }
-          turnFirstChunk = false;
-          sendChunk(text);
-        }
+    // 每轮开始前生成 messageId 并通知前端插入空占位，保证后续 chunk 有落点。
+    // messageCreatedAt 故意取 Date.now()+1，让本轮触发的命令卡片（用更早的时间戳）
+    // 在时间线里排到这条消息的「上方」，呈现「命令卡片 → AI 解释」的顺序。
+    const messageId = createId();
+    const messageCreatedAt = Date.now() + 1;
+    emit?.sendMessageStart(messageId, messageCreatedAt);
+
+    const onChunk = emit
+      ? (text: string) => emit.sendChunk(messageId, text)
       : undefined;
 
     const parsed = await requestAiTurn(
@@ -1043,19 +1102,27 @@ async function runAgentLoop(
       onChunk,
     );
     const reply = parsed.reply?.trim();
-
-    if (reply) {
-      replies.push(reply);
-    }
-
     const nextCommand = getNextParsedCommand(parsed);
 
+    // 某轮 AI 只输出工具调用没有文本时，用 reason 拼自然话术，避免空消息。
+    const messageContent = reply
+      ? reply
+      : nextCommand
+        ? `执行：${nextCommand.command}（${nextCommand.reason}）`
+        : "未收到有效回复。";
+    messages.push({
+      id: messageId,
+      role: "assistant",
+      content: messageContent,
+      createdAt: messageCreatedAt,
+    });
+
     if (!nextCommand) {
-      return {
-        message: createAssistantMessage(replies.join("\n\n")),
-        commandCards,
-      };
+      return { messages, commandCards };
     }
+
+    // 命令卡片时间戳略早于本轮消息，确保穿插时卡片在 AI 文字上方。
+    const cardCreatedAt = messageCreatedAt - 1;
 
     if (
       shouldRequestApproval(input.mode, nextCommand.command, nextCommand.risk)
@@ -1069,7 +1136,10 @@ async function runAgentLoop(
         nextCommand.risk,
         approvalId,
         cardId,
+        cardCreatedAt,
       );
+
+      emit?.sendCommandCard(approvalCard);
 
       pendingApprovals.set(approvalId, {
         input,
@@ -1079,14 +1149,27 @@ async function runAgentLoop(
         cardId,
         previousCards: mergeCards(commandCards, approvalCard),
         executedCommands,
-        createdAt: Date.now(),
+        createdAt: cardCreatedAt,
       });
 
       return {
-        message: createAssistantMessage(replies.join("\n\n")),
+        messages,
         commandCards: mergeCards(commandCards, approvalCard),
       };
     }
+
+    // 自动执行：先推"执行中"卡片，让前端实时看到进度，再用同 id 推 completed/failed。
+    const runningCardId = createId();
+    const runningCard = createRunningCard(
+      input,
+      nextCommand.command,
+      nextCommand.reason,
+      nextCommand.risk,
+      runningCardId,
+      cardCreatedAt,
+    );
+    emit?.sendCommandCard(runningCard);
+    commandCards = mergeCards(commandCards, runningCard);
 
     try {
       writeAppLog({
@@ -1110,7 +1193,10 @@ async function runAgentLoop(
         nextCommand.reason,
         nextCommand.risk,
         result,
+        runningCardId,
+        cardCreatedAt,
       );
+      emit?.sendCommandCard(completedCard);
       commandCards = mergeCards(commandCards, completedCard);
       executedCommands = [
         ...executedCommands,
@@ -1133,33 +1219,33 @@ async function runAgentLoop(
         },
       });
     } catch (error) {
-      commandCards = mergeCards(
-        commandCards,
-        createFailedCard(
-          input,
-          nextCommand.command,
-          nextCommand.reason,
-          nextCommand.risk,
-          error,
+      const failedCard = createFailedCard(
+        input,
+        nextCommand.command,
+        nextCommand.reason,
+        nextCommand.risk,
+        error,
+        runningCardId,
+        cardCreatedAt,
+      );
+      emit?.sendCommandCard(failedCard);
+      commandCards = mergeCards(commandCards, failedCard);
+      messages.push(
+        createAssistantMessage(
+          `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
         ),
       );
-      replies.push(
-        `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
-      );
 
-      return {
-        message: createAssistantMessage(replies.join("\n\n")),
-        commandCards,
-      };
+      return { messages, commandCards };
     }
   }
 
-  return {
-    message: createAssistantMessage(
-      `${replies.join("\n\n")}\n\n已达到单轮最多 ${maxAgentCommandCount} 条命令的限制，请根据当前结果继续提问。`.trim(),
+  messages.push(
+    createAssistantMessage(
+      `已达到单轮最多 ${maxAgentCommandCount} 条命令的限制，请根据当前结果继续提问。`,
     ),
-    commandCards,
-  };
+  );
+  return { messages, commandCards };
 }
 
 export async function runAiChat(
@@ -1176,17 +1262,10 @@ export async function runAiChat(
   const controller = new AbortController();
   activeRequests.set(input.tabId, controller);
 
-  const sendChunk = webContents
-    ? (text: string) => {
-        webContents.send("ai:stream-chunk", {
-          tabId: input.tabId,
-          chunk: text,
-        } satisfies AiStreamChunkEvent);
-      }
-    : undefined;
+  const emit = makeEmitter(input.tabId, webContents);
 
   try {
-    return await runAgentLoop(input, settings, controller.signal, sendChunk);
+    return await runAgentLoop(input, settings, controller.signal, emit);
   } finally {
     if (activeRequests.get(input.tabId) === controller) {
       activeRequests.delete(input.tabId);
@@ -1235,8 +1314,27 @@ export async function runApprovedAiCommand(
 
   pendingApprovals.delete(input.approvalId);
 
+  const emit = makeEmitter(input.tabId, webContents);
   let commandCards = approval.previousCards;
   const executedCommands = [...approval.executedCommands];
+  const messages: AiMessage[] = [];
+
+  // 复用审批卡片的原始时间戳，避免批准/执行时卡片在时间线里跳动位置。
+  const previousCard = commandCards.find(card => card.id === approval.cardId);
+  const cardCreatedAt = previousCard?.createdAt ?? Date.now();
+
+  // 批准后先把这张卡片推进到 running 态，前端实时看到"执行中"。
+  const runningCard = createRunningCard(
+    approval.input,
+    approval.command,
+    approval.reason,
+    approval.risk,
+    approval.cardId,
+    cardCreatedAt,
+    input.approvalId,
+  );
+  emit?.sendCommandCard(runningCard);
+  commandCards = mergeCards(commandCards, runningCard);
 
   try {
     const result = await executeTerminalCommand(
@@ -1244,20 +1342,18 @@ export async function runApprovedAiCommand(
       approval.command,
       20_000,
     );
-    const completedAt = Date.now();
-    commandCards = mergeCards(
-      commandCards,
-      createCompletedCard(
-        approval.input,
-        approval.command,
-        approval.reason,
-        approval.risk,
-        result,
-        approval.cardId,
-        completedAt,
-        input.approvalId,
-      ),
+    const completedCard = createCompletedCard(
+      approval.input,
+      approval.command,
+      approval.reason,
+      approval.risk,
+      result,
+      approval.cardId,
+      cardCreatedAt,
+      input.approvalId,
     );
+    emit?.sendCommandCard(completedCard);
+    commandCards = mergeCards(commandCards, completedCard);
     executedCommands.push({
       command: approval.command,
       reason: approval.reason,
@@ -1268,43 +1364,35 @@ export async function runApprovedAiCommand(
     // 复用当前 Tab 的 AbortSignal，允许用户在批准后仍可终止执行
     const signal =
       activeRequests.get(input.tabId)?.signal ?? new AbortController().signal;
-    const sendChunk = webContents
-      ? (text: string) => {
-          webContents.send("ai:stream-chunk", {
-            tabId: input.tabId,
-            chunk: text,
-          } satisfies AiStreamChunkEvent);
-        }
-      : undefined;
     return runAgentLoop(
       approval.input,
       settings,
       signal,
-      sendChunk,
+      emit,
       commandCards,
       executedCommands,
     );
   } catch (error) {
-    const failedAt = Date.now();
-    commandCards = mergeCards(
-      commandCards,
-      createFailedCard(
-        approval.input,
-        approval.command,
-        approval.reason,
-        approval.risk,
-        error,
-        approval.cardId,
-        failedAt,
+    const failedCard = createFailedCard(
+      approval.input,
+      approval.command,
+      approval.reason,
+      approval.risk,
+      error,
+      approval.cardId,
+      cardCreatedAt,
+    );
+    // 保留 approvalId 以便前端展示审批来源（createFailedCard 不接收该参数，手动补回）。
+    failedCard.approvalId = input.approvalId;
+    emit?.sendCommandCard(failedCard);
+    commandCards = mergeCards(commandCards, failedCard);
+    messages.push(
+      createAssistantMessage(
+        `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
       ),
     );
 
-    return {
-      message: createAssistantMessage(
-        `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
-      ),
-      commandCards,
-    };
+    return { messages, commandCards };
   }
 }
 

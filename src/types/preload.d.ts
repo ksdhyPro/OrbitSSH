@@ -47,8 +47,10 @@ import type {
   AiCancelInput,
   AiChatInput,
   AiChatResult,
+  AiCommandCardEvent,
   AiRejectedCommandInput,
   AiStreamChunkEvent,
+  AiStreamMessageStartEvent,
 } from "../shared/ai";
 
 declare global {
@@ -91,6 +93,12 @@ declare global {
         cancel: (input: AiCancelInput) => Promise<boolean>;
         onStreamChunk: (
           callback: (event: AiStreamChunkEvent) => void,
+        ) => () => void;
+        onStreamMessageStart: (
+          callback: (event: AiStreamMessageStartEvent) => void,
+        ) => () => void;
+        onCommandCard: (
+          callback: (event: AiCommandCardEvent) => void,
         ) => () => void;
       };
       sftp: {

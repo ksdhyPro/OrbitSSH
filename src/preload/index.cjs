@@ -38,6 +38,17 @@ const orbitSSHApi = {
       ipcRenderer.on("ai:stream-chunk", listener);
       return () => ipcRenderer.removeListener("ai:stream-chunk", listener);
     },
+    onStreamMessageStart: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("ai:stream-message-start", listener);
+      return () =>
+        ipcRenderer.removeListener("ai:stream-message-start", listener);
+    },
+    onCommandCard: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("ai:command-card", listener);
+      return () => ipcRenderer.removeListener("ai:command-card", listener);
+    },
   },
   sftp: {
     open: (tabId, serverId) => ipcRenderer.invoke("sftp:open", tabId, serverId),

@@ -47,8 +47,10 @@ import type {
   AiCancelInput,
   AiChatInput,
   AiChatResult,
+  AiCommandCardEvent,
   AiRejectedCommandInput,
   AiStreamChunkEvent,
+  AiStreamMessageStartEvent,
 } from "../shared/ai.js";
 
 const orbitSSHApi = {
@@ -104,6 +106,25 @@ const orbitSSHApi = {
       const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamChunkEvent) => callback(payload);
       ipcRenderer.on("ai:stream-chunk", listener);
       return () => ipcRenderer.removeListener("ai:stream-chunk", listener);
+    },
+    onStreamMessageStart: (
+      callback: (event: AiStreamMessageStartEvent) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: AiStreamMessageStartEvent,
+      ) => callback(payload);
+      ipcRenderer.on("ai:stream-message-start", listener);
+      return () =>
+        ipcRenderer.removeListener("ai:stream-message-start", listener);
+    },
+    onCommandCard: (callback: (event: AiCommandCardEvent) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: AiCommandCardEvent,
+      ) => callback(payload);
+      ipcRenderer.on("ai:command-card", listener);
+      return () => ipcRenderer.removeListener("ai:command-card", listener);
     },
   },
   sftp: {

@@ -61,7 +61,8 @@ export interface AiChatInput {
 }
 
 export interface AiChatResult {
-  message: AiMessage;
+  // 主进程把 agent loop 每一轮的 AI 回复作为独立消息返回，前端用于和流式占位对账。
+  messages: AiMessage[];
   commandCards: AiCommandCard[];
 }
 
@@ -81,5 +82,22 @@ export interface AiCancelInput {
 
 export interface AiStreamChunkEvent {
   tabId: string;
+  // 标识当前 chunk 属于哪条流式消息，前端据此把文本累加到对应占位消息。
+  messageId: string;
   chunk: string;
+}
+
+// 每轮 AI 回复开始时推送一次：前端立即插入一条空占位 assistant 消息，
+// 后续 AiStreamChunkEvent 携带相同 messageId 把文本累加到该占位上。
+export interface AiStreamMessageStartEvent {
+  tabId: string;
+  messageId: string;
+  createdAt: number;
+}
+
+// 命令卡片状态变迁（running/completed/failed/requires_approval/rejected）的实时推送。
+// payload 是完整 AiCommandCard，前端按 id 做 upsert。
+export interface AiCommandCardEvent {
+  tabId: string;
+  card: AiCommandCard;
 }

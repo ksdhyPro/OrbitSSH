@@ -24,7 +24,7 @@ interface AiTabSessionState {
   conversations: AiConversationState[];
 }
 
-const HISTORY_LIMIT = 8;
+const HISTORY_LIMIT = 24;
 const LONG_CONVERSATION_USER_MESSAGE_LIMIT = 12;
 const LONG_CONVERSATION_COMMAND_CARD_LIMIT = 20;
 
@@ -244,20 +244,6 @@ export const useAiStore = defineStore("ai", () => {
     }));
   }
 
-  function replaceMessage(
-    tabId: string,
-    messageId: string,
-    replacement: AiMessage,
-  ): void {
-    updateConversation(tabId, conversation => ({
-      ...conversation,
-      messages: conversation.messages.map(message =>
-        message.id === messageId ? replacement : message,
-      ),
-      updatedAt: Date.now(),
-    }));
-  }
-
   function removeMessage(tabId: string, messageId: string): void {
     updateConversation(tabId, conversation => ({
       ...conversation,
@@ -324,6 +310,62 @@ export const useAiStore = defineStore("ai", () => {
     }
   }
 
+  // 注册本轮 agent loop 的三个流式事件监听器，返回 cleanup。
+  // 主进程每轮开始推送 message-start → 前端插入空占位；
+  // chunk 携带 messageId 累加到对应占位；命令卡片按 id upsert。
+  function attachAiStreamListeners(
+    tabId: string,
+    activeStreamIds: Set<string>,
+  ): () => void {
+    const ai = core.orbitSSHApi?.ai;
+
+    if (!ai?.onStreamMessageStart) {
+      return () => {};
+    }
+
+    const removeStart = ai.onStreamMessageStart(event => {
+      if (event.tabId !== tabId) return;
+      activeStreamIds.add(event.messageId);
+      appendMessages(tabId, [
+        {
+          id: event.messageId,
+          role: "assistant",
+          content: "",
+          createdAt: event.createdAt,
+        },
+      ]);
+    });
+    const removeChunk = ai.onStreamChunk(event => {
+      if (event.tabId !== tabId) return;
+      appendStreamChunk(tabId, event.messageId, event.chunk);
+    });
+    const removeCard = ai.onCommandCard(event => {
+      if (event.tabId !== tabId) return;
+      mergeCommandCards(tabId, [event.card]);
+    });
+
+    return () => {
+      removeStart();
+      removeChunk();
+      removeCard();
+    };
+  }
+
+  // 对账：移除本轮所有流式占位消息，再用主进程返回的最终消息整体替换，
+  // 避免流式累积与最终结果重复或残留空占位。
+  function reconcileStreamMessages(
+    tabId: string,
+    activeStreamIds: Set<string>,
+    finalMessages: AiMessage[],
+  ): void {
+    for (const id of activeStreamIds) {
+      removeMessage(tabId, id);
+    }
+    if (finalMessages.length > 0) {
+      appendMessages(tabId, finalMessages);
+    }
+  }
+
   async function sendMessage(context: AiContextInput): Promise<void> {
     const content = inputText.value.trim();
 
@@ -341,22 +383,18 @@ export const useAiStore = defineStore("ai", () => {
     isSending.value = true;
 
     const userMessage = createMessage("user", content);
-    const assistantPlaceholder = createMessage("assistant", "");
     const conversation = getActiveConversation(context.tabId);
     // 发送给主进程的历史只包含既有对话，避免把当前空占位回复传给模型。
     const requestHistory = toPlainAiHistory(
       conversation.messages.slice(-HISTORY_LIMIT),
     );
-    appendMessages(context.tabId, [userMessage, assistantPlaceholder]);
+    appendMessages(context.tabId, [userMessage]);
 
-    // 监听主进程推送的流式 chunk，实时更新占位消息
-    let removeStreamListener = () => {};
-    if (core.orbitSSHApi?.ai?.onStreamChunk) {
-      removeStreamListener = core.orbitSSHApi.ai.onStreamChunk(event => {
-        if (event.tabId !== context.tabId) return;
-        appendStreamChunk(context.tabId, assistantPlaceholder.id, event.chunk);
-      });
-    }
+    const activeStreamIds = new Set<string>();
+    const removeListeners = attachAiStreamListeners(
+      context.tabId,
+      activeStreamIds,
+    );
 
     try {
       const plainContext = toPlainAiContext(context);
@@ -369,24 +407,14 @@ export const useAiStore = defineStore("ai", () => {
         history: requestHistory,
       });
 
-      // 用主进程返回的完整消息替换占位消息（保留流式累积的文本作为兜底）
-      const currentPlaceholder = getActiveConversation(context.tabId).messages.find(
-        message => message.id === assistantPlaceholder.id,
-      );
-      const finalContent =
-        result.message.content || currentPlaceholder?.content || "";
-      replaceMessage(context.tabId, assistantPlaceholder.id, {
-        ...result.message,
-        content: finalContent,
-      });
+      reconcileStreamMessages(context.tabId, activeStreamIds, result.messages);
       mergeCommandCards(context.tabId, result.commandCards);
     } catch (sendError) {
-      // 失败时移除占位消息
-      removeMessage(context.tabId, assistantPlaceholder.id);
+      reconcileStreamMessages(context.tabId, activeStreamIds, []);
       error.value =
         sendError instanceof Error ? sendError.message : String(sendError);
     } finally {
-      removeStreamListener();
+      removeListeners();
       isSending.value = false;
     }
   }
@@ -398,20 +426,10 @@ export const useAiStore = defineStore("ai", () => {
       return;
     }
 
-    updateCommandCard({ ...card, status: "running", error: undefined });
     isSending.value = true;
 
-    // 批准后 AI 可能继续执行 agent loop，也会产生流式回复
-    const assistantPlaceholder = createMessage("assistant", "");
-    appendMessages(card.tabId, [assistantPlaceholder]);
-
-    let removeStreamListener = () => {};
-    if (core.orbitSSHApi?.ai?.onStreamChunk) {
-      removeStreamListener = core.orbitSSHApi.ai.onStreamChunk(event => {
-        if (event.tabId !== card.tabId) return;
-        appendStreamChunk(card.tabId, assistantPlaceholder.id, event.chunk);
-      });
-    }
+    const activeStreamIds = new Set<string>();
+    const removeListeners = attachAiStreamListeners(card.tabId, activeStreamIds);
 
     try {
       const result = await core.orbitSSHApi.ai.runApprovedCommand({
@@ -420,25 +438,17 @@ export const useAiStore = defineStore("ai", () => {
         approvalId,
       });
 
-      const currentPlaceholder = getActiveConversation(card.tabId).messages.find(
-        message => message.id === assistantPlaceholder.id,
-      );
-      const finalContent =
-        result.message.content || currentPlaceholder?.content || "";
-      replaceMessage(card.tabId, assistantPlaceholder.id, {
-        ...result.message,
-        content: finalContent,
-      });
+      reconcileStreamMessages(card.tabId, activeStreamIds, result.messages);
       mergeCommandCards(card.tabId, result.commandCards);
     } catch (runError) {
-      removeMessage(card.tabId, assistantPlaceholder.id);
+      reconcileStreamMessages(card.tabId, activeStreamIds, []);
       updateCommandCard({
         ...card,
         status: "failed",
         error: runError instanceof Error ? runError.message : String(runError),
       });
     } finally {
-      removeStreamListener();
+      removeListeners();
       isSending.value = false;
     }
   }

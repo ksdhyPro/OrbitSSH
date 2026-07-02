@@ -183,20 +183,15 @@ const statusLabels: Record<AiCommandStatus, string> = {
   rejected: "已拒绝",
 };
 
-const sortedCommandCards = computed(() =>
-  [...props.commandCards].sort((a, b) => a.createdAt - b.createdAt),
-);
-
-// 正在流式接收中的最后一条 assistant 消息 ID，用于添加打字光标
-const streamingMessageId = computed(() => {
-  if (!props.isSending) return null;
-  const assistantMessages = props.messages.filter(m => m.role === "assistant");
-  return assistantMessages.at(-1)?.id ?? null;
+// 正在流式接收中的 assistant 消息 ID 集合，用于添加打字光标。
+// agent loop 串行执行，同一时刻只有最后一条 assistant 消息在流式。
+const streamingMessageIds = computed(() => {
+  if (!props.isSending) return new Set<string>();
+  const lastAssistant = props.messages
+    .filter(m => m.role === "assistant")
+    .at(-1);
+  return lastAssistant ? new Set([lastAssistant.id]) : new Set<string>();
 });
-
-const hasProcess = computed(
-  () => props.isSending || props.commandCards.length > 0,
-);
 
 const hasPendingApproval = computed(() =>
   props.commandCards.some(card => card.status === "requires_approval"),
@@ -208,25 +203,13 @@ const hasRunningCommand = computed(() =>
   ),
 );
 
-const isProcessExpanded = ref(false);
+// 是否显示底部总体状态条：发送中、有命令执行中、或有待批准命令。
+const hasStatusBar = computed(
+  () => props.isSending || hasRunningCommand.value || hasPendingApproval.value,
+);
 
-const processCreatedAt = computed(() => {
-  const latestCardTime = Math.max(
-    0,
-    ...props.commandCards.map(card => card.createdAt),
-  );
-  const latestMessageTime = Math.max(
-    0,
-    ...props.messages.map(message => message.createdAt),
-  );
-
-  if (latestCardTime > 0) {
-    return latestCardTime;
-  }
-
-  return props.isSending ? latestMessageTime + 1 : latestMessageTime;
-});
-
+// 把消息和命令卡片合并成统一时间线，按 createdAt 穿插排序，
+// 每张命令卡片作为独立项展示，而不是聚合成单个折叠块。
 const timelineItems = computed(() =>
   [
     ...props.messages.map(message => ({
@@ -235,15 +218,12 @@ const timelineItems = computed(() =>
       createdAt: message.createdAt,
       message,
     })),
-    ...(hasProcess.value
-      ? [
-          {
-            type: "process" as const,
-            id: "ai-process",
-            createdAt: processCreatedAt.value,
-          },
-        ]
-      : []),
+    ...props.commandCards.map(card => ({
+      type: "card" as const,
+      id: card.id,
+      createdAt: card.createdAt,
+      card,
+    })),
   ].sort((a, b) => a.createdAt - b.createdAt),
 );
 
@@ -390,23 +370,12 @@ watch(
   },
 );
 
-// 展开/收起过程卡片时重新滚动，确保内容可见
-watch(
-  () => isProcessExpanded.value,
-  () => {
-    if (isNearMessageBottom()) {
-      void scheduleScrollToBottom("smooth");
-    }
-  },
-);
-
+// 出现待批准命令时滚动到底部，确保批准按钮可见。
 watch(
   () => hasPendingApproval.value,
   hasPending => {
-    if (hasPending) {
-      isProcessExpanded.value = true;
-    } else if (hasRunningCommand.value || props.isSending) {
-      isProcessExpanded.value = false;
+    if (hasPending && isNearMessageBottom()) {
+      void scheduleScrollToBottom("smooth");
     }
   },
 );
@@ -443,6 +412,31 @@ function getCommandAuditText(card: AiCommandCard): string {
   }
 
   return "待处理";
+}
+
+// 把毫秒格式化为人类可读的耗时：
+// < 1 分钟 →「x秒」；< 1 小时 →「x分钟x秒」；≥ 1 小时 →「x小时x分钟x秒」（超过 24 小时仍按累计小时显示）。
+function formatDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "未知";
+  const totalSeconds = Math.floor(durationMs / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}秒`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (totalMinutes < 60) {
+    return seconds > 0 ? `${totalMinutes}分钟${seconds}秒` : `${totalMinutes}分钟`;
+  }
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}小时${minutes}分钟${seconds}秒` : `${hours}小时${seconds}秒`;
+}
+
+// 命令卡片耗时文案：running 时显示「执行中」，否则显示格式化耗时。
+function getDurationText(card: AiCommandCard): string | null {
+  if (card.status === "running") return "执行中";
+  if (card.result && Number.isFinite(card.result.durationMs)) {
+    return formatDuration(card.result.durationMs);
+  }
+  return null;
 }
 </script>
 
@@ -505,7 +499,7 @@ function getCommandAuditText(card: AiCommandCard): string {
             :class="[
               'ai-message',
               item.message.role,
-              { streaming: item.message.id === streamingMessageId },
+              { streaming: streamingMessageIds.has(item.message.id) },
             ]">
             <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
             <div
@@ -516,58 +510,73 @@ function getCommandAuditText(card: AiCommandCard): string {
             <p v-else>{{ item.message.content }}</p>
           </article>
 
-          <section
-            v-if="item.type === 'process'"
-            :class="['ai-process', { expanded: isProcessExpanded }]">
-            <button
-              type="button"
-              class="ai-process-toggle"
-              @click="isProcessExpanded = !isProcessExpanded">
-              <span>
-                <span
-                  v-if="processStatusText === '处理中...'"
-                  class="ai-loading-dots"
-                  aria-hidden="true">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </span>
-                {{ processStatusText }}
+          <article
+            v-else-if="item.type === 'card'"
+            :class="['ai-command-card', `is-${item.card.status}`]"
+            :data-status="item.card.status">
+            <header>
+              <span>{{ getCommandAuditText(item.card) }}</span>
+              <strong>{{ statusLabels[item.card.status] }}</strong>
+              <span
+                v-if="getDurationText(item.card)"
+                class="ai-command-duration">{{ getDurationText(item.card) }}</span>
+              <span
+                v-if="item.card.status === 'running'"
+                class="ai-loading-dots"
+                aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
               </span>
-              <strong>{{ isProcessExpanded ? "收起" : "查看过程" }}</strong>
-            </button>
+            </header>
+            <code>{{ item.card.command }}</code>
+            <p class="ai-command-reason">{{ item.card.reason }}</p>
 
-            <div v-if="isProcessExpanded" class="ai-process-body">
-              <article
-                v-for="card in sortedCommandCards"
-                :key="card.id"
-                class="ai-command-card">
-                <header>
-                  <span>{{ getCommandAuditText(card) }}</span>
-                  <strong>{{ statusLabels[card.status] }}</strong>
-                </header>
-                <code>{{ card.command }}</code>
-                <p>{{ card.reason }}</p>
+            <details
+              v-if="item.card.result || item.card.error"
+              class="ai-command-output">
+              <summary>输出</summary>
+              <pre
+                v-if="item.card.result?.stdout"
+                class="ai-stdout">{{ item.card.result.stdout }}</pre>
+              <pre
+                v-if="item.card.result?.stderr"
+                class="ai-stderr">{{ item.card.result.stderr }}</pre>
+              <p v-if="item.card.result" class="ai-exit-meta">
+                退出码：{{ item.card.result.exitCode ?? "未知" }}
+              </p>
+              <pre v-if="item.card.error" class="ai-stderr">{{ item.card.error }}</pre>
+            </details>
 
-                <div class="ai-command-actions">
-                  <button
-                    v-if="card.status === 'requires_approval'"
-                    type="button"
-                    @click="emit('runApproved', card)">
-                    批准执行
-                  </button>
-                  <button
-                    v-if="card.status === 'requires_approval'"
-                    type="button"
-                    class="secondary"
-                    @click="emit('rejectApproval', card)">
-                    拒绝
-                  </button>
-                </div>
-              </article>
+            <div class="ai-command-actions">
+              <button
+                v-if="item.card.status === 'requires_approval'"
+                type="button"
+                @click="emit('runApproved', item.card)">
+                批准执行
+              </button>
+              <button
+                v-if="item.card.status === 'requires_approval'"
+                type="button"
+                class="secondary"
+                @click="emit('rejectApproval', item.card)">
+                拒绝
+              </button>
             </div>
-          </section>
+          </article>
         </template>
+
+        <div v-if="hasStatusBar" class="ai-status-bar">
+          <span
+            v-if="processStatusText === '处理中...'"
+            class="ai-loading-dots"
+            aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+          {{ processStatusText }}
+        </div>
       </section>
 
       <footer class="ai-compose">
