@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.3
+
+1. Fixed the SFTP context menu staying open after creating a remote file or folder.
+2. Fixed `Ctrl+A` while editing a newly created or renamed SFTP item so it selects the input text instead of selecting all files.
+3. Improved macOS remote system stats collection by handling BSD `df`, `vm_stat`, and macOS shell output differences more reliably.
+4. Improved SSH terminal Chinese input and output with streaming UTF-8 decoding and UTF-8 locale requests through SSH environment variables.
+5. Improved macOS SSH terminal initialization by removing interactive long commands that could pollute shell history; initial path sync now uses a non-interactive command.
+6. Improved macOS terminal directory color support by requesting `CLICOLOR` through SSH environment variables when the server accepts environment forwarding.
+
 ## v1.1.2
 
 - Added a default local terminal. OrbitSSH now opens a "Local" tab on startup, entering `C:\` on Windows and the user home directory on Linux and macOS.

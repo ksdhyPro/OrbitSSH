@@ -1,6 +1,7 @@
 import type { WebContents } from "electron";
 import { exec, execFile } from "node:child_process";
 import os from "node:os";
+import { StringDecoder } from "node:string_decoder";
 import { promisify } from "node:util";
 import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
@@ -36,6 +37,7 @@ interface SshTerminalSession extends BaseTerminalSession {
   kind: "ssh";
   sshClient: Client;
   shellStream?: ClientChannel;
+  outputDecoder: StringDecoder;
 }
 
 interface LocalTerminalSession extends BaseTerminalSession {
@@ -94,18 +96,23 @@ const UNIX_STATS_SCRIPT = [
   '  os_ver=$(sw_vers -productVersion 2>/dev/null)',
   '  [ -n "$os_ver" ] && os_name="macOS ${os_ver}" || os_name="macOS"',
   "  cpu=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage:/ {gsub(/%/,\"\"); printf \"%.0f\", 100-$7}')",
+  '  [ -z "$cpu" ] && cpu=0',
   "  mem_total=$(sysctl -n hw.memsize 2>/dev/null || echo 0)",
   "  pg=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)",
-  "  w=$(vm_stat 2>/dev/null | awk '/wired/ {v=$NF; gsub(/\\./,\"\",v); print v}')",
-  "  a=$(vm_stat 2>/dev/null | awk '/^Pages active/ {v=$NF; gsub(/\\./,\"\",v); print v}')",
-  "  c=$(vm_stat 2>/dev/null | awk '/compressor/ {v=$NF; gsub(/\\./,\"\",v); print v}')",
-  "  mem_used=$(( (${w:-0} + ${a:-0} + ${c:-0}) * pg ))",
-  '  mem_pct=$(awk "BEGIN {printf \\"%.0f\\", $mem_used/$mem_total*100}")',
-  "  disk_line=$(df -B1 . 2>/dev/null | awk 'NR==2{print $4, $2}')",
+  "  mem_used=$(vm_stat 2>/dev/null | awk -v pg=\"$pg\" '/Pages wired down/ {wired=$NF} /^Pages active/ {active=$NF} /^Pages occupied by compressor/ {compressed=$NF} END {gsub(/\\./,\"\",wired); gsub(/\\./,\"\",active); gsub(/\\./,\"\",compressed); printf \"%.0f\", (wired+active+compressed)*pg}')",
+  '  [ -z "$mem_used" ] && mem_used=0',
+  '  if [ "${mem_total:-0}" -gt 0 ] 2>/dev/null; then mem_pct=$(awk "BEGIN {printf \\"%.0f\\", $mem_used/$mem_total*100}"); else mem_pct=0; fi',
+  "  disk_line=$(df -k . 2>/dev/null | awk 'NR==2{printf \"%.0f %.0f\", $4*1024, $2*1024}')",
   "  set -- $disk_line; disk_free=${1:-0}; disk_total=${2:-0}",
   "fi",
   'printf \'{"cpu":%s,"mem_pct":%s,"mem_used":%s,"mem_total":%s,"disk_free":%s,"disk_total":%s,"os_type":"%s","os_name":"%s"}\\n\' \\',
   '  "$cpu" "$mem_pct" "$mem_used" "$mem_total" "$disk_free" "$disk_total" "$os" "$os_name"',
+].join("\n");
+
+const UNIX_STATS_COMMAND = [
+  "/bin/sh -s <<'ORBITSSH_STATS'",
+  UNIX_STATS_SCRIPT,
+  "ORBITSSH_STATS",
 ].join("\n");
 
 const WINDOWS_STATS_SCRIPT = [
@@ -337,7 +344,17 @@ function parseStatsOutput(raw: string): RemoteSystemStats | null {
   try {
     // Windows PowerShell 输出的 JSON 带转义反引号，统一处理
     const sanitized = raw.replace(/`/g, "");
-    const parsed = JSON.parse(sanitized) as Record<string, unknown>;
+    const jsonStart = sanitized.indexOf("{");
+    const jsonEnd = sanitized.lastIndexOf("}");
+
+    if (jsonStart < 0 || jsonEnd <= jsonStart) {
+      return null;
+    }
+
+    // 远端 shell 启动脚本可能输出欢迎语，只截取统计 JSON 解析。
+    const parsed = JSON.parse(
+      sanitized.slice(jsonStart, jsonEnd + 1),
+    ) as Record<string, unknown>;
 
     return {
       cpuUsage:
@@ -538,7 +555,7 @@ export async function getRemoteSystemStats(
     const script =
       cachedOS.type === "windows"
         ? `powershell -NoProfile -Command "${WINDOWS_STATS_SCRIPT}"`
-        : UNIX_STATS_SCRIPT;
+        : UNIX_STATS_COMMAND;
 
     const output = await execSshCommand(session.sshClient, script);
     const stats = parseStatsOutput(output);
@@ -554,7 +571,7 @@ export async function getRemoteSystemStats(
   try {
     const output = await execSshCommand(
       session.sshClient,
-      UNIX_STATS_SCRIPT,
+      UNIX_STATS_COMMAND,
     );
     const stats = parseStatsOutput(output);
 
@@ -704,45 +721,75 @@ function createSafeErrorMessage(error: unknown): string {
   return "SSH 连接失败";
 }
 
-function createShellPathIntegrationCommand(): string {
-  return (
-    [
-      // 禁用 history 记录，避免初始化命令堆积到 .bash_history（bash: set +o history，zsh: fc -p）
-      'if [ -n "$BASH_VERSION" ]; then set +o history; elif [ -n "$ZSH_VERSION" ]; then fc -p /dev/null 2>/dev/null; fi',
-      // 初始化远端 shell 的 ls 颜色配置，避免不同服务器 alias 差异导致 ls 无颜色。
-      "export CLICOLOR=1",
-      'if command -v dircolors >/dev/null 2>&1; then eval "$(dircolors -b 2>/dev/null)" 2>/dev/null || true; fi',
-      'if ls --color=auto -d . >/dev/null 2>&1; then alias ls="ls --color=auto"; elif ls -G -d . >/dev/null 2>&1; then alias ls="ls -G"; fi',
-      '__orbitssh_emit_pwd(){ printf \'\\033]7;file://%s%s\\007\' "$HOSTNAME" "$PWD"; }',
-      'if [ -n "$BASH_VERSION" ]; then PROMPT_COMMAND="__orbitssh_emit_pwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"; fi',
-      'if [ -n "$ZSH_VERSION" ]; then case " ${precmd_functions[*]} " in *" __orbitssh_emit_pwd "*) ;; *) precmd_functions+=(__orbitssh_emit_pwd);; esac; fi',
-      "__orbitssh_emit_pwd",
-      // 恢复 history 记录
-      'if [ -n "$BASH_VERSION" ]; then set -o history; elif [ -n "$ZSH_VERSION" ]; then fc -P 2>/dev/null; fi',
-      "stty echo 2>/dev/null",
-      "printf '\\r\\033[K'",
-    ].join("; ") + "\n"
-  );
+function createSshShellEnv(): NodeJS.ProcessEnv {
+  return {
+    LANG: "en_US.UTF-8",
+    LC_CTYPE: "en_US.UTF-8",
+    LC_ALL: "",
+    CLICOLOR: "1",
+  };
 }
 
-function installShellPathIntegration(session: SshTerminalSession): void {
-  if (!session.shellStream) {
+function forwardSshShellData(
+  session: SshTerminalSession,
+  data: string,
+): void {
+  touchTerminalSession(session);
+
+  if (!data) {
     return;
   }
 
-  session.shellStream.write("stty -echo 2>/dev/null\n");
+  appendTerminalOutput(session, data);
+  session.webContents.send("terminal:data", {
+    tabId: session.tabId,
+    data,
+  });
+}
 
+function forwardSshShellBuffer(
+  session: SshTerminalSession,
+  data: Buffer,
+): void {
+  // SSH 输出可能把一个中文 UTF-8 字符拆成多个 Buffer，必须流式解码。
+  const decoded = session.outputDecoder.write(data);
+  forwardSshShellData(session, decoded);
+}
+
+function installShellPathIntegration(session: SshTerminalSession): void {
   setTimeout(() => {
-    if (!terminalSessions.has(session.tabId) || !session.shellStream) {
+    if (!terminalSessions.has(session.tabId)) {
       return;
     }
 
-    session.shellStream.write(createShellPathIntegrationCommand());
+    void execSshCommand(session.sshClient, "pwd", 3000)
+      .then((path) => {
+        if (!terminalSessions.has(session.tabId) || !path.startsWith("/")) {
+          return;
+        }
+
+        session.webContents.send("terminal:data", {
+          tabId: session.tabId,
+          data: `\x1b]7;file://${path}\x07`,
+        });
+      })
+      .catch((error) => {
+        writeAppLog({
+          scope: "main.ssh",
+          level: "warn",
+          message: "初始化终端路径同步失败",
+          data: {
+            tabId: session.tabId,
+            serverId: session.serverId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
   }, pathIntegrationInstallDelayMs);
 
   writeAppLog({
     scope: "main.ssh",
-    message: "已注入终端路径同步脚本",
+    message: "已调度终端路径同步",
     data: { tabId: session.tabId, serverId: session.serverId },
   });
 }
@@ -852,6 +899,7 @@ export function openTerminalSession(
     kind: "ssh",
     webContents,
     sshClient,
+    outputDecoder: new StringDecoder("utf8"),
     status: "connecting",
     lastActiveAt: Date.now(),
     outputBuffer: "",
@@ -892,6 +940,7 @@ export function openTerminalSession(
           cols: 80,
           rows: 24,
         },
+        { env: createSshShellEnv() },
         (error, stream) => {
           if (error) {
             sendStatus(session, "error", createSafeErrorMessage(error));
@@ -914,12 +963,7 @@ export function openTerminalSession(
           sendStatus(session, "connected");
 
           stream.on("data", (data: Buffer) => {
-            touchTerminalSession(session);
-            appendTerminalOutput(session, data.toString("utf8"));
-            webContents.send("terminal:data", {
-              tabId,
-              data: data.toString("utf8"),
-            });
+            forwardSshShellBuffer(session, data);
           });
 
           stream.on("close", () => {
@@ -999,7 +1043,8 @@ export function writeTerminalInput(tabId: string, data: string): void {
     return;
   }
 
-  session.shellStream?.write(data);
+  // SSH 输入显式按 UTF-8 写入，保证中文按终端编码传给远端 shell。
+  session.shellStream?.write(Buffer.from(data, "utf8"));
 }
 
 export function resizeTerminal(input: TerminalResizeInput): void {
@@ -1130,6 +1175,7 @@ export function reconnectTerminalSession(
     kind: "ssh",
     webContents: sessionWebContents,
     sshClient,
+    outputDecoder: new StringDecoder("utf8"),
     status: "connecting",
     lastActiveAt: Date.now(),
     outputBuffer,
@@ -1148,6 +1194,7 @@ export function reconnectTerminalSession(
       });
       sshClient.shell(
         { term: "xterm-256color", cols: 80, rows: 24 },
+        { env: createSshShellEnv() },
         (error, stream) => {
           if (error) {
             sendStatus(session, "error", createSafeErrorMessage(error));
@@ -1164,12 +1211,7 @@ export function reconnectTerminalSession(
           sendStatus(session, "connected");
 
           stream.on("data", (data: Buffer) => {
-            touchTerminalSession(session);
-            appendTerminalOutput(session, data.toString("utf8"));
-            sessionWebContents.send("terminal:data", {
-              tabId,
-              data: data.toString("utf8"),
-            });
+            forwardSshShellBuffer(session, data);
           });
 
           stream.on("close", () => {

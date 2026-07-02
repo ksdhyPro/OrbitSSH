@@ -715,6 +715,7 @@ export const useSftpStore = defineStore("sftp", () => {
     const newPath =
       parentPath === "/" ? `/${placeholderName}` : `${parentPath}/${placeholderName}`;
 
+    closeFileContextMenu();
     closeBlankContextMenu();
 
     try {

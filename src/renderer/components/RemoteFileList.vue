@@ -267,6 +267,13 @@ function handleMarqueePointerUp(event: PointerEvent): void {
   emit("marqueeSelect", getMarqueeSelectedPaths());
   stopMarqueeSelection();
 }
+
+// 输入框内的全选快捷键只作用于文件名文本，避免冒泡触发文件列表全选。
+function handleRenameInputKeydown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+    event.stopPropagation();
+  }
+}
 </script>
 
 <template>
@@ -345,6 +352,7 @@ function handleMarqueePointerUp(event: PointerEvent): void {
         "
         @keydown.enter.prevent="emit('commitRename')"
         @keydown.esc.prevent="emit('cancelRename')"
+        @keydown="handleRenameInputKeydown"
         @blur="emit('commitRename')"
         @contextmenu.prevent.stop />
       <span v-else class="remote-file-name">{{ node.name }}</span>
