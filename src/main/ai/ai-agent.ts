@@ -9,7 +9,11 @@ import type {
   AiRejectedCommandInput,
   AiStreamChunkEvent,
 } from "../../shared/ai.js";
-import type { AiModelConfig, AiProvider, AppSettings } from "../../shared/settings.js";
+import type {
+  AiModelConfig,
+  AiProvider,
+  AppSettings,
+} from "../../shared/settings.js";
 import type { WebContents } from "electron";
 import { writeAppLog } from "../logger.js";
 import { executeTerminalCommand } from "../ssh/session-manager.js";
@@ -98,7 +102,7 @@ const aiTools = [
   },
 ];
 
-const maxAgentCommandCount = 6;
+const maxAgentCommandCount = 30;
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new Map<string, PendingApprovalState>();
 const activeRequests = new Map<string, AbortController>();
@@ -305,7 +309,11 @@ function buildCommandsFromToolArguments(rawArgs: unknown): ParsedAiCommand[] {
 }
 
 function buildToolCallCommands(
-  rawToolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: unknown } }>,
+  rawToolCalls: Array<{
+    id?: string;
+    type?: string;
+    function?: { name?: string; arguments?: unknown };
+  }>,
 ): ParsedAiCommand[] {
   return rawToolCalls.flatMap(tc =>
     buildCommandsFromToolArguments(tc.function?.arguments),
@@ -313,7 +321,11 @@ function buildToolCallCommands(
 }
 
 function summarizeToolCalls(
-  rawToolCalls: Array<{ id?: string; type?: string; function?: { name?: string; arguments?: unknown } }>,
+  rawToolCalls: Array<{
+    id?: string;
+    type?: string;
+    function?: { name?: string; arguments?: unknown };
+  }>,
 ): Array<{ name: string; argumentsPreview: string }> {
   return rawToolCalls.map(tc => ({
     name: tc.function?.name ?? "",
@@ -360,9 +372,10 @@ function createAiRequestErrorResponse(error: unknown): ParsedAssistantResponse {
 
 // 获取当前启用的 AI 配置；配置不完整时回退本地建议，避免发起无效网络请求。
 function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
-  const activeConfig = settings.ai.configs.find(
-    config => config.id === settings.ai.activeConfigId,
-  ) ?? settings.ai.configs[0];
+  const activeConfig =
+    settings.ai.configs.find(
+      config => config.id === settings.ai.activeConfigId,
+    ) ?? settings.ai.configs[0];
 
   if (
     !settings.ai.enabled ||
@@ -696,7 +709,7 @@ async function collectSseStream(
   }
 
   const streamedToolCalls = Array.from(toolCallsByIndex.values()).filter(
-    (tc) => tc.name && tc.arguments,
+    tc => tc.name && tc.arguments,
   );
 
   // SSE 路径拿到了内容或工具调用，直接返回
@@ -717,7 +730,8 @@ async function collectSseStream(
     fallbackContent =
       typeof message.content === "string" ? message.content.trim() : "";
 
-    const rawToolCalls = (message.tool_calls as Array<Record<string, unknown>>) ?? [];
+    const rawToolCalls =
+      (message.tool_calls as Array<Record<string, unknown>>) ?? [];
     for (const tc of rawToolCalls) {
       const fn = tc.function as Record<string, unknown> | undefined;
       if (fn?.name && typeof fn.arguments === "string") {
@@ -753,9 +767,10 @@ async function collectSseStream(
 
   writeAppLog({
     scope: "main.ai",
-    message: fallbackContent || fallbackToolCalls.length > 0
-      ? "SSE 无增量，已用非流式 JSON 回退解析"
-      : "SSE 与回退均无有效内容",
+    message:
+      fallbackContent || fallbackToolCalls.length > 0
+        ? "SSE 无增量，已用非流式 JSON 回退解析"
+        : "SSE 与回退均无有效内容",
     data: {
       rawLen: rawText.length,
       rawPreview: rawText.slice(0, 500),
@@ -787,7 +802,8 @@ async function requestAiTurn(
     return createLocalFallback(input, executedCommands);
   }
 
-  const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
+  const providerName =
+    aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
   const requestUrl = `${activeConfig.baseUrl}/chat/completions`;
 
   try {
@@ -849,13 +865,13 @@ async function requestAiTurn(
       // StreamedToolCall 的 arguments 在顶层，buildToolCallCommands 期望
       // { function: { arguments } } 嵌套格式，这里做一次适配。
       const commands = buildToolCallCommands(
-        toolCalls.map((tc) => ({
+        toolCalls.map(tc => ({
           id: tc.id,
           type: "function",
           function: { name: tc.name, arguments: tc.arguments },
         })),
       );
-      const normalizedToolCalls = toolCalls.map((tc) => ({
+      const normalizedToolCalls = toolCalls.map(tc => ({
         id: tc.id,
         type: "function",
         function: { name: tc.name, arguments: tc.arguments },
@@ -887,7 +903,9 @@ async function requestAiTurn(
       });
 
       return {
-        reply: contentText || (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
+        reply:
+          contentText ||
+          (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
         commands,
       };
     }
@@ -896,8 +914,10 @@ async function requestAiTurn(
     const payload = (await response.json()) as Record<string, unknown>;
     const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
     const message = (choice?.message ?? {}) as Record<string, unknown>;
-    const reply = typeof message.content === "string" ? message.content.trim() : "";
-    const rawToolCalls = (message.tool_calls as Array<Record<string, unknown>>) ?? [];
+    const reply =
+      typeof message.content === "string" ? message.content.trim() : "";
+    const rawToolCalls =
+      (message.tool_calls as Array<Record<string, unknown>>) ?? [];
     const legacyFunctionCall = message.function_call as
       | Record<string, unknown>
       | undefined;
@@ -956,7 +976,8 @@ async function requestAiTurn(
     });
 
     return {
-      reply: reply || (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
+      reply:
+        reply || (commands.length > 0 ? "正在执行命令…" : "未收到有效回复。"),
       commands,
     };
   } catch (error) {
