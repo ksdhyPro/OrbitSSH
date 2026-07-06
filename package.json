@@ -26,6 +26,8 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "build/icon.ico",
+      "build/logo.png",
       "package.json"
     ],
     "mac": {

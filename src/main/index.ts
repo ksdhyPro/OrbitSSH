@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, ipcMain } from "electron";
+import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,9 +23,70 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
+let tray: Tray | null = null;
+let isQuitting = false;
+let hasCleanedUpConnections = false;
+
 // Windows: 确保任务栏图标正确、通知分组正确（需在 app.whenReady 之前设置）
 if (process.platform === "win32") {
   app.setAppUserModelId("com.orbitssh.app");
+}
+
+// 获取托盘图标路径，优先使用 Windows ico，其他平台使用现有 png 资源兜底。
+function getTrayIconPath(): string {
+  const iconFile = process.platform === "win32" ? "icon.ico" : "logo.png";
+  return path.join(__dirname, "../../build", iconFile);
+}
+
+// 统一清理连接资源，避免托盘退出和窗口退出重复执行。
+function cleanupConnections(): void {
+  if (hasCleanedUpConnections) {
+    return;
+  }
+
+  hasCleanedUpConnections = true;
+  writeAppLog({
+    scope: "main.app",
+    message: "应用退出，开始清理连接",
+  });
+  closeAllTerminalSessions();
+  void closeAllSftpSessions();
+}
+
+// 创建系统托盘，右键菜单只保留彻底关闭入口。
+function createTray(): void {
+  if (tray) {
+    return;
+  }
+
+  const trayIcon = nativeImage.createFromPath(getTrayIconPath());
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip("OrbitSSH");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "关闭",
+        click: () => {
+          isQuitting = true;
+          cleanupConnections();
+          app.quit();
+        },
+      },
+    ]),
+  );
+}
+
+// 拦截普通窗口关闭行为，改为隐藏到系统托盘。
+function registerCloseToTray(mainWindow: BrowserWindow): void {
+  mainWindow.on("close", (event) => {
+    if (isQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    mainWindow.hide();
+  });
 }
 
 function sendAppMenuAction(
@@ -211,24 +272,27 @@ app.whenReady().then(() => {
   });
   registerBaseIpc();
   const mainWindow = createMainWindow();
+  registerCloseToTray(mainWindow);
+  createTray();
   registerMacApplicationMenu(mainWindow);
   initUpdateManager(mainWindow);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const activatedWindow = createMainWindow();
+      registerCloseToTray(activatedWindow);
       registerMacApplicationMenu(activatedWindow);
     }
   });
 });
 
+app.on("before-quit", () => {
+  isQuitting = true;
+  cleanupConnections();
+});
+
 app.on("window-all-closed", () => {
-  writeAppLog({
-    scope: "main.app",
-    message: "窗口全部关闭，开始清理连接",
-  });
-  closeAllTerminalSessions();
-  void closeAllSftpSessions();
+  cleanupConnections();
 
   if (process.platform !== "darwin") {
     app.quit();
