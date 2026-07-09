@@ -40,6 +40,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   selectNode: [event: MouseEvent, node: RemoteFileListNode];
   openContextMenu: [event: MouseEvent, node: RemoteFileListNode];
+  openBlankContextMenu: [event: MouseEvent];
   openNode: [node: RemoteFileListNode];
   dragStartNode: [event: DragEvent, node: RemoteFileListNode];
   dragOverNode: [event: DragEvent, node: RemoteFileListNode];
@@ -280,7 +281,8 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
   <div
     v-if="nodes.length === 0"
     class="remote-file-empty"
-    @click="emit('clearSelection')">
+    @click="emit('clearSelection')"
+    @contextmenu="emit('openBlankContextMenu', $event)">
     {{ emptyText }}
   </div>
   <ul
@@ -289,6 +291,7 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
     :class="['remote-file-list', listClass]"
     tabindex="0"
     :aria-label="ariaLabel"
+    @contextmenu.self="emit('openBlankContextMenu', $event)"
     @pointerdown="handleListPointerDown"
     @keydown="
       ($event.ctrlKey || $event.metaKey) &&

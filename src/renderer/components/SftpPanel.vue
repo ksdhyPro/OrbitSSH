@@ -156,7 +156,7 @@ const isSftpDisconnected = computed(() =>
       :renaming-path="renaming?.path"
       :renaming-value="renaming?.value"
       :non-draggable-path="activeSftpTree?.root.path"
-      @contextmenu="emit('openBlankContextMenu', $event)"
+      @open-blank-context-menu="emit('openBlankContextMenu', $event)"
       @select-node="(event, node) => emit('selectNode', event, node)"
       @clear-selection="emit('clearSelection')"
       @marquee-select="emit('marqueeSelect', $event)"

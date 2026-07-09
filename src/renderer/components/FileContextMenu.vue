@@ -35,10 +35,22 @@ const emit = defineEmits<{
 const menuItems = computed<ContextMenuItem[]>(() => {
   const node = props.menu.node;
   const count = props.menu.selectedCount;
+  const uploadFileItem = {
+    key: "upload-file",
+    label: "上传文件",
+    icon: arrowUpIcon,
+  };
+  const uploadDirectoryItem = {
+    key: "upload-directory",
+    label: "上传文件夹",
+    icon: arrowUpIcon,
+  };
 
   // 右键目标属于多选选区时，菜单执行批量操作；右键未选中项时不影响既有选区。
   if (props.menu.contextNodeSelected && count > 1) {
     return [
+      uploadFileItem,
+      uploadDirectoryItem,
       {
         key: "delete",
         label: `删除 ${count} 项`,
@@ -63,19 +75,6 @@ const menuItems = computed<ContextMenuItem[]>(() => {
           },
         ]
       : [];
-
-  const uploadFileItem = {
-    key: "upload-file",
-    label: "上传文件",
-    icon: arrowUpIcon,
-    disabled: !props.canUploadRemoteNode(node),
-  };
-  const uploadDirectoryItem = {
-    key: "upload-directory",
-    label: "上传文件夹",
-    icon: arrowUpIcon,
-    disabled: !props.canUploadRemoteNode(node),
-  };
 
   if (node?.type === "directory") {
     return [
@@ -113,6 +112,8 @@ const menuItems = computed<ContextMenuItem[]>(() => {
 
   return [
     ...createItems,
+    uploadFileItem,
+    uploadDirectoryItem,
     primaryItem,
     {
       key: "download",

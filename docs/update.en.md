@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.5
+
+1. Improved SFTP upload entry behavior: the context menu now always shows "Upload File" and "Upload Folder" regardless of the current selection, and uploads always target the current directory.
+2. Improved folder uploads by scanning child entries first, preserving relative paths, and then processing directory creation and file uploads as one queued upload group.
+3. Fixed an issue where resuming a paused upload group could stay stuck in the queued state; paused uploads now wait for the current task to release the transfer slot before resuming.
+4. Improved task center behavior so it opens automatically only when a transfer task is first created, instead of reopening for every progress event.
+5. Improved upload and download temporary-file handling: uploads write to remote `.download` files and downloads write to local `.download` files before renaming them to the final filename after completion.
+6. Improved upload group display in the task center with completed item count, total item count, and the current child item being processed.
+
 ## v1.1.4
 
 - Added terminal copy and paste shortcuts `Ctrl+Shift+C` / `Ctrl+Shift+V` (`Cmd+Shift+C` / `Cmd+Shift+V` on macOS) to copy the current selection and paste clipboard text into the terminal.

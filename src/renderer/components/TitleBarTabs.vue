@@ -188,6 +188,30 @@ function getTaskDirectionText(task: DownloadTask): string {
 
   return "下载";
 }
+
+function getTaskTransferSummary(task: DownloadTask): string {
+  const bytesText =
+    task.totalBytes > 0
+      ? `${formatFileSize(task.transferredBytes)} / ${formatFileSize(task.totalBytes)}`
+      : formatFileSize(task.transferredBytes);
+
+  if (task.direction !== "upload" || !task.uploadEntryCount) {
+    return bytesText;
+  }
+
+  return `${task.uploadedEntryCount ?? 0}/${task.uploadEntryCount} 项 · ${bytesText}`;
+}
+
+function getTaskCurrentItemText(task: DownloadTask): string {
+  if (task.direction !== "upload" || !task.currentUploadPath) {
+    return "";
+  }
+
+  const actionText =
+    task.currentUploadType === "directory" ? "正在创建目录" : "正在上传";
+
+  return `${actionText}：${task.currentUploadPath}`;
+}
 </script>
 
 <template>
@@ -313,13 +337,18 @@ function getTaskDirectionText(task: DownloadTask): string {
               </div>
 
               <div class="tasklist-info">
-                <p v-if="task.status === 'error'">{{ task.error }}</p>
-                <p v-else>
-                  {{ formatFileSize(task.transferredBytes) }}
-                  <template v-if="task.totalBytes > 0">
-                    / {{ formatFileSize(task.totalBytes) }}
+                <div class="tasklist-detail">
+                  <p v-if="task.status === 'error'">{{ task.error }}</p>
+                  <template v-else>
+                    <p>{{ getTaskTransferSummary(task) }}</p>
+                    <p
+                      v-if="getTaskCurrentItemText(task)"
+                      class="tasklist-current-item"
+                    >
+                      {{ getTaskCurrentItemText(task) }}
+                    </p>
                   </template>
-                </p>
+                </div>
                 <div class="tasklist-actions">
                   <template
                     v-if="

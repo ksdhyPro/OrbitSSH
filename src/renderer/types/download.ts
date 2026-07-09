@@ -23,6 +23,10 @@ export interface DownloadTask {
   filePath?: string;
   localPaths?: string[];
   remoteDirectoryPath?: string;
+  uploadEntryCount?: number;
+  uploadedEntryCount?: number;
+  currentUploadPath?: string;
+  currentUploadType?: SftpUploadProgressEvent["currentUploadType"];
   targetDirectoryPath?: string;
   error?: string;
 }

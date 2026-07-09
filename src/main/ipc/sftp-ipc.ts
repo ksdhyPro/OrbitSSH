@@ -6,6 +6,7 @@ import {
   controlRemoteDownloadTask,
   controlRemoteTransferTask,
   controlRemoteUploadTask,
+  createUploadPlan,
   createRemoteDirectory,
   createRemoteFile,
   deleteRemoteNode,
@@ -362,16 +363,19 @@ export function registerSftpIpc(): void {
     }
 
     const taskId = input.taskId ?? randomUUID()
+    const uploadPlan = await createUploadPlan(input.remoteDirectoryPath, result.filePaths)
     const baseEvent = {
       taskId,
       tabId: input.tabId,
-      name: result.filePaths.length === 1 ? result.filePaths[0].split(/[\\/]/).at(-1) ?? '上传任务' : `${result.filePaths.length} 个项目`,
-      path: input.remoteDirectoryPath,
+      name: uploadPlan.name,
+      path: uploadPlan.normalizedRemoteDirectoryPath,
       transferredBytes: 0,
-      totalBytes: 0,
+      totalBytes: uploadPlan.totalBytes,
       speedBytesPerSecond: 0,
-      localPaths: result.filePaths,
-      remoteDirectoryPath: input.remoteDirectoryPath
+      localPaths: uploadPlan.normalizedLocalPaths,
+      remoteDirectoryPath: uploadPlan.normalizedRemoteDirectoryPath,
+      uploadEntryCount: uploadPlan.entries.length,
+      uploadedEntryCount: 0
     }
     event.sender.send('sftp:upload-progress', {
       ...baseEvent,
@@ -380,10 +384,11 @@ export function registerSftpIpc(): void {
 
     void enqueueTransferTask(taskId, () => uploadLocalPathsToRemoteDirectory(
       input.tabId,
-      input.remoteDirectoryPath,
-      result.filePaths,
+      uploadPlan.normalizedRemoteDirectoryPath,
+      uploadPlan.normalizedLocalPaths,
       { taskId },
-      (progressEvent) => event.sender.send('sftp:upload-progress', progressEvent)
+      (progressEvent) => event.sender.send('sftp:upload-progress', progressEvent),
+      uploadPlan
     )).catch((error) => {
       event.sender.send('sftp:upload-progress', {
         ...baseEvent,
@@ -395,8 +400,8 @@ export function registerSftpIpc(): void {
     return {
       uploaded: true,
       taskId,
-      remoteDirectoryPath: input.remoteDirectoryPath,
-      uploadedCount: result.filePaths.length
+      remoteDirectoryPath: uploadPlan.normalizedRemoteDirectoryPath,
+      uploadedCount: uploadPlan.entries.length
     }
   })
 

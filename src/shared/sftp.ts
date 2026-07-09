@@ -110,6 +110,10 @@ export interface SftpUploadProgressEvent {
   speedBytesPerSecond: number
   localPaths: string[]
   remoteDirectoryPath: string
+  uploadEntryCount?: number
+  uploadedEntryCount?: number
+  currentUploadPath?: string
+  currentUploadType?: RemoteFileNode['type']
   error?: string
 }
 

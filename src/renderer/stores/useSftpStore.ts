@@ -1131,14 +1131,21 @@ export const useSftpStore = defineStore("sftp", () => {
     tabId: string,
     sourceType: "file" | "directory",
   ): Promise<void> {
-    const node = fileContextMenu.node;
+    const tree = getSftpTree(tabId);
 
-    if (!node || !tabId || !core.orbitSSHApi || !canUploadRemoteNode(node)) {
+    if (!tabId || !core.orbitSSHApi) {
+      return;
+    }
+
+    // 右键菜单上传始终落到当前所在目录，避免选中目录时改变目标。
+    const targetPath = tree?.homePath;
+
+    if (!targetPath) {
       return;
     }
 
     closeFileContextMenu();
-    await uploadToRemoteDirectory(tabId, node.path, sourceType);
+    await uploadToRemoteDirectory(tabId, targetPath, sourceType);
   }
 
   async function uploadToCurrentDirectory(

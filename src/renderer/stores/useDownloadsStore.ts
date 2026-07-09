@@ -33,7 +33,6 @@ export const useDownloadsStore = defineStore("downloads", () => {
     const existingIndex = downloadTasks.value.findIndex(
       (item) => item.taskId === task.taskId,
     );
-    isTaskListOpen.value = true;
 
     if (existingIndex >= 0) {
       downloadTasks.value = downloadTasks.value.map((item, index) =>
@@ -42,6 +41,8 @@ export const useDownloadsStore = defineStore("downloads", () => {
       return;
     }
 
+    // 新任务首次进入列表时自动打开一次，后续进度消息只更新状态，不再反复弹出任务中心。
+    isTaskListOpen.value = true;
     downloadTasks.value = [task, ...downloadTasks.value].slice(0, 50);
   }
 
@@ -74,6 +75,10 @@ export const useDownloadsStore = defineStore("downloads", () => {
       speedBytesPerSecond: event.speedBytesPerSecond,
       localPaths: event.localPaths,
       remoteDirectoryPath: event.remoteDirectoryPath,
+      uploadEntryCount: event.uploadEntryCount,
+      uploadedEntryCount: event.uploadedEntryCount,
+      currentUploadPath: event.currentUploadPath,
+      currentUploadType: event.currentUploadType,
       error: event.error,
     });
 

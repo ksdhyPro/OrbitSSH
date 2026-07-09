@@ -169,15 +169,32 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: !canTransferFromPane(paneKey),
     },
   ];
+  const uploadItems: ContextMenuItem[] = [
+    {
+      key: "upload-file",
+      label: "上传文件",
+      icon: arrowUpIcon,
+      disabled: !pane.currentPath || pane.loading,
+    },
+    {
+      key: "upload-directory",
+      label: "上传文件夹",
+      icon: arrowUpIcon,
+      disabled: !pane.currentPath || pane.loading,
+    },
+  ];
 
   if (multiContext) {
-    items.push({
-      key: "delete",
-      label: `删除 ${transferContextMenu.selectedCount} 项`,
-      icon: trashIcon,
-      danger: true,
-      disabled: !canDeleteContextNodes(),
-    });
+    items.push(
+      ...uploadItems,
+      {
+        key: "delete",
+        label: `删除 ${transferContextMenu.selectedCount} 项`,
+        icon: trashIcon,
+        danger: true,
+        disabled: !canDeleteContextNodes(),
+      },
+    );
     return items;
   }
 
@@ -196,25 +213,6 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
           },
         ]
       : [];
-  const uploadItems: ContextMenuItem[] = [
-    {
-      key: "upload-file",
-      label: "上传文件",
-      icon: arrowUpIcon,
-      disabled: node
-        ? !sftpStore.canUploadRemoteNode(node)
-        : !pane.currentPath || pane.loading,
-    },
-    {
-      key: "upload-directory",
-      label: "上传文件夹",
-      icon: arrowUpIcon,
-      disabled: node
-        ? !sftpStore.canUploadRemoteNode(node)
-        : !pane.currentPath || pane.loading,
-    },
-  ];
-
   if (!node) {
     items.push(...createItems, ...uploadItems);
     return items;
@@ -256,6 +254,7 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
 
   items.push(
     ...createItems,
+    ...uploadItems,
     primaryItem,
     {
       key: "download",
@@ -990,12 +989,7 @@ async function downloadContextNode(paneKey: TransferPaneKey): Promise<void> {
 }
 
 function getTransferUploadTargetPath(pane: TransferPaneState): string {
-  const node = transferContextMenu.node;
-
-  if (node?.type === "directory") {
-    return node.path;
-  }
-
+  // 文件传输右键上传始终落到当前面板目录，不受右键节点或选区影响。
   return pane.currentPath;
 }
 
