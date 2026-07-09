@@ -12,7 +12,6 @@ import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import closeIcon from "../assets/icons/close.svg";
 import collapseIcon from "../assets/icons/collapse.svg";
 import aiAskIcon from "../assets/icons/ai-ask.svg";
-import aiAutoIcon from "../assets/icons/ai-auto.svg";
 import aiFullIcon from "../assets/icons/ai-full.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { renderMarkdown } from "../utils/markdown";
@@ -48,7 +47,6 @@ const emit = defineEmits<{
 
 const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
   { value: "ask", label: "每次询问", icon: aiAskIcon },
-  { value: "auto", label: "自动审批", icon: aiAutoIcon },
   { value: "full", label: "完全访问", icon: aiFullIcon },
 ];
 
@@ -69,8 +67,7 @@ const modeMenuItems = computed<ContextMenuItem[]>(() =>
 
 const modeDescs: Record<AiMode, string> = {
   ask: "所有命令均会询问确认",
-  auto: "常规命令自动执行",
-  full: "除高危命令均自动执行",
+  full: "除高风险命令均自动执行",
 };
 
 const currentModeOption = computed(

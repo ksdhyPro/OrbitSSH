@@ -1,4 +1,4 @@
-export type AiMode = "ask" | "auto" | "full";
+export type AiMode = "ask" | "full";
 
 export type AiMessageRole = "user" | "assistant" | "system";
 

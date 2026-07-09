@@ -58,12 +58,12 @@ function normalizeAiSpec(value: unknown): AiApiSpec {
 }
 
 function normalizeAiMode(value: unknown): AiSettings['defaultMode'] {
-  if (value === 'ask' || value === 'auto' || value === 'full') {
+  if (value === 'ask' || value === 'full') {
     return value
   }
 
-  if (value === 'readonly') {
-    return 'auto'
+  if (value === 'auto' || value === 'readonly') {
+    return 'full'
   }
 
   if (value === 'suggest' || value === 'approval') {
@@ -138,11 +138,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     enabled: Boolean(value?.enabled),
     activeConfigId,
     configs,
-    defaultMode: normalizeAiMode(mode),
-    allowReadonlyAutoRun:
-      typeof value?.allowReadonlyAutoRun === 'boolean'
-        ? value.allowReadonlyAutoRun
-        : defaultAppSettings.ai.allowReadonlyAutoRun
+    defaultMode: normalizeAiMode(mode)
   }
 }
 

@@ -22,8 +22,9 @@ import { executeTerminalCommand } from "../ssh/session-manager.js";
 import { getTerminalContextSnapshot } from "../ssh/session-manager.js";
 import {
   evaluateAiCommand,
-  isAutoAllowedQueryCommand,
   requiresMandatoryApproval,
+  splitAiShellCommands,
+  type ShellCommandSegment,
 } from "./command-policy.js";
 
 interface ParsedAssistantResponse {
@@ -48,6 +49,10 @@ type ParsedAiCommand = {
   risk: "low" | "medium" | "high";
 };
 
+type QueuedAiCommand = ParsedAiCommand & {
+  separatorBefore: ShellCommandSegment["separatorBefore"];
+};
+
 interface PendingApprovalState {
   input: AiChatInput;
   command: string;
@@ -56,6 +61,9 @@ interface PendingApprovalState {
   cardId: string;
   previousCards: AiCommandCard[];
   executedCommands: ExecutedAiCommandContext[];
+  remainingCommands: QueuedAiCommand[];
+  aggregateResult: AiCommandResult;
+  previousExitCode: number | null;
   createdAt: number;
 }
 
@@ -119,6 +127,22 @@ function truncateText(text: string, limit = 5000): string {
     : text;
 }
 
+function normalizeCommandForCompare(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+
+function findExecutedCommand(
+  executedCommands: ExecutedAiCommandContext[],
+  command: string,
+): ExecutedAiCommandContext | undefined {
+  const normalized = normalizeCommandForCompare(command);
+
+  // 防止模型在已拿到结果后继续申请同一条命令，导致用户反复审批。
+  return executedCommands.find(
+    item => normalizeCommandForCompare(item.command) === normalized,
+  );
+}
+
 function formatExecutedCommands(
   executedCommands: ExecutedAiCommandContext[],
 ): string {
@@ -156,7 +180,7 @@ function buildSystemPrompt(
     "如果已有命令结果足够回答用户问题，不要调用工具，直接在回复里总结结论。",
     "如果还需要继续检查，请调用 run_shell_command 工具提供下一条命令。",
     "涉及写入、重启、删除、权限提升或其他高风险操作时，risk 必须标记为 high。",
-    "模式说明：ask 表示每条命令都需要用户批准；auto 表示只读或有边界的中等范围查询可自动执行，其他命令需批准；full 表示除必须批准或 high 风险命令外可自动执行。",
+    "模式说明：ask 表示每条命令都需要用户批准；full 表示本地黑名单或 high 风险命令需批准，其他命令会自动执行。",
     "回答必须使用中文；命令、路径、服务名和错误文本保持原样。",
     `当前模式：${input.mode}。`,
     `当前标签页：${input.context.tabId || "无"}。`,
@@ -472,12 +496,13 @@ function getNextParsedCommand(parsed: ParsedAssistantResponse): {
 
   const text = command.command.trim();
   const policy = evaluateAiCommand(text);
+  const fallbackRisk =
+    command.risk ?? (policy.decision === "allow_readonly" ? "low" : "medium");
 
   return {
     command: text,
     reason: command.reason || policy.reason,
-    risk:
-      command.risk ?? (policy.decision === "allow_readonly" ? "low" : "medium"),
+    risk: fallbackRisk,
   };
 }
 
@@ -488,10 +513,6 @@ function shouldRequestApproval(
 ): boolean {
   if (mode === "ask") {
     return true;
-  }
-
-  if (mode === "auto") {
-    return !isAutoAllowedQueryCommand(command);
   }
 
   return requiresMandatoryApproval(command, risk);
@@ -604,6 +625,297 @@ function mergeCards(
   }
 
   return previousCards.map(card => (card.id === nextCard.id ? nextCard : card));
+}
+
+function buildCommandQueue(
+  input: AiChatInput,
+  command: ParsedAiCommand,
+): QueuedAiCommand[] {
+  if (input.mode !== "full") {
+    return [{ ...command, separatorBefore: null }];
+  }
+
+  const segments = splitAiShellCommands(command.command);
+  if (segments.length === 0) {
+    return [{ ...command, separatorBefore: null }];
+  }
+
+  return segments.map(segment => ({
+    command: segment.command,
+    reason:
+      segments.length > 1
+        ? `拆分执行：${command.reason}`
+        : command.reason,
+    risk: command.risk,
+    separatorBefore: segment.separatorBefore,
+  }));
+}
+
+function createEmptyCommandResult(): AiCommandResult {
+  return {
+    stdout: "",
+    stderr: "",
+    exitCode: 0,
+    timedOut: false,
+    durationMs: 0,
+  };
+}
+
+function appendSegmentOutput(
+  aggregate: AiCommandResult,
+  command: string,
+  result: AiCommandResult,
+): AiCommandResult {
+  const stdoutBlock = [`$ ${command}`, result.stdout.trim() || "[无输出]"].join(
+    "\n",
+  );
+  const stderrBlock = result.stderr.trim()
+    ? [`$ ${command}`, result.stderr.trim()].join("\n")
+    : "";
+
+  return {
+    stdout: truncateText(
+      [aggregate.stdout, stdoutBlock].filter(Boolean).join("\n\n"),
+      20_000,
+    ),
+    stderr: truncateText(
+      [aggregate.stderr, stderrBlock].filter(Boolean).join("\n\n"),
+      10_000,
+    ),
+    exitCode: result.exitCode,
+    timedOut: aggregate.timedOut || result.timedOut,
+    durationMs: aggregate.durationMs + result.durationMs,
+  };
+}
+
+type QueueExecutionResult =
+  | {
+      status: "continue";
+      messages: AiMessage[];
+      commandCards: AiCommandCard[];
+      executedCommands: ExecutedAiCommandContext[];
+      previousExitCode: number | null;
+    }
+  | {
+      status: "return";
+      result: AiChatResult;
+    };
+
+async function runCommandQueue(
+  input: AiChatInput,
+  signal: AbortSignal,
+  emit: AgentEmitter | undefined,
+  originalCommand: ParsedAiCommand,
+  queuedCommands: QueuedAiCommand[],
+  commandCards: AiCommandCard[],
+  executedCommands: ExecutedAiCommandContext[],
+  messages: AiMessage[],
+  previousExitCode: number | null,
+  options: {
+    aggregateResult?: AiCommandResult;
+    bypassApproval?: boolean;
+    cardCreatedAt?: number;
+    cardId?: string;
+    approvalId?: string;
+  } = {},
+): Promise<QueueExecutionResult> {
+  let nextCards = commandCards;
+  let nextExecutedCommands = executedCommands;
+  let lastExitCode = previousExitCode;
+  let aggregateResult = options.aggregateResult ?? createEmptyCommandResult();
+  const cardId = options.cardId ?? createId();
+  const cardCreatedAt = options.cardCreatedAt ?? Date.now();
+  let hasVisibleCard = nextCards.some(card => card.id === cardId);
+  let hasCompletedOriginalCommand = false;
+
+  const ensureRunningCard = (): void => {
+    if (hasVisibleCard) {
+      return;
+    }
+
+    const runningCard = createRunningCard(
+      input,
+      originalCommand.command,
+      originalCommand.reason,
+      originalCommand.risk,
+      cardId,
+      cardCreatedAt,
+      options.approvalId,
+    );
+    emit?.sendCommandCard(runningCard);
+    nextCards = mergeCards(nextCards, runningCard);
+    hasVisibleCard = true;
+  };
+
+  const completeOriginalCard = (): void => {
+    if (!hasVisibleCard || hasCompletedOriginalCommand) {
+      return;
+    }
+
+    const completedCard = createCompletedCard(
+      input,
+      originalCommand.command,
+      originalCommand.reason,
+      originalCommand.risk,
+      aggregateResult,
+      cardId,
+      cardCreatedAt,
+      options.approvalId,
+    );
+    emit?.sendCommandCard(completedCard);
+    nextCards = mergeCards(nextCards, completedCard);
+    nextExecutedCommands = [
+      ...nextExecutedCommands,
+      {
+        command: originalCommand.command,
+        reason: originalCommand.reason,
+        risk: originalCommand.risk,
+        result: aggregateResult,
+      },
+    ];
+    hasCompletedOriginalCommand = true;
+  };
+
+  for (let index = 0; index < queuedCommands.length; index += 1) {
+    const queuedCommand = queuedCommands[index]!;
+
+    if (signal.aborted) {
+      messages.push(createAssistantMessage("[已终止]"));
+      return {
+        status: "return",
+        result: { messages, commandCards: nextCards },
+      };
+    }
+
+    if (queuedCommand.separatorBefore === "&&" && lastExitCode !== 0) {
+      completeOriginalCard();
+      messages.push(
+        createAssistantMessage(
+          `前一条命令退出码为 ${lastExitCode ?? "未知"}，已按 && 语义停止执行后续拆分命令。`,
+        ),
+      );
+      return {
+        status: "continue",
+        messages,
+        commandCards: nextCards,
+        executedCommands: nextExecutedCommands,
+        previousExitCode: lastExitCode,
+      };
+    }
+
+    if (
+      !options.bypassApproval &&
+      shouldRequestApproval(input.mode, queuedCommand.command, queuedCommand.risk)
+    ) {
+      const approvalId = createId();
+      const approvalCard = createApprovalCard(
+        input,
+        originalCommand.command,
+        originalCommand.reason,
+        originalCommand.risk,
+        approvalId,
+        cardId,
+        cardCreatedAt,
+      );
+      approvalCard.result = aggregateResult.stdout || aggregateResult.stderr
+        ? aggregateResult
+        : undefined;
+
+      emit?.sendCommandCard(approvalCard);
+      const cardsWithApproval = mergeCards(nextCards, approvalCard);
+
+      pendingApprovals.set(approvalId, {
+        input,
+        command: originalCommand.command,
+        reason: originalCommand.reason,
+        risk: originalCommand.risk,
+        cardId,
+        previousCards: cardsWithApproval,
+        executedCommands: nextExecutedCommands,
+        remainingCommands: queuedCommands.slice(index),
+        aggregateResult,
+        previousExitCode: lastExitCode,
+        createdAt: cardCreatedAt,
+      });
+
+      return {
+        status: "return",
+        result: { messages, commandCards: cardsWithApproval },
+      };
+    }
+
+    ensureRunningCard();
+
+    try {
+      writeAppLog({
+        scope: "main.ai",
+        message: "AI 命令自动执行开始",
+        data: {
+          tabId: input.tabId,
+          mode: input.mode,
+          command: queuedCommand.command,
+          risk: queuedCommand.risk,
+        },
+      });
+      const result = await executeTerminalCommand(
+        input.tabId,
+        queuedCommand.command,
+        20_000,
+      );
+      aggregateResult = appendSegmentOutput(
+        aggregateResult,
+        queuedCommand.command,
+        result,
+      );
+      lastExitCode = result.exitCode;
+      writeAppLog({
+        scope: "main.ai",
+        message: "AI 命令自动执行完成",
+        data: {
+          tabId: input.tabId,
+          command: queuedCommand.command,
+          exitCode: result.exitCode,
+          timedOut: result.timedOut,
+          durationMs: result.durationMs,
+        },
+      });
+    } catch (error) {
+      const failedCard = createFailedCard(
+        input,
+        originalCommand.command,
+        originalCommand.reason,
+        originalCommand.risk,
+        error,
+        cardId,
+        cardCreatedAt,
+      );
+      failedCard.result = aggregateResult.stdout || aggregateResult.stderr
+        ? aggregateResult
+        : undefined;
+      emit?.sendCommandCard(failedCard);
+      nextCards = mergeCards(nextCards, failedCard);
+      messages.push(
+        createAssistantMessage(
+          `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+
+      return {
+        status: "return",
+        result: { messages, commandCards: nextCards },
+      };
+    }
+  }
+
+  completeOriginalCard();
+
+  return {
+    status: "continue",
+    messages,
+    commandCards: nextCards,
+    executedCommands: nextExecutedCommands,
+    previousExitCode: lastExitCode,
+  };
 }
 
 // ----- SSE 流式解析（区分 content 文本与 tool_call delta） -----
@@ -1103,6 +1415,9 @@ async function runAgentLoop(
     );
     const reply = parsed.reply?.trim();
     const nextCommand = getNextParsedCommand(parsed);
+    const commandQueue = nextCommand
+      ? buildCommandQueue(input, nextCommand)
+      : [];
 
     // 某轮 AI 只输出工具调用没有文本时，用 reason 拼自然话术，避免空消息。
     const messageContent = reply
@@ -1121,123 +1436,52 @@ async function runAgentLoop(
       return { messages, commandCards };
     }
 
-    // 命令卡片时间戳略早于本轮消息，确保穿插时卡片在 AI 文字上方。
-    const cardCreatedAt = messageCreatedAt - 1;
-
-    if (
-      shouldRequestApproval(input.mode, nextCommand.command, nextCommand.risk)
-    ) {
-      const approvalId = createId();
-      const cardId = createId();
-      const approvalCard = createApprovalCard(
-        input,
-        nextCommand.command,
-        nextCommand.reason,
-        nextCommand.risk,
-        approvalId,
-        cardId,
-        cardCreatedAt,
-      );
-
-      emit?.sendCommandCard(approvalCard);
-
-      pendingApprovals.set(approvalId, {
-        input,
-        command: nextCommand.command,
-        reason: nextCommand.reason,
-        risk: nextCommand.risk,
-        cardId,
-        previousCards: mergeCards(commandCards, approvalCard),
-        executedCommands,
-        createdAt: cardCreatedAt,
-      });
-
-      return {
-        messages,
-        commandCards: mergeCards(commandCards, approvalCard),
-      };
-    }
-
-    // 自动执行：先推"执行中"卡片，让前端实时看到进度，再用同 id 推 completed/failed。
-    const runningCardId = createId();
-    const runningCard = createRunningCard(
-      input,
+    const repeatedCommand = findExecutedCommand(
+      executedCommands,
       nextCommand.command,
-      nextCommand.reason,
-      nextCommand.risk,
-      runningCardId,
-      cardCreatedAt,
     );
-    emit?.sendCommandCard(runningCard);
-    commandCards = mergeCards(commandCards, runningCard);
-
-    try {
-      writeAppLog({
-        scope: "main.ai",
-        message: "AI 命令自动执行开始",
-        data: {
-          tabId: input.tabId,
-          mode: input.mode,
-          command: nextCommand.command,
-          risk: nextCommand.risk,
-        },
-      });
-      const result = await executeTerminalCommand(
-        input.tabId,
-        nextCommand.command,
-        20_000,
-      );
-      const completedCard = createCompletedCard(
-        input,
-        nextCommand.command,
-        nextCommand.reason,
-        nextCommand.risk,
-        result,
-        runningCardId,
-        cardCreatedAt,
-      );
-      emit?.sendCommandCard(completedCard);
-      commandCards = mergeCards(commandCards, completedCard);
-      executedCommands = [
-        ...executedCommands,
-        {
-          command: nextCommand.command,
-          reason: nextCommand.reason,
-          risk: nextCommand.risk,
-          result,
-        },
-      ];
-      writeAppLog({
-        scope: "main.ai",
-        message: "AI 命令自动执行完成",
-        data: {
-          tabId: input.tabId,
-          command: nextCommand.command,
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          durationMs: result.durationMs,
-        },
-      });
-    } catch (error) {
-      const failedCard = createFailedCard(
-        input,
-        nextCommand.command,
-        nextCommand.reason,
-        nextCommand.risk,
-        error,
-        runningCardId,
-        cardCreatedAt,
-      );
-      emit?.sendCommandCard(failedCard);
-      commandCards = mergeCards(commandCards, failedCard);
+    if (repeatedCommand) {
       messages.push(
         createAssistantMessage(
-          `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
+          [
+            `命令 ${nextCommand.command} 刚刚已经执行过，本轮不再重复执行。`,
+            `退出码：${repeatedCommand.result.exitCode ?? "未知"}。`,
+            "请参考上方命令输出继续判断。",
+          ].join("\n"),
         ),
       );
+      writeAppLog({
+        scope: "main.ai",
+        level: "warn",
+        message: "AI 重复请求已执行命令，已阻止继续执行",
+        data: {
+          tabId: input.tabId,
+          command: nextCommand.command,
+          executedCommandCount: executedCommands.length,
+        },
+      });
 
       return { messages, commandCards };
     }
+
+    const queueResult = await runCommandQueue(
+      input,
+      signal,
+      emit,
+      nextCommand,
+      commandQueue,
+      commandCards,
+      executedCommands,
+      messages,
+      null,
+    );
+
+    if (queueResult.status === "return") {
+      return queueResult.result;
+    }
+
+    commandCards = queueResult.commandCards;
+    executedCommands = queueResult.executedCommands;
   }
 
   messages.push(
@@ -1316,8 +1560,10 @@ export async function runApprovedAiCommand(
 
   const emit = makeEmitter(input.tabId, webContents);
   let commandCards = approval.previousCards;
-  const executedCommands = [...approval.executedCommands];
+  let executedCommands = [...approval.executedCommands];
   const messages: AiMessage[] = [];
+  const signal =
+    activeRequests.get(input.tabId)?.signal ?? new AbortController().signal;
 
   // 复用审批卡片的原始时间戳，避免批准/执行时卡片在时间线里跳动位置。
   const previousCard = commandCards.find(card => card.id === approval.cardId);
@@ -1337,34 +1583,37 @@ export async function runApprovedAiCommand(
   commandCards = mergeCards(commandCards, runningCard);
 
   try {
-    const result = await executeTerminalCommand(
-      input.tabId,
-      approval.command,
-      20_000,
-    );
-    const completedCard = createCompletedCard(
+    const queueResult = await runCommandQueue(
       approval.input,
-      approval.command,
-      approval.reason,
-      approval.risk,
-      result,
-      approval.cardId,
-      cardCreatedAt,
-      input.approvalId,
+      signal,
+      emit,
+      {
+        command: approval.command,
+        reason: approval.reason,
+        risk: approval.risk,
+      },
+      approval.remainingCommands,
+      commandCards,
+      executedCommands,
+      messages,
+      approval.previousExitCode,
+      {
+        aggregateResult: approval.aggregateResult,
+        approvalId: input.approvalId,
+        bypassApproval: true,
+        cardCreatedAt,
+        cardId: approval.cardId,
+      },
     );
-    emit?.sendCommandCard(completedCard);
-    commandCards = mergeCards(commandCards, completedCard);
-    executedCommands.push({
-      command: approval.command,
-      reason: approval.reason,
-      risk: approval.risk,
-      result,
-    });
 
-    // 复用当前 Tab 的 AbortSignal，允许用户在批准后仍可终止执行
-    const signal =
-      activeRequests.get(input.tabId)?.signal ?? new AbortController().signal;
-    return runAgentLoop(
+    if (queueResult.status === "return") {
+      return queueResult.result;
+    }
+
+    commandCards = queueResult.commandCards;
+    executedCommands = queueResult.executedCommands;
+
+    const loopResult = await runAgentLoop(
       approval.input,
       settings,
       signal,
@@ -1372,6 +1621,10 @@ export async function runApprovedAiCommand(
       commandCards,
       executedCommands,
     );
+    return {
+      messages: [...messages, ...loopResult.messages],
+      commandCards: loopResult.commandCards,
+    };
   } catch (error) {
     const failedCard = createFailedCard(
       approval.input,

@@ -34,11 +34,10 @@ const emit = defineEmits<{
 
 const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
-const aiModeOptions: AiSettings["defaultMode"][] = ["ask", "auto", "full"];
+const aiModeOptions: AiSettings["defaultMode"][] = ["ask", "full"];
 
 const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
   ask: "每次询问",
-  auto: "自动审批",
   full: "完全访问",
 };
 

@@ -39,8 +39,7 @@ export interface AiSettings {
   enabled: boolean
   activeConfigId: string
   configs: AiModelConfig[]
-  defaultMode: 'ask' | 'auto' | 'full'
-  allowReadonlyAutoRun: boolean
+  defaultMode: 'ask' | 'full'
 }
 
 export interface AppSettings {
@@ -90,7 +89,6 @@ export const defaultAppSettings: AppSettings = {
     enabled: false,
     activeConfigId: '',
     configs: [],
-    defaultMode: 'auto',
-    allowReadonlyAutoRun: true
+    defaultMode: 'full'
   }
 }

@@ -50,7 +50,6 @@ export const useSettingsStore = defineStore("settings", () => {
         activeConfigId: appSettings.ai.activeConfigId,
         configs: appSettings.ai.configs.map(config => ({ ...config })),
         defaultMode: appSettings.ai.defaultMode,
-        allowReadonlyAutoRun: appSettings.ai.allowReadonlyAutoRun,
       },
     };
   }
@@ -119,7 +118,6 @@ export const useSettingsStore = defineStore("settings", () => {
       activeConfigId: value.activeConfigId,
       configs: value.configs.map(config => ({ ...config })),
       defaultMode: value.defaultMode,
-      allowReadonlyAutoRun: value.allowReadonlyAutoRun,
     });
     await saveAppSettings();
   }
@@ -173,7 +171,6 @@ export const useSettingsStore = defineStore("settings", () => {
           activeConfigId: savedSettings.ai.activeConfigId,
           configCount: savedSettings.ai.configs.length,
           defaultMode: savedSettings.ai.defaultMode,
-          allowReadonlyAutoRun: savedSettings.ai.allowReadonlyAutoRun,
           hasActiveApiKey: Boolean(
             savedSettings.ai.configs.find(
               config => config.id === savedSettings.ai.activeConfigId,
