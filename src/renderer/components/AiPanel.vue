@@ -18,6 +18,45 @@ import { renderMarkdown } from "../utils/markdown";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import ContextMenu from "./ContextMenu.vue";
 
+type AiPanelMessage = {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: number;
+  completedAt?: number;
+};
+
+type ProcessTimelineItem =
+  | {
+      type: "assistant";
+      id: string;
+      createdAt: number;
+      message: AiPanelMessage;
+    }
+  | {
+      type: "card";
+      id: string;
+      createdAt: number;
+      card: AiCommandCard;
+    };
+
+type DisplayTimelineItem =
+  | {
+      type: "message";
+      id: string;
+      createdAt: number;
+      message: AiPanelMessage;
+      streaming: boolean;
+    }
+  | {
+      type: "process";
+      id: string;
+      createdAt: number;
+      items: ProcessTimelineItem[];
+      durationMs: number | null;
+      running: boolean;
+    };
+
 const props = defineProps<{
   open: boolean;
   enabled: boolean;
@@ -25,7 +64,7 @@ const props = defineProps<{
   inputText: string;
   isSending: boolean;
   error: string;
-  messages: { id: string; role: string; content: string; createdAt: number }[];
+  messages: AiPanelMessage[];
   commandCards: AiCommandCard[];
   shouldSuggestNewConversation: boolean;
   context: AiContextInput;
@@ -205,24 +244,153 @@ const hasStatusBar = computed(
   () => props.isSending || hasRunningCommand.value || hasPendingApproval.value,
 );
 
-// 把消息和命令卡片合并成统一时间线，按 createdAt 穿插排序，
-// 每张命令卡片作为独立项展示，而不是聚合成单个折叠块。
-const timelineItems = computed(() =>
-  [
+const pendingApprovalCard = computed(
+  () =>
+    props.commandCards.find(card => card.status === "requires_approval") ??
+    null,
+);
+
+function isExecutionAssistantMessage(message: AiPanelMessage): boolean {
+  return /^执行[:：]/.test(message.content.trim());
+}
+
+function getNextUserMessageTime(message: AiPanelMessage): number {
+  return (
+    props.messages.find(
+      item => item.role === "user" && item.createdAt > message.createdAt,
+    )?.createdAt ?? Number.POSITIVE_INFINITY
+  );
+}
+
+function isAssistantConclusion(message: AiPanelMessage): boolean {
+  const content = message.content.trim();
+
+  if (!content || isExecutionAssistantMessage(message)) {
+    return false;
+  }
+
+  const nextUserTime = getNextUserMessageTime(message);
+  const hasLaterCommandInSameTurn = props.commandCards.some(
+    card =>
+      card.createdAt >= message.createdAt && card.createdAt < nextUserTime,
+  );
+
+  if (hasLaterCommandInSameTurn) {
+    return false;
+  }
+
+  return !props.messages.some(
+    item =>
+      item.role === "assistant" &&
+      item.content.trim() &&
+      !isExecutionAssistantMessage(item) &&
+      item.createdAt > message.createdAt &&
+      item.createdAt < nextUserTime,
+  );
+}
+
+function createProcessGroupId(items: ProcessTimelineItem[]): string {
+  return `process-${items.map(item => item.id).join("-")}`;
+}
+
+function pushProcessGroup(
+  timeline: DisplayTimelineItem[],
+  items: ProcessTimelineItem[],
+  options: { turnStartedAt: number | null; completedAt?: number } = {
+    turnStartedAt: null,
+  },
+): void {
+  if (items.length === 0) {
+    return;
+  }
+
+  const running = items.some(
+    item => item.type === "card" && item.card.status === "running",
+  );
+  const durationMs =
+    typeof options.completedAt === "number" &&
+    typeof options.turnStartedAt === "number"
+      ? Math.max(0, options.completedAt - options.turnStartedAt)
+      : null;
+
+  timeline.push({
+    type: "process",
+    id: createProcessGroupId(items),
+    createdAt: items[0]?.createdAt ?? Date.now(),
+    items: [...items],
+    durationMs,
+    running,
+  });
+  items.length = 0;
+}
+
+// 只把用户消息和每轮最终结论作为聊天块；中间解释和命令卡片统一收进过程行。
+const timelineItems = computed<DisplayTimelineItem[]>(() => {
+  const rawItems = [
     ...props.messages.map(message => ({
       type: "message" as const,
       id: message.id,
       createdAt: message.createdAt,
       message,
     })),
-    ...props.commandCards.map(card => ({
-      type: "card" as const,
-      id: card.id,
-      createdAt: card.createdAt,
-      card,
-    })),
-  ].sort((a, b) => a.createdAt - b.createdAt),
-);
+    ...props.commandCards
+      .filter(card => card.status !== "requires_approval")
+      .map(card => ({
+        type: "card" as const,
+        id: card.id,
+        createdAt: card.createdAt,
+        card,
+      })),
+  ].sort((a, b) => a.createdAt - b.createdAt);
+  const timeline: DisplayTimelineItem[] = [];
+  const processItems: ProcessTimelineItem[] = [];
+  let currentTurnStartedAt: number | null = null;
+
+  for (const item of rawItems) {
+    if (item.type === "card") {
+      processItems.push(item);
+      continue;
+    }
+
+    const isUserMessage = item.message.role !== "assistant";
+    const shouldShowAsMessage =
+      isUserMessage || isAssistantConclusion(item.message);
+
+    if (shouldShowAsMessage) {
+      const isAssistantMessage = item.message.role === "assistant";
+      pushProcessGroup(timeline, processItems, {
+        turnStartedAt: currentTurnStartedAt,
+        completedAt: isAssistantMessage
+          ? (item.message.completedAt ?? item.message.createdAt)
+          : undefined,
+      });
+      timeline.push({
+        ...item,
+        type: "message",
+        streaming: streamingMessageIds.value.has(item.message.id),
+      });
+
+      if (item.message.role !== "assistant") {
+        currentTurnStartedAt = item.message.createdAt;
+      }
+      continue;
+    }
+
+    if (item.message.content.trim()) {
+      processItems.push({
+        type: "assistant",
+        id: item.id,
+        createdAt: item.createdAt,
+        message: item.message,
+      });
+    }
+  }
+
+  pushProcessGroup(timeline, processItems, {
+    turnStartedAt: currentTurnStartedAt,
+  });
+  return timeline;
+});
 
 const processStatusText = computed(() => {
   if (hasPendingApproval.value) {
@@ -411,6 +579,54 @@ function getCommandAuditText(card: AiCommandCard): string {
   return "待处理";
 }
 
+function getProcessSummary(items: ProcessTimelineItem[]): string {
+  const commandCount = items.filter(item => item.type === "card").length;
+  const assistantCount = items.filter(item => item.type === "assistant").length;
+  const runningCount = items.filter(
+    item => item.type === "card" && item.card.status === "running",
+  ).length;
+  const failedCount = items.filter(
+    item => item.type === "card" && item.card.status === "failed",
+  ).length;
+  const rejectedCount = items.filter(
+    item => item.type === "card" && item.card.status === "rejected",
+  ).length;
+
+  if (runningCount > 0) {
+    return `执行过程：${commandCount} 条命令，正在处理`;
+  }
+
+  if (failedCount > 0 || rejectedCount > 0) {
+    return `执行过程：${commandCount} 条命令，${failedCount} 条失败，${rejectedCount} 条已拒绝`;
+  }
+
+  if (commandCount > 0) {
+    return `执行过程：${commandCount} 条命令已完成`;
+  }
+
+  return `思考过程：${assistantCount} 条中间说明`;
+}
+
+function getProcessItemTitle(item: ProcessTimelineItem): string {
+  if (item.type === "assistant") {
+    return "中间说明";
+  }
+
+  return `${getCommandAuditText(item.card)} · ${statusLabels[item.card.status]}`;
+}
+
+function getProcessDurationText(
+  item: Extract<DisplayTimelineItem, { type: "process" }>,
+): string | null {
+  if (item.running) {
+    return "执行中";
+  }
+
+  return typeof item.durationMs === "number"
+    ? `用时 ${formatDuration(item.durationMs)}`
+    : null;
+}
+
 // 把毫秒格式化为人类可读的耗时：
 // < 1 分钟 →「x秒」；< 1 小时 →「x分钟x秒」；≥ 1 小时 →「x小时x分钟x秒」（超过 24 小时仍按累计小时显示）。
 function formatDuration(durationMs: number): string {
@@ -425,15 +641,6 @@ function formatDuration(durationMs: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return minutes > 0 ? `${hours}小时${minutes}分钟${seconds}秒` : `${hours}小时${seconds}秒`;
-}
-
-// 命令卡片耗时文案：running 时显示「执行中」，否则显示格式化耗时。
-function getDurationText(card: AiCommandCard): string | null {
-  if (card.status === "running") return "执行中";
-  if (card.result && Number.isFinite(card.result.durationMs)) {
-    return formatDuration(card.result.durationMs);
-  }
-  return null;
 }
 </script>
 
@@ -507,60 +714,56 @@ function getDurationText(card: AiCommandCard): string | null {
             <p v-else>{{ item.message.content }}</p>
           </article>
 
-          <article
-            v-else-if="item.type === 'card'"
-            :class="['ai-command-card', `is-${item.card.status}`]"
-            :data-status="item.card.status">
-            <header>
-              <span>{{ getCommandAuditText(item.card) }}</span>
-              <strong>{{ statusLabels[item.card.status] }}</strong>
+          <details
+            v-else-if="item.type === 'process'"
+            class="ai-process-line">
+            <summary>
+              <span>{{ getProcessSummary(item.items) }}</span>
               <span
-                v-if="getDurationText(item.card)"
-                class="ai-command-duration">{{ getDurationText(item.card) }}</span>
-              <span
-                v-if="item.card.status === 'running'"
-                class="ai-loading-dots"
-                aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
+                v-if="getProcessDurationText(item)"
+                class="ai-process-duration">
+                {{ getProcessDurationText(item) }}
               </span>
-            </header>
-            <code>{{ item.card.command }}</code>
-            <p class="ai-command-reason">{{ item.card.reason }}</p>
+            </summary>
+            <div class="ai-process-content">
+              <section
+                v-for="processItem in item.items"
+                :key="processItem.id"
+                class="ai-process-item">
+                <header>
+                  <span>{{ getProcessItemTitle(processItem) }}</span>
+                </header>
 
-            <details
-              v-if="item.card.result || item.card.error"
-              class="ai-command-output">
-              <summary>输出</summary>
-              <pre
-                v-if="item.card.result?.stdout"
-                class="ai-stdout">{{ item.card.result.stdout }}</pre>
-              <pre
-                v-if="item.card.result?.stderr"
-                class="ai-stderr">{{ item.card.result.stderr }}</pre>
-              <p v-if="item.card.result" class="ai-exit-meta">
-                退出码：{{ item.card.result.exitCode ?? "未知" }}
-              </p>
-              <pre v-if="item.card.error" class="ai-stderr">{{ item.card.error }}</pre>
-            </details>
+                <div
+                  v-if="processItem.type === 'assistant'"
+                  class="ai-process-markdown"
+                  v-html="renderMarkdown(processItem.message.content)">
+                </div>
 
-            <div class="ai-command-actions">
-              <button
-                v-if="item.card.status === 'requires_approval'"
-                type="button"
-                @click="emit('runApproved', item.card)">
-                批准执行
-              </button>
-              <button
-                v-if="item.card.status === 'requires_approval'"
-                type="button"
-                class="secondary"
-                @click="emit('rejectApproval', item.card)">
-                拒绝
-              </button>
+                <template v-else>
+                  <code>{{ processItem.card.command }}</code>
+                  <p>{{ processItem.card.reason }}</p>
+                  <details
+                    v-if="processItem.card.result || processItem.card.error"
+                    class="ai-command-output">
+                    <summary>输出</summary>
+                    <pre
+                      v-if="processItem.card.result?.stdout"
+                      class="ai-stdout">{{ processItem.card.result.stdout }}</pre>
+                    <pre
+                      v-if="processItem.card.result?.stderr"
+                      class="ai-stderr">{{ processItem.card.result.stderr }}</pre>
+                    <p v-if="processItem.card.result" class="ai-exit-meta">
+                      退出码：{{ processItem.card.result.exitCode ?? "未知" }}
+                    </p>
+                    <pre
+                      v-if="processItem.card.error"
+                      class="ai-stderr">{{ processItem.card.error }}</pre>
+                  </details>
+                </template>
+              </section>
             </div>
-          </article>
+          </details>
         </template>
 
         <div v-if="hasStatusBar" class="ai-status-bar">
@@ -577,6 +780,29 @@ function getDurationText(card: AiCommandCard): string | null {
       </section>
 
       <footer class="ai-compose">
+        <article
+          v-if="pendingApprovalCard"
+          class="ai-approval-popover">
+          <header>
+            <span>需要确认</span>
+            <strong>{{ statusLabels[pendingApprovalCard.status] }}</strong>
+          </header>
+          <code>{{ pendingApprovalCard.command }}</code>
+          <p>{{ pendingApprovalCard.reason }}</p>
+          <div class="ai-command-actions">
+            <button
+              type="button"
+              @click="emit('runApproved', pendingApprovalCard)">
+              批准执行
+            </button>
+            <button
+              type="button"
+              class="secondary"
+              @click="emit('rejectApproval', pendingApprovalCard)">
+              拒绝
+            </button>
+          </div>
+        </article>
         <p v-if="error" class="ai-error">{{ error }}</p>
         <textarea
           ref="composeInputEl"

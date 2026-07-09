@@ -16,6 +16,7 @@ export interface AiMessage {
   role: AiMessageRole;
   content: string;
   createdAt: number;
+  completedAt?: number;
 }
 
 export interface AiCommandCard {

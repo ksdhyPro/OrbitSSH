@@ -68,6 +68,7 @@ function toPlainAiHistory(history: AiMessage[]): AiMessage[] {
     role: message.role,
     content: message.content,
     createdAt: message.createdAt,
+    completedAt: message.completedAt,
   }));
 }
 
@@ -358,11 +359,20 @@ export const useAiStore = defineStore("ai", () => {
     activeStreamIds: Set<string>,
     finalMessages: AiMessage[],
   ): void {
+    const completedAt = Date.now();
+    const settledMessages = finalMessages.map(message => ({
+      ...message,
+      completedAt:
+        message.role === "assistant"
+          ? (message.completedAt ?? completedAt)
+          : message.completedAt,
+    }));
+
     for (const id of activeStreamIds) {
       removeMessage(tabId, id);
     }
-    if (finalMessages.length > 0) {
-      appendMessages(tabId, finalMessages);
+    if (settledMessages.length > 0) {
+      appendMessages(tabId, settledMessages);
     }
   }
 

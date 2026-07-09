@@ -84,12 +84,75 @@ const MUST_APPROVE_GENERAL_PATTERNS = [
 
 const SAFE_ARG = "[A-Za-z0-9_./:@%+=,~*?-]+";
 const SAFE_TEXT = "['\"]?[^'\";&|<>`$]{1,160}['\"]?";
+const SAFE_TOOL_NAME = "[A-Za-z0-9_.@+-]+";
+const VERSION_QUERY_TOOLS = [
+  "ansible",
+  "ansible-playbook",
+  "apache2",
+  "aws",
+  "az",
+  "bash",
+  "brew",
+  "cargo",
+  "clang",
+  "clang\\+\\+",
+  "cmake",
+  "composer",
+  "curl",
+  "docker",
+  "docker-compose",
+  "gcc",
+  "g\\+\\+",
+  "gcloud",
+  "git",
+  "go",
+  "helm",
+  "httpd",
+  "java",
+  "javac",
+  "jq",
+  "kubectl",
+  "make",
+  "mvn",
+  "mysql",
+  "nginx",
+  "node",
+  "npm",
+  "openssl",
+  "perl",
+  "php",
+  "pip",
+  "pip3",
+  "pm2",
+  "pnpm",
+  "psql",
+  "python",
+  "python3",
+  "redis-cli",
+  "redis-server",
+  "ruby",
+  "rustc",
+  "ssh",
+  "supervisorctl",
+  "terraform",
+  "tsc",
+  "wget",
+  "yarn",
+  "yq",
+].join("|");
+const VERSION_QUERY_PATTERN = new RegExp(
+  `^(?:${VERSION_QUERY_TOOLS})\\s+(?:--version|-version|-v|-V|version)$`,
+);
 
 const READONLY_PATTERNS: RegExp[] = [
+  /^true$/,
+  /^false$/,
   /^pwd$/,
   /^whoami$/,
   /^id(?:\s+[A-Za-z0-9_.-]+)?$/,
   /^which\s+[A-Za-z0-9_.@-]+$/,
+  new RegExp(`^command\\s+-v\\s+${SAFE_TOOL_NAME}$`),
+  new RegExp(`^type\\s+(?:-a\\s+|-P\\s+|--path\\s+)?${SAFE_TOOL_NAME}$`),
   /^hostname$/,
   /^uname\s+-a$/,
   /^date$/,
@@ -140,8 +203,16 @@ const READONLY_PATTERNS: RegExp[] = [
   /^docker\s+logs\s+--tail\s+\d{1,4}\s+[A-Za-z0-9_.-]+$/,
   /^docker\s+inspect\s+[A-Za-z0-9_.-]+$/,
   /^docker\s+stats\s+--no-stream$/,
+  /^docker\s+compose\s+version$/,
   /^docker\s+compose\s+ps$/,
   /^docker\s+compose\s+logs\s+--tail\s+\d{1,4}(?:\s+[A-Za-z0-9_.-]+)?$/,
+  /^kubectl\s+version\s+--client(?:\s+--short)?$/,
+  /^kubectl\s+(?:get|describe)\s+[A-Za-z0-9_.@/-]+(?:\s+[A-Za-z0-9_.@/-]+)?(?:\s+-n\s+[A-Za-z0-9_.-]+)?$/,
+  /^helm\s+(?:version|list)(?:\s+-A)?$/,
+  /^terraform\s+version$/,
+  /^ansible\s+--version$/,
+  /^ansible-playbook\s+--version$/,
+  /^pm2\s+(?:list|status|--version|-v)$/,
   /^git\s+status$/,
   /^git\s+log\s+--oneline\s+-n\s+\d{1,3}$/,
   /^git\s+branch$/,
@@ -166,7 +237,7 @@ const PIPE_FILTER_PATTERNS: RegExp[] = [
   /^uniq(?:\s+-[A-Za-z]{1,6})?$/,
 ];
 
-const ECHO_SEPARATOR_PATTERN = /^echo\s+['"]?[-=_ ./:\[\]()A-Za-z0-9]{1,80}['"]?$/;
+const ECHO_SEPARATOR_PATTERN = new RegExp(`^echo\\s+${SAFE_TEXT}$`);
 
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ");
@@ -176,17 +247,23 @@ function getFirstWord(normalized: string): string {
   return normalized.split(" ")[0]?.toLowerCase() ?? "";
 }
 
+function getCommandBasename(firstWord: string): string {
+  // 兼容 /usr/bin/tool 这类绝对路径，只用命令名判断高风险前缀。
+  return firstWord.replace(/\\/g, "/").split("/").pop() ?? firstWord;
+}
+
 function stripAllowedReadonlyRedirects(normalized: string): string {
-  // 只允许把 stderr 合并到 stdout，且必须出现在命令末尾或管道前。
-  return normalized.replace(/\s+2>&1(?=\s*(?:\||$))/g, "").trim();
+  // 只允许只读查询丢弃/合并输出，且必须出现在命令边界前。
+  return normalized
+    .replace(/\s+2>&1(?=\s*(?:[|&;]|$))/g, "")
+    .replace(/\s+1>&2(?=\s*(?:[|&;]|$))/g, "")
+    .replace(/\s+(?:[12])?>{1,2}\s*\/dev\/null(?=\s*(?:[|&;]|$))/g, "")
+    .trim();
 }
 
 function stripAllowedOutputMerges(normalized: string): string {
-  // full 模式下允许常见的 stderr/stdout 合并，不把它当作写重定向。
-  return normalized
-    .replace(/\s+2>&1(?=\s*(?:\||$))/g, "")
-    .replace(/\s+1>&2(?=\s*(?:\||$))/g, "")
-    .trim();
+  // full 模式下允许常见的 stderr/stdout 合并和 /dev/null 丢弃输出。
+  return stripAllowedReadonlyRedirects(normalized);
 }
 
 function hasWriteRedirect(normalized: string): boolean {
@@ -269,6 +346,78 @@ export function splitAiShellCommands(command: string): ShellCommandSegment[] {
   return segments;
 }
 
+function splitShellFallbackSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  const pushCurrent = (): void => {
+    const text = current.trim();
+    if (text) {
+      segments.push(text);
+    }
+    current = "";
+  };
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index] ?? "";
+    const next = command[index + 1] ?? "";
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      current += char;
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === "|" && next === "|") {
+      pushCurrent();
+      index += 1;
+      continue;
+    }
+
+    current += char;
+  }
+
+  pushCurrent();
+  return segments;
+}
+
+function isReadonlyFallbackChain(normalized: string): boolean {
+  const segments = splitShellFallbackSegments(normalized);
+
+  if (
+    segments.length < 2 ||
+    segments.length > 8 ||
+    segments.some(segment => !segment)
+  ) {
+    return false;
+  }
+
+  // 只允许只读查询之间用 || 做兼容性 fallback，例如 dpkg 查不到再试 rpm。
+  return segments.every(segment => isReadonlyCommandOrPipeline(segment));
+}
+
 function getMandatoryApprovalReason(
   command: string,
   risk: "low" | "medium" | "high" = "medium",
@@ -284,11 +433,17 @@ function getMandatoryApprovalReason(
     return "AI 标记为高风险命令";
   }
 
-  if (normalized.includes("||")) {
+  const commandName = getCommandBasename(firstWord);
+
+  if (
+    normalized.includes("||") &&
+    !isReadonlyFallbackChain(normalized) &&
+    !isReadonlyCompoundCommand(normalized)
+  ) {
     return "检测到高风险 Shell 条件控制符";
   }
 
-  if (MUST_APPROVE_PREFIXES.includes(firstWord)) {
+  if (MUST_APPROVE_PREFIXES.includes(commandName)) {
     return "命中高风险命令前缀";
   }
 
@@ -330,6 +485,18 @@ function containsDangerousToken(
 }
 
 function isReadonlySingleCommand(normalized: string): boolean {
+  const firstWord = getFirstWord(normalized);
+  const commandName = getCommandBasename(firstWord);
+
+  // 只读推断不能覆盖高风险命令，即使它看起来像版本查询也交给审批层处理。
+  if (MUST_APPROVE_PREFIXES.includes(commandName)) {
+    return false;
+  }
+
+  if (VERSION_QUERY_PATTERN.test(normalized)) {
+    return true;
+  }
+
   if (READONLY_PATTERNS.some(pattern => pattern.test(normalized))) {
     return true;
   }
@@ -390,10 +557,6 @@ function isReadonlyCommandOrPipeline(normalized: string): boolean {
 }
 
 function isReadonlyCompoundCommand(normalized: string): boolean {
-  if (normalized.includes("||")) {
-    return false;
-  }
-
   const segments = normalized.split(/\s*(?:;|&&)\s*/).map(segment => segment.trim());
 
   if (
@@ -404,8 +567,12 @@ function isReadonlyCompoundCommand(normalized: string): boolean {
     return false;
   }
 
-  // 分号只允许串联已确认的只读查询或纯分隔输出。
-  return segments.every(segment => isReadonlyCommandOrPipeline(segment));
+  // 分号只允许串联已确认的只读查询、只读 fallback 或纯分隔输出。
+  return segments.every(
+    segment =>
+      isReadonlyCommandOrPipeline(segment) ||
+      (segment.includes("||") && isReadonlyFallbackChain(segment)),
+  );
 }
 
 function isBoundedJournalctlCommand(normalized: string): boolean {
@@ -439,6 +606,10 @@ export function isAutoAllowedQueryCommand(command: string): boolean {
     return isReadonlyCompoundCommand(normalized);
   }
 
+  if (normalized.includes("||")) {
+    return isReadonlyFallbackChain(normalized);
+  }
+
   return isReadonlyCommandOrPipeline(normalized);
 }
 
@@ -462,7 +633,7 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
 
   const firstWord = getFirstWord(normalized);
 
-  if (DENIED_PREFIXES.includes(firstWord)) {
+  if (DENIED_PREFIXES.includes(getCommandBasename(firstWord))) {
     return {
       decision: "requires_approval",
       reason: "检测到高危命令前缀，必须确认",

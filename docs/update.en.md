@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.6
+
+1. Improved the AI auto-execution policy by simplifying modes to "Ask Every Time" and "Full Access". In Full Access, commands are split for risk checks first, then the original AI command is executed once, avoiding duplicated sub-command cards in the conversation.
+2. Improved AI command approval UX: pending approvals now appear as a floating card above the input box, disappear after approval or rejection, and are folded into the process details above.
+3. Improved AI conversation display by hiding intermediate self-summaries and command execution cards. The conversation now shows user questions and final conclusions by default, with execution details available in the collapsible process row.
+4. Improved AI process duration reporting. The process row now shows the full wall-clock time from the user question to the final AI conclusion, including AI requests, command execution, and approval waiting time.
+5. Improved AI command safety detection for common readonly operations, including readonly fallback chains, `/dev/null` output discard, `command -v`, `docker-compose --version`, `kubectl version --client`, and `pm2 status`, while still requiring approval for installs, deletes, restarts, and file-writing redirects.
+6. Improved repeated-command handling by recognizing equivalent command paths and clarifying successful no-output results, reducing repeated diagnostic queries.
+7. Added resizing support for the right AI panel, with terminal layout refitting after width changes.
+8. Improved window dragging behavior so only the top titlebar drag zone can move the window; content areas and controls are no longer draggable by default.
+
 ## v1.1.5
 
 1. Improved SFTP upload entry behavior: the context menu now always shows "Upload File" and "Upload Folder" regardless of the current selection, and uploads always target the current directory.

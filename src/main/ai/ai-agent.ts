@@ -131,16 +131,119 @@ function normalizeCommandForCompare(command: string): string {
   return command.trim().replace(/\s+/g, " ");
 }
 
+function stripShellTokenQuotes(token: string): string {
+  if (token.length < 2) {
+    return token;
+  }
+
+  const first = token[0];
+  const last = token[token.length - 1];
+  return (first === "'" && last === "'") || (first === '"' && last === '"')
+    ? token.slice(1, -1)
+    : token;
+}
+
+function readLeadingShellToken(command: string): {
+  token: string;
+  rest: string;
+} | null {
+  const trimmed = command.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  let quote: '"' | "'" | null = null;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+
+    if ((char === '"' || char === "'") && trimmed[index - 1] !== "\\") {
+      quote = quote === char ? null : (quote ?? char);
+      continue;
+    }
+
+    if (!quote && /\s/.test(char)) {
+      return {
+        token: trimmed.slice(0, index),
+        rest: trimmed.slice(index).trimStart(),
+      };
+    }
+  }
+
+  return { token: trimmed, rest: "" };
+}
+
+function getPathBasename(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return normalized.split("/").pop() || path;
+}
+
+function normalizeCommandForSemanticCompare(command: string): string {
+  const normalized = normalizeCommandForCompare(command);
+  const leading = readLeadingShellToken(normalized);
+
+  if (!leading) {
+    return normalized;
+  }
+
+  const executable = stripShellTokenQuotes(leading.token);
+  if (!/[\\/]/.test(executable)) {
+    return normalized;
+  }
+
+  // AI 常会在 PATH 命令和绝对路径命令之间摇摆，这里按可执行文件名归一化去重。
+  const alias = getPathBasename(executable);
+  return normalizeCommandForCompare(
+    leading.rest ? `${alias} ${leading.rest}` : alias,
+  );
+}
+
 function findExecutedCommand(
   executedCommands: ExecutedAiCommandContext[],
   command: string,
 ): ExecutedAiCommandContext | undefined {
   const normalized = normalizeCommandForCompare(command);
+  const semanticNormalized = normalizeCommandForSemanticCompare(command);
 
   // 防止模型在已拿到结果后继续申请同一条命令，导致用户反复审批。
   return executedCommands.find(
-    item => normalizeCommandForCompare(item.command) === normalized,
+    item =>
+      normalizeCommandForCompare(item.command) === normalized ||
+      normalizeCommandForSemanticCompare(item.command) === semanticNormalized,
   );
+}
+
+function formatCommandResultForPrompt(result: AiCommandResult): string {
+  const output = [result.stdout, result.stderr]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  if (output) {
+    return truncateText(output, 10000);
+  }
+
+  if (result.timedOut) {
+    return "无输出（命令超时，结果可能不完整）";
+  }
+
+  if (result.exitCode === 0) {
+    return "无输出（命令已成功返回，通常表示没有可打印内容或当前无匹配项）";
+  }
+
+  return "无输出";
+}
+
+function formatRepeatedCommandMessage(
+  command: string,
+  result: AiCommandResult,
+): string {
+  return [
+    `命令 ${command} 刚刚已经执行过，本轮不再重复执行。`,
+    `退出码：${result.exitCode ?? "未知"}。`,
+    `结果摘要：\n${truncateText(formatCommandResultForPrompt(result), 2000)}`,
+    "请基于以上结果继续判断。",
+  ].join("\n");
 }
 
 function formatExecutedCommands(
@@ -152,15 +255,11 @@ function formatExecutedCommands(
 
   return executedCommands
     .map((item, index) => {
-      const output = [item.result.stdout, item.result.stderr]
-        .filter(Boolean)
-        .join("\n")
-        .trim();
       return [
         `#${index + 1} ${item.command}`,
         `退出码：${item.result.exitCode ?? "未知"}`,
         `耗时：${item.result.durationMs}ms`,
-        `输出：\n${truncateText(output || "无输出", 10000)}`,
+        `输出：\n${formatCommandResultForPrompt(item.result)}`,
       ].join("\n");
     })
     .join("\n\n");
@@ -178,10 +277,12 @@ function buildSystemPrompt(
     "用简洁中文回复。需要执行 Shell 命令时调用 run_shell_command 工具。",
     "每次最多调用一次工具，除非已经可以回答用户问题。",
     "如果已有命令结果足够回答用户问题，不要调用工具，直接在回复里总结结论。",
+    "已执行命令里 exitCode=0 表示命令已经成功完成；输出为无输出时不要当作未执行，也不要为了同一信息重复调用等价命令。",
     "如果还需要继续检查，请调用 run_shell_command 工具提供下一条命令。",
     "涉及写入、重启、删除、权限提升或其他高风险操作时，risk 必须标记为 high。",
     "模式说明：ask 表示每条命令都需要用户批准；full 表示本地黑名单或 high 风险命令需批准，其他命令会自动执行。",
     "回答必须使用中文；命令、路径、服务名和错误文本保持原样。",
+    "调用工具时，command不需要生成格式化的例如echo等无关输出，纯命令即可。",
     `当前模式：${input.mode}。`,
     `当前标签页：${input.context.tabId || "无"}。`,
     `服务器：${input.context.serverName || "未知"}。`,
@@ -643,49 +744,10 @@ function buildCommandQueue(
   return segments.map(segment => ({
     command: segment.command,
     reason:
-      segments.length > 1
-        ? `拆分执行：${command.reason}`
-        : command.reason,
+      segments.length > 1 ? `拆分执行：${command.reason}` : command.reason,
     risk: command.risk,
     separatorBefore: segment.separatorBefore,
   }));
-}
-
-function createEmptyCommandResult(): AiCommandResult {
-  return {
-    stdout: "",
-    stderr: "",
-    exitCode: 0,
-    timedOut: false,
-    durationMs: 0,
-  };
-}
-
-function appendSegmentOutput(
-  aggregate: AiCommandResult,
-  command: string,
-  result: AiCommandResult,
-): AiCommandResult {
-  const stdoutBlock = [`$ ${command}`, result.stdout.trim() || "[无输出]"].join(
-    "\n",
-  );
-  const stderrBlock = result.stderr.trim()
-    ? [`$ ${command}`, result.stderr.trim()].join("\n")
-    : "";
-
-  return {
-    stdout: truncateText(
-      [aggregate.stdout, stdoutBlock].filter(Boolean).join("\n\n"),
-      20_000,
-    ),
-    stderr: truncateText(
-      [aggregate.stderr, stderrBlock].filter(Boolean).join("\n\n"),
-      10_000,
-    ),
-    exitCode: result.exitCode,
-    timedOut: aggregate.timedOut || result.timedOut,
-    durationMs: aggregate.durationMs + result.durationMs,
-  };
 }
 
 type QueueExecutionResult =
@@ -721,12 +783,9 @@ async function runCommandQueue(
 ): Promise<QueueExecutionResult> {
   let nextCards = commandCards;
   let nextExecutedCommands = executedCommands;
-  let lastExitCode = previousExitCode;
-  let aggregateResult = options.aggregateResult ?? createEmptyCommandResult();
   const cardId = options.cardId ?? createId();
   const cardCreatedAt = options.cardCreatedAt ?? Date.now();
   let hasVisibleCard = nextCards.some(card => card.id === cardId);
-  let hasCompletedOriginalCommand = false;
 
   const ensureRunningCard = (): void => {
     if (hasVisibleCard) {
@@ -747,17 +806,95 @@ async function runCommandQueue(
     hasVisibleCard = true;
   };
 
-  const completeOriginalCard = (): void => {
-    if (!hasVisibleCard || hasCompletedOriginalCommand) {
-      return;
+  for (let index = 0; index < queuedCommands.length; index += 1) {
+    const queuedCommand = queuedCommands[index]!;
+
+    if (signal.aborted) {
+      messages.push(createAssistantMessage("[已终止]"));
+      return {
+        status: "return",
+        result: { messages, commandCards: nextCards },
+      };
     }
 
+    if (
+      !options.bypassApproval &&
+      shouldRequestApproval(
+        input.mode,
+        queuedCommand.command,
+        queuedCommand.risk,
+      )
+    ) {
+      const approvalId = createId();
+      const approvalReason =
+        queuedCommand.command === originalCommand.command
+          ? originalCommand.reason
+          : `需确认子命令：${queuedCommand.command}\n${originalCommand.reason}`;
+      const approvalCard = createApprovalCard(
+        input,
+        originalCommand.command,
+        approvalReason,
+        queuedCommand.risk === "high" ? "high" : originalCommand.risk,
+        approvalId,
+        cardId,
+        cardCreatedAt,
+      );
+
+      emit?.sendCommandCard(approvalCard);
+      const cardsWithApproval = mergeCards(nextCards, approvalCard);
+
+      pendingApprovals.set(approvalId, {
+        input,
+        command: originalCommand.command,
+        reason: approvalReason,
+        risk: queuedCommand.risk === "high" ? "high" : originalCommand.risk,
+        cardId,
+        previousCards: cardsWithApproval,
+        executedCommands: nextExecutedCommands,
+        remainingCommands: queuedCommands,
+        aggregateResult: {
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 0,
+        },
+        previousExitCode,
+        createdAt: cardCreatedAt,
+      });
+
+      return {
+        status: "return",
+        result: { messages, commandCards: cardsWithApproval },
+      };
+    }
+  }
+
+  ensureRunningCard();
+
+  try {
+    writeAppLog({
+      scope: "main.ai",
+      message: "AI 原始命令执行开始",
+      data: {
+        tabId: input.tabId,
+        mode: input.mode,
+        command: originalCommand.command,
+        risk: originalCommand.risk,
+        splitCommandCount: queuedCommands.length,
+      },
+    });
+    const result = await executeTerminalCommand(
+      input.tabId,
+      originalCommand.command,
+      20_000,
+    );
     const completedCard = createCompletedCard(
       input,
       originalCommand.command,
       originalCommand.reason,
       originalCommand.risk,
-      aggregateResult,
+      result,
       cardId,
       cardCreatedAt,
       options.approvalId,
@@ -770,152 +907,50 @@ async function runCommandQueue(
         command: originalCommand.command,
         reason: originalCommand.reason,
         risk: originalCommand.risk,
-        result: aggregateResult,
+        result,
       },
     ];
-    hasCompletedOriginalCommand = true;
-  };
-
-  for (let index = 0; index < queuedCommands.length; index += 1) {
-    const queuedCommand = queuedCommands[index]!;
-
-    if (signal.aborted) {
-      messages.push(createAssistantMessage("[已终止]"));
-      return {
-        status: "return",
-        result: { messages, commandCards: nextCards },
-      };
-    }
-
-    if (queuedCommand.separatorBefore === "&&" && lastExitCode !== 0) {
-      completeOriginalCard();
-      messages.push(
-        createAssistantMessage(
-          `前一条命令退出码为 ${lastExitCode ?? "未知"}，已按 && 语义停止执行后续拆分命令。`,
-        ),
-      );
-      return {
-        status: "continue",
-        messages,
-        commandCards: nextCards,
-        executedCommands: nextExecutedCommands,
-        previousExitCode: lastExitCode,
-      };
-    }
-
-    if (
-      !options.bypassApproval &&
-      shouldRequestApproval(input.mode, queuedCommand.command, queuedCommand.risk)
-    ) {
-      const approvalId = createId();
-      const approvalCard = createApprovalCard(
-        input,
-        originalCommand.command,
-        originalCommand.reason,
-        originalCommand.risk,
-        approvalId,
-        cardId,
-        cardCreatedAt,
-      );
-      approvalCard.result = aggregateResult.stdout || aggregateResult.stderr
-        ? aggregateResult
-        : undefined;
-
-      emit?.sendCommandCard(approvalCard);
-      const cardsWithApproval = mergeCards(nextCards, approvalCard);
-
-      pendingApprovals.set(approvalId, {
-        input,
+    writeAppLog({
+      scope: "main.ai",
+      message: "AI 原始命令执行完成",
+      data: {
+        tabId: input.tabId,
         command: originalCommand.command,
-        reason: originalCommand.reason,
-        risk: originalCommand.risk,
-        cardId,
-        previousCards: cardsWithApproval,
-        executedCommands: nextExecutedCommands,
-        remainingCommands: queuedCommands.slice(index),
-        aggregateResult,
-        previousExitCode: lastExitCode,
-        createdAt: cardCreatedAt,
-      });
+        exitCode: result.exitCode,
+        timedOut: result.timedOut,
+        durationMs: result.durationMs,
+      },
+    });
+    return {
+      status: "continue",
+      messages,
+      commandCards: nextCards,
+      executedCommands: nextExecutedCommands,
+      previousExitCode: result.exitCode,
+    };
+  } catch (error) {
+    const failedCard = createFailedCard(
+      input,
+      originalCommand.command,
+      originalCommand.reason,
+      originalCommand.risk,
+      error,
+      cardId,
+      cardCreatedAt,
+    );
+    emit?.sendCommandCard(failedCard);
+    nextCards = mergeCards(nextCards, failedCard);
+    messages.push(
+      createAssistantMessage(
+        `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
 
-      return {
-        status: "return",
-        result: { messages, commandCards: cardsWithApproval },
-      };
-    }
-
-    ensureRunningCard();
-
-    try {
-      writeAppLog({
-        scope: "main.ai",
-        message: "AI 命令自动执行开始",
-        data: {
-          tabId: input.tabId,
-          mode: input.mode,
-          command: queuedCommand.command,
-          risk: queuedCommand.risk,
-        },
-      });
-      const result = await executeTerminalCommand(
-        input.tabId,
-        queuedCommand.command,
-        20_000,
-      );
-      aggregateResult = appendSegmentOutput(
-        aggregateResult,
-        queuedCommand.command,
-        result,
-      );
-      lastExitCode = result.exitCode;
-      writeAppLog({
-        scope: "main.ai",
-        message: "AI 命令自动执行完成",
-        data: {
-          tabId: input.tabId,
-          command: queuedCommand.command,
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          durationMs: result.durationMs,
-        },
-      });
-    } catch (error) {
-      const failedCard = createFailedCard(
-        input,
-        originalCommand.command,
-        originalCommand.reason,
-        originalCommand.risk,
-        error,
-        cardId,
-        cardCreatedAt,
-      );
-      failedCard.result = aggregateResult.stdout || aggregateResult.stderr
-        ? aggregateResult
-        : undefined;
-      emit?.sendCommandCard(failedCard);
-      nextCards = mergeCards(nextCards, failedCard);
-      messages.push(
-        createAssistantMessage(
-          `命令执行失败：${error instanceof Error ? error.message : String(error)}`,
-        ),
-      );
-
-      return {
-        status: "return",
-        result: { messages, commandCards: nextCards },
-      };
-    }
+    return {
+      status: "return",
+      result: { messages, commandCards: nextCards },
+    };
   }
-
-  completeOriginalCard();
-
-  return {
-    status: "continue",
-    messages,
-    commandCards: nextCards,
-    executedCommands: nextExecutedCommands,
-    previousExitCode: lastExitCode,
-  };
 }
 
 // ----- SSE 流式解析（区分 content 文本与 tool_call delta） -----
@@ -1418,6 +1453,36 @@ async function runAgentLoop(
     const commandQueue = nextCommand
       ? buildCommandQueue(input, nextCommand)
       : [];
+    const repeatedCommand = nextCommand
+      ? findExecutedCommand(executedCommands, nextCommand.command)
+      : undefined;
+
+    if (nextCommand && repeatedCommand) {
+      const repeatedMessage = formatRepeatedCommandMessage(
+        nextCommand.command,
+        repeatedCommand.result,
+      );
+      messages.push({
+        id: messageId,
+        role: "assistant",
+        content: reply ? `${reply}\n\n${repeatedMessage}` : repeatedMessage,
+        createdAt: messageCreatedAt,
+      });
+
+      writeAppLog({
+        scope: "main.ai",
+        level: "warn",
+        message: "AI 重复请求已执行命令，已阻止继续执行",
+        data: {
+          tabId: input.tabId,
+          command: nextCommand.command,
+          matchedCommand: repeatedCommand.command,
+          executedCommandCount: executedCommands.length,
+        },
+      });
+
+      return { messages, commandCards };
+    }
 
     // 某轮 AI 只输出工具调用没有文本时，用 reason 拼自然话术，避免空消息。
     const messageContent = reply
@@ -1433,34 +1498,6 @@ async function runAgentLoop(
     });
 
     if (!nextCommand) {
-      return { messages, commandCards };
-    }
-
-    const repeatedCommand = findExecutedCommand(
-      executedCommands,
-      nextCommand.command,
-    );
-    if (repeatedCommand) {
-      messages.push(
-        createAssistantMessage(
-          [
-            `命令 ${nextCommand.command} 刚刚已经执行过，本轮不再重复执行。`,
-            `退出码：${repeatedCommand.result.exitCode ?? "未知"}。`,
-            "请参考上方命令输出继续判断。",
-          ].join("\n"),
-        ),
-      );
-      writeAppLog({
-        scope: "main.ai",
-        level: "warn",
-        message: "AI 重复请求已执行命令，已阻止继续执行",
-        data: {
-          tabId: input.tabId,
-          command: nextCommand.command,
-          executedCommandCount: executedCommands.length,
-        },
-      });
-
       return { messages, commandCards };
     }
 

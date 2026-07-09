@@ -118,8 +118,13 @@ const { isWindowMaximized, isWindowFullScreen } = storeToRefs(windowStore);
 const { minimizeWindow, toggleMaximizeWindow, closeWindow } = windowStore;
 
 // sidebar
-const { sidebarWidth, isResizingSidebar } = storeToRefs(sidebarStore);
-const { startSidebarResize } = sidebarStore;
+const {
+  sidebarWidth,
+  isResizingSidebar,
+  aiPanelWidth,
+  isResizingAiPanel,
+} = storeToRefs(sidebarStore);
+const { startSidebarResize, startAiPanelResize } = sidebarStore;
 
 // downloads
 const {
@@ -895,6 +900,11 @@ watch(sidebarWidth, () => {
   scheduleTerminalFit();
 });
 
+// AI 面板宽度或折叠状态变化都会改变终端可用宽度，需要重新 fit。
+watch([aiPanelWidth, isAiPanelOpen], () => {
+  scheduleTerminalFit();
+});
+
 watch(
   tabs,
   currentTabs => {
@@ -986,6 +996,7 @@ onUnmounted(() => {
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
   sidebarStore.stopSidebarResize();
+  sidebarStore.stopAiPanelResize();
 });
 </script>
 
@@ -1012,7 +1023,11 @@ onUnmounted(() => {
 
     <div
       class="content-shell"
-      :style="{ '--sidebar-width': `${sidebarWidth}px` }">
+      :style="{
+        '--sidebar-width': `${sidebarWidth}px`,
+        '--ai-panel-width': `${aiPanelWidth}px`,
+        '--ai-panel-resizer-width': isAiPanelOpen ? '6px' : '0px',
+      }">
       <aside class="sidebar">
         <ServerSidebar
           :servers="servers"
@@ -1098,6 +1113,17 @@ onUnmounted(() => {
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"
         @close-search="closeTerminalSearch"
         @open-connection-dialog="openConnectionDialog" />
+
+      <div
+        :class="[
+          'ai-panel-resizer',
+          { active: isResizingAiPanel, collapsed: !isAiPanelOpen },
+        ]"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整 AI 面板宽度"
+        :aria-hidden="!isAiPanelOpen"
+        @mousedown="isAiPanelOpen && startAiPanelResize($event)"></div>
 
       <AiPanel
         :open="isAiPanelOpen"
