@@ -6,6 +6,7 @@ import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
   ServerInput,
+  ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server";
 import type { AppSettings, UpdateStatusInfo } from "../shared/settings";
@@ -76,6 +77,7 @@ declare global {
         list: () => Promise<ServerConfig[]>;
         create: (input: ServerInput) => Promise<ServerConfig>;
         update: (input: ServerUpdateInput) => Promise<ServerConfig>;
+        setPinned: (input: ServerPinInput) => Promise<ServerConfig>;
         delete: (serverId: string) => Promise<boolean>;
       };
       settings: {

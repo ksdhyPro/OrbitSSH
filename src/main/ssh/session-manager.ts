@@ -1,8 +1,6 @@
 import type { WebContents } from "electron";
-import { exec, execFile } from "node:child_process";
 import os from "node:os";
 import { StringDecoder } from "node:string_decoder";
-import { promisify } from "node:util";
 import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
 import { Client, type ClientChannel } from "ssh2";
@@ -22,6 +20,18 @@ import type {
 } from "../../shared/terminal.js";
 import { LOCAL_TERMINAL_SERVER_ID } from "../../shared/terminal.js";
 import type { AiCommandResult } from "../../shared/ai.js";
+import {
+  executeLocalTerminalCommand,
+  executeSshTextCommand,
+  executeSshTerminalCommand,
+} from "./terminal-command.js";
+import {
+  clearRemoteSystemStatsCache,
+  collectTerminalSystemStats,
+  type RemoteSystemStats,
+} from "./terminal-system-stats.js";
+
+export type { RemoteSystemStats } from "./terminal-system-stats.js";
 
 interface BaseTerminalSession {
   tabId: string;
@@ -48,145 +58,10 @@ interface LocalTerminalSession extends BaseTerminalSession {
 
 type TerminalSession = SshTerminalSession | LocalTerminalSession;
 
-export interface RemoteSystemStats {
-  cpuUsage: number;
-  memoryUsage: number;
-  memoryUsed: number;
-  memoryTotal: number;
-  diskFree: number;
-  diskTotal: number;
-  osType: "linux" | "darwin" | "windows" | "";
-  osName: string;
-}
-
-interface CachedOSInfo {
-  type: "linux" | "darwin" | "windows";
-  name: string;
-}
-
-interface CpuSample {
-  idle: number;
-  total: number;
-}
-
 const terminalSessions = new Map<string, TerminalSession>();
-const remoteOSCache = new Map<string, CachedOSInfo>();
 const pathIntegrationInstallDelayMs = 120;
 const idleDisconnectCheckIntervalMs = 30_000;
 const maxTerminalOutputBufferChars = 12_000;
-const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
-let localCpuSample: CpuSample | undefined;
-
-// ----- 远端脚本模板 -----
-
-const UNIX_STATS_SCRIPT = [
-  "os=$(uname -s 2>/dev/null)",
-  "os_name=\"$os\"",
-  'if [ "$os" = "Linux" ]; then',
-  '  os_name=$(cat /etc/os-release 2>/dev/null | awk -F= \'/^PRETTY_NAME=/ {gsub(/"/,""); print $2}\')',
-  '  [ -z "$os_name" ] && os_name="Linux"',
-  "  cpu=$(top -bn1 2>/dev/null | awk '/^%Cpu\\(s\\):/ {printf \"%.0f\", 100-$8}')",
-  "  [ -z \"$cpu\" ] && cpu=$(awk '{u=$2+$4; t=u+$5} END {printf \"%.0f\", u/t*100}' /proc/stat 2>/dev/null || echo 0)",
-  '  mem_line=$(free 2>/dev/null | awk \'/^Mem:/ {printf "%.0f %d %d", $3/$2*100, $3*1024, $2*1024}\')',
-  "  set -- $mem_line; mem_pct=${1:-0}; mem_used=${2:-0}; mem_total=${3:-0}",
-  "  disk_line=$(df -B1 . 2>/dev/null | awk 'NR==2{print $4, $2}')",
-  "  set -- $disk_line; disk_free=${1:-0}; disk_total=${2:-0}",
-  'elif [ "$os" = "Darwin" ]; then',
-  '  os_ver=$(sw_vers -productVersion 2>/dev/null)',
-  '  [ -n "$os_ver" ] && os_name="macOS ${os_ver}" || os_name="macOS"',
-  "  cpu=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage:/ {gsub(/%/,\"\"); printf \"%.0f\", 100-$7}')",
-  '  [ -z "$cpu" ] && cpu=0',
-  "  mem_total=$(sysctl -n hw.memsize 2>/dev/null || echo 0)",
-  "  pg=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)",
-  "  mem_used=$(vm_stat 2>/dev/null | awk -v pg=\"$pg\" '/Pages wired down/ {wired=$NF} /^Pages active/ {active=$NF} /^Pages occupied by compressor/ {compressed=$NF} END {gsub(/\\./,\"\",wired); gsub(/\\./,\"\",active); gsub(/\\./,\"\",compressed); printf \"%.0f\", (wired+active+compressed)*pg}')",
-  '  [ -z "$mem_used" ] && mem_used=0',
-  '  if [ "${mem_total:-0}" -gt 0 ] 2>/dev/null; then mem_pct=$(awk "BEGIN {printf \\"%.0f\\", $mem_used/$mem_total*100}"); else mem_pct=0; fi',
-  "  disk_line=$(df -k . 2>/dev/null | awk 'NR==2{printf \"%.0f %.0f\", $4*1024, $2*1024}')",
-  "  set -- $disk_line; disk_free=${1:-0}; disk_total=${2:-0}",
-  "fi",
-  'printf \'{"cpu":%s,"mem_pct":%s,"mem_used":%s,"mem_total":%s,"disk_free":%s,"disk_total":%s,"os_type":"%s","os_name":"%s"}\\n\' \\',
-  '  "$cpu" "$mem_pct" "$mem_used" "$mem_total" "$disk_free" "$disk_total" "$os" "$os_name"',
-].join("\n");
-
-const UNIX_STATS_COMMAND = [
-  "/bin/sh -s <<'ORBITSSH_STATS'",
-  UNIX_STATS_SCRIPT,
-  "ORBITSSH_STATS",
-].join("\n");
-
-const WINDOWS_STATS_SCRIPT = [
-  "$cpu=(Get-Counter '\\Processor(_Total)\\% Processor Time' -ErrorAction SilentlyContinue).CounterSamples.CookedValue",
-  "$cpu=[math]::Round($cpu)",
-  "$os=Get-CIMInstance Win32_OperatingSystem",
-  "$osName=$os.Caption -replace 'Microsoft ','-' -replace ' (Enterprise|Pro|Home|Education|Ultimate).*$',''",
-  "$memPct=[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/$os.TotalVisibleMemorySize*100)",
-  "$memUsed=($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)*1024",
-  "$memTotal=$os.TotalVisibleMemorySize*1024",
-  "$drive=(Get-Location).Drive.Name",
-  "$disk=Get-PSDrive $drive -ErrorAction SilentlyContinue",
-  "if ($disk) { $diskFree=$disk.Free; $diskTotal=$disk.Used+$disk.Free } else { $diskFree=0; $diskTotal=0 }",
-  'Write-Output "{`"cpu`":$cpu,`"mem_pct`":$memPct,`"mem_used`":$memUsed,`"mem_total`":$memTotal,`"disk_free`":$diskFree,`"disk_total`":$diskTotal,`"os_type`":`"Windows`",`"os_name`":`"Windows $osName`"}"',
-].join("; ");
-
-// ----- 远端命令执行 -----
-
-function execSshCommand(
-  sshClient: Client,
-  command: string,
-  timeoutMs = 8000,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        reject(new Error("远端命令超时"));
-      }
-    }, timeoutMs);
-
-    sshClient.exec(command, (err, stream) => {
-      if (settled) return;
-
-      if (err) {
-        clearTimeout(timer);
-        settled = true;
-        reject(err);
-        return;
-      }
-
-      let stdout = "";
-      let stderrOutput = "";
-
-      stream.on("data", (data: Buffer) => {
-        stdout += data.toString("utf8");
-      });
-
-      stream.stderr.on("data", (data: Buffer) => {
-        stderrOutput += data.toString("utf8");
-      });
-
-      stream.on("close", () => {
-        clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          // ssh2 的 stderr 有时也包含有效输出，优先用 stdout
-          const output = stdout.trim() || stderrOutput.trim();
-          resolve(output);
-        }
-      });
-
-      stream.on("error", (streamErr: Error) => {
-        clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          reject(streamErr);
-        }
-      });
-    });
-  });
-}
 
 function appendTerminalOutput(session: TerminalSession, chunk: string): void {
   session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(
@@ -221,8 +96,10 @@ export function getTerminalContextSnapshot(
 export function executeTerminalCommand(
   tabId: string,
   command: string,
-  timeoutMs = 12_000,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<AiCommandResult> {
+  const timeoutMs = options.timeoutMs ?? 12_000;
+  const signal = options.signal;
   const session = terminalSessions.get(tabId);
 
   if (!session) {
@@ -234,158 +111,15 @@ export function executeTerminalCommand(
   }
 
   if (session.kind === "local") {
-    return executeLocalCommand(session.cwd, command, timeoutMs);
+    return executeLocalTerminalCommand(session.cwd, command, timeoutMs, signal);
   }
 
-  const startedAt = Date.now();
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let stdout = "";
-    let stderr = "";
-
-    const finish = (result: Omit<AiCommandResult, "durationMs">): void => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      resolve({
-        ...result,
-        stdout: result.stdout.slice(0, 20_000),
-        stderr: result.stderr.slice(0, 10_000),
-        durationMs: Date.now() - startedAt,
-      });
-    };
-
-    const timer = setTimeout(() => {
-      finish({
-        stdout,
-        stderr,
-        exitCode: null,
-        timedOut: true,
-      });
-    }, timeoutMs);
-
-    session.sshClient.exec(command, (err, stream) => {
-      if (err) {
-        clearTimeout(timer);
-        reject(err);
-        return;
-      }
-
-      stream.on("data", (data: Buffer) => {
-        stdout += data.toString("utf8");
-      });
-
-      stream.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString("utf8");
-      });
-
-      stream.on("close", (code: number | undefined) => {
-        clearTimeout(timer);
-        finish({
-          stdout,
-          stderr,
-          exitCode: typeof code === "number" ? code : null,
-          timedOut: false,
-        });
-      });
-
-      stream.on("error", (streamErr: Error) => {
-        clearTimeout(timer);
-        reject(streamErr);
-      });
-    });
-  });
-}
-
-async function executeLocalCommand(
-  cwd: string,
-  command: string,
-  timeoutMs: number,
-): Promise<AiCommandResult> {
-  const startedAt = Date.now();
-
-  try {
-    const { stdout, stderr } = await execAsync(command, {
-      cwd,
-      timeout: timeoutMs,
-      windowsHide: true,
-      maxBuffer: 30_000,
-    });
-
-    return {
-      stdout: stdout.slice(0, 20_000),
-      stderr: stderr.slice(0, 10_000),
-      exitCode: 0,
-      timedOut: false,
-      durationMs: Date.now() - startedAt,
-    };
-  } catch (error) {
-    const record = error as {
-      stdout?: string;
-      stderr?: string;
-      code?: number | string;
-      killed?: boolean;
-    };
-
-    return {
-      stdout: String(record.stdout ?? "").slice(0, 20_000),
-      stderr: String(record.stderr ?? (error instanceof Error ? error.message : "")).slice(0, 10_000),
-      exitCode: typeof record.code === "number" ? record.code : null,
-      timedOut: Boolean(record.killed),
-      durationMs: Date.now() - startedAt,
-    };
-  }
-}
-
-function parseStatsOutput(raw: string): RemoteSystemStats | null {
-  try {
-    // Windows PowerShell 输出的 JSON 带转义反引号，统一处理
-    const sanitized = raw.replace(/`/g, "");
-    const jsonStart = sanitized.indexOf("{");
-    const jsonEnd = sanitized.lastIndexOf("}");
-
-    if (jsonStart < 0 || jsonEnd <= jsonStart) {
-      return null;
-    }
-
-    // 远端 shell 启动脚本可能输出欢迎语，只截取统计 JSON 解析。
-    const parsed = JSON.parse(
-      sanitized.slice(jsonStart, jsonEnd + 1),
-    ) as Record<string, unknown>;
-
-    return {
-      cpuUsage:
-        typeof parsed.cpu === "number" ? Math.max(0, Math.min(100, parsed.cpu)) : 0,
-      memoryUsage:
-        typeof parsed.mem_pct === "number"
-          ? Math.max(0, Math.min(100, parsed.mem_pct))
-          : 0,
-      memoryUsed:
-        typeof parsed.mem_used === "number" ? Math.max(0, parsed.mem_used) : 0,
-      memoryTotal:
-        typeof parsed.mem_total === "number" ? Math.max(0, parsed.mem_total) : 0,
-      diskFree:
-        typeof parsed.disk_free === "number" ? Math.max(0, parsed.disk_free) : 0,
-      diskTotal:
-        typeof parsed.disk_total === "number" ? Math.max(0, parsed.disk_total) : 0,
-      osType: normalizeOsType(parsed.os_type),
-      osName: typeof parsed.os_name === "string" ? parsed.os_name : "",
-    };
-  } catch {
-    return null;
-  }
-}
-
-function normalizeOsType(raw: unknown): RemoteSystemStats["osType"] {
-  if (typeof raw !== "string") return "";
-  const lower = raw.toLowerCase();
-  if (lower === "linux") return "linux";
-  if (lower === "darwin") return "darwin";
-  if (lower.startsWith("windows")) return "windows";
-  return "";
+  return executeSshTerminalCommand(
+    session.sshClient,
+    command,
+    timeoutMs,
+    signal,
+  );
 }
 
 function getDefaultLocalCwd(): string {
@@ -426,111 +160,6 @@ function createLocalPtyEnv(): Record<string, string> {
   return env;
 }
 
-function getCpuSample(): CpuSample {
-  return os.cpus().reduce<CpuSample>(
-    (sample, cpu) => {
-      const total = Object.values(cpu.times).reduce((sum, value) => sum + value, 0);
-
-      return {
-        idle: sample.idle + cpu.times.idle,
-        total: sample.total + total,
-      };
-    },
-    { idle: 0, total: 0 },
-  );
-}
-
-function getLocalCpuUsage(): number {
-  const nextSample = getCpuSample();
-  const previousSample = localCpuSample;
-  localCpuSample = nextSample;
-
-  if (!previousSample) {
-    return 0;
-  }
-
-  const idleDelta = nextSample.idle - previousSample.idle;
-  const totalDelta = nextSample.total - previousSample.total;
-
-  if (totalDelta <= 0) {
-    return 0;
-  }
-
-  return Math.round(Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100)));
-}
-
-async function getLocalDiskStats(cwd: string): Promise<Pick<RemoteSystemStats, "diskFree" | "diskTotal">> {
-  try {
-    if (process.platform === "win32") {
-      const driveName = cwd.match(/^([a-zA-Z]):\\/)?.[1] ?? "C";
-      const command = [
-        `$disk=Get-PSDrive -Name '${driveName}' -ErrorAction Stop`,
-        'Write-Output "{`"free`":$($disk.Free),`"total`":$($disk.Free+$disk.Used)}"',
-      ].join("; ");
-      const { stdout } = await execFileAsync(
-        "powershell.exe",
-        ["-NoProfile", "-Command", command],
-        { windowsHide: true, timeout: 5000 },
-      );
-      const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
-
-      return {
-        diskFree: typeof parsed.free === "number" ? parsed.free : 0,
-        diskTotal: typeof parsed.total === "number" ? parsed.total : 0,
-      };
-    }
-
-    const { stdout } = await execFileAsync("df", ["-k", cwd], { timeout: 5000 });
-    const line = stdout.trim().split(/\r?\n/).at(-1);
-    const parts = line?.trim().split(/\s+/) ?? [];
-    const totalKb = Number(parts[1]);
-    const freeKb = Number(parts[3]);
-
-    return {
-      diskFree: Number.isFinite(freeKb) ? freeKb * 1024 : 0,
-      diskTotal: Number.isFinite(totalKb) ? totalKb * 1024 : 0,
-    };
-  } catch (error) {
-    writeAppLog({
-      scope: "main.ssh",
-      level: "warn",
-      message: "本地磁盘统计失败",
-      data: { cwd, error: error instanceof Error ? error.message : String(error) },
-    });
-
-    return { diskFree: 0, diskTotal: 0 };
-  }
-}
-
-async function getLocalSystemStats(session: LocalTerminalSession): Promise<RemoteSystemStats> {
-  const memoryTotal = os.totalmem();
-  const memoryFree = os.freemem();
-  const memoryUsed = Math.max(0, memoryTotal - memoryFree);
-  const disk = await getLocalDiskStats(session.cwd);
-  const osType =
-    process.platform === "win32"
-      ? "windows"
-      : process.platform === "darwin"
-        ? "darwin"
-        : "linux";
-
-  return {
-    cpuUsage: getLocalCpuUsage(),
-    memoryUsage: memoryTotal > 0 ? Math.round((memoryUsed / memoryTotal) * 100) : 0,
-    memoryUsed,
-    memoryTotal,
-    diskFree: disk.diskFree,
-    diskTotal: disk.diskTotal,
-    osType,
-    osName:
-      osType === "windows"
-        ? `Windows ${os.release()}`
-        : osType === "darwin"
-          ? `macOS ${os.release()}`
-          : `${os.type()} ${os.release()}`,
-  };
-}
-
 export async function getRemoteSystemStats(
   tabId: string,
 ): Promise<RemoteSystemStats> {
@@ -544,65 +173,16 @@ export async function getRemoteSystemStats(
     throw new Error("SSH 未连接");
   }
 
-  if (session.kind === "local") {
-    return getLocalSystemStats(session);
-  }
-
-  const cachedOS = remoteOSCache.get(tabId);
-
-  // 已缓存 OS，直接用对应脚本
-  if (cachedOS) {
-    const script =
-      cachedOS.type === "windows"
-        ? `powershell -NoProfile -Command "${WINDOWS_STATS_SCRIPT}"`
-        : UNIX_STATS_COMMAND;
-
-    const output = await execSshCommand(session.sshClient, script);
-    const stats = parseStatsOutput(output);
-
-    if (!stats) {
-      throw new Error("远端统计解析失败");
-    }
-
-    return stats;
-  }
-
-  // 首次采集：先尝试 Unix shell 脚本（SSH exec 通道默认使用用户 shell）
-  try {
-    const output = await execSshCommand(
-      session.sshClient,
-      UNIX_STATS_COMMAND,
-    );
-    const stats = parseStatsOutput(output);
-
-    if (stats) {
-      remoteOSCache.set(tabId, { type: stats.osType || "linux", name: stats.osName });
-      return stats;
-    }
-  } catch {
-    // Unix 脚本失败，尝试 Windows
-  }
-
-  try {
-    const output = await execSshCommand(
-      session.sshClient,
-      `powershell -NoProfile -Command "${WINDOWS_STATS_SCRIPT}"`,
-    );
-    const stats = parseStatsOutput(output);
-
-    if (stats) {
-      remoteOSCache.set(tabId, { type: "windows", name: stats.osName });
-      return stats;
-    }
-  } catch {
-    // Windows 也失败
-  }
-
-  throw new Error("无法检测远端系统类型或采集资源信息");
+  return collectTerminalSystemStats(
+    tabId,
+    session.kind === "local"
+      ? { kind: "local", cwd: session.cwd }
+      : { kind: "ssh", sshClient: session.sshClient },
+  );
 }
 
 export function clearRemoteOSCache(tabId: string): void {
-  remoteOSCache.delete(tabId);
+  clearRemoteSystemStatsCache(tabId);
 }
 
 function sendStatus(
@@ -762,7 +342,7 @@ function installShellPathIntegration(session: SshTerminalSession): void {
       return;
     }
 
-    void execSshCommand(session.sshClient, "pwd", 3000)
+    void executeSshTextCommand(session.sshClient, "pwd", 3000)
       .then((path) => {
         if (!terminalSessions.has(session.tabId) || !path.startsWith("/")) {
           return;
@@ -850,7 +430,7 @@ function createLocalTerminalSession(
     });
     sendStatus(session, "disconnected");
     terminalSessions.delete(tabId);
-    remoteOSCache.delete(tabId);
+    clearRemoteSystemStatsCache(tabId);
   });
 
   sendStatus(session, "connected");
@@ -993,7 +573,7 @@ export function openTerminalSession(
       if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
         terminalSessions.delete(tabId);
-        remoteOSCache.delete(tabId);
+        clearRemoteSystemStatsCache(tabId);
       }
     });
 
@@ -1074,7 +654,7 @@ export function closeTerminalSession(tabId: string): void {
   }
 
   terminalSessions.delete(tabId);
-  remoteOSCache.delete(tabId);
+  clearRemoteSystemStatsCache(tabId);
   if (session.kind === "local") {
     session.localPty.kill();
   } else {
@@ -1160,7 +740,7 @@ export function reconnectTerminalSession(
     existing.shellStream?.end();
     existing.sshClient.end();
   }
-  remoteOSCache.delete(tabId);
+  clearRemoteSystemStatsCache(tabId);
 
   writeAppLog({
     scope: "main.ssh",
@@ -1241,7 +821,7 @@ export function reconnectTerminalSession(
       if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
         terminalSessions.delete(tabId);
-        remoteOSCache.delete(tabId);
+        clearRemoteSystemStatsCache(tabId);
       }
     });
 

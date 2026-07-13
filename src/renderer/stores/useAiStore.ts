@@ -471,6 +471,7 @@ export const useAiStore = defineStore("ai", () => {
 
     try {
       await core.orbitSSHApi.ai.rejectCommandApproval({
+        tabId: card.tabId,
         approvalId: card.approvalId,
       });
     } finally {

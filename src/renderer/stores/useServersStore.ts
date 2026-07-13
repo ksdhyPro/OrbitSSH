@@ -28,6 +28,13 @@ export const useServersStore = defineStore("servers", () => {
 
   const hasServers = computed(() => servers.value.length > 0);
 
+  // 统一排序，确保新建、加载和切换置顶后列表顺序一致。
+  function sortServers(nextServers: ServerConfig[]): ServerConfig[] {
+    return [...nextServers].sort(
+      (left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)),
+    );
+  }
+
   function setListError(error: string): void {
     listError.value = error;
   }
@@ -117,12 +124,12 @@ export const useServersStore = defineStore("servers", () => {
           id: editingServerId.value,
           ...nextServer,
         });
-        servers.value = servers.value.map(server =>
+        servers.value = sortServers(servers.value.map(server =>
           server.id === updatedServer.id ? updatedServer : server,
-        );
+        ));
       } else {
         const createdServer = await core.orbitSSHApi.servers.create(nextServer);
-        servers.value = [createdServer, ...servers.value];
+        servers.value = sortServers([createdServer, ...servers.value]);
       }
 
       closeConnectionDialog();
@@ -190,6 +197,26 @@ export const useServersStore = defineStore("servers", () => {
     }
   }
 
+  async function setServerPinned(server: ServerConfig): Promise<void> {
+    listError.value = "";
+
+    try {
+      if (!core.orbitSSHApi) {
+        throw new Error("请通过 Electron 窗口启动应用");
+      }
+
+      const updatedServer = await core.orbitSSHApi.servers.setPinned({
+        id: server.id,
+        isPinned: !server.isPinned,
+      });
+      servers.value = sortServers(servers.value.map(item =>
+        item.id === updatedServer.id ? updatedServer : item,
+      ));
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "更新服务器置顶状态失败";
+    }
+  }
+
   // 启动时从主进程读取服务器配置，Renderer 不直接接触本地文件。
   async function loadServers(): Promise<void> {
     isServerListLoading.value = true;
@@ -204,7 +231,7 @@ export const useServersStore = defineStore("servers", () => {
         return;
       }
 
-      servers.value = await core.orbitSSHApi.servers.list();
+      servers.value = sortServers(await core.orbitSSHApi.servers.list());
       core.writeRendererLog("服务器列表加载完成", {
         serverCount: servers.value.length,
       });
@@ -235,6 +262,7 @@ export const useServersStore = defineStore("servers", () => {
     selectPrivateKeyFile,
     editServer,
     deleteServer,
+    setServerPinned,
     loadServers,
   };
 });

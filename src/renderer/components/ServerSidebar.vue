@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import editIcon from "../assets/icons/edit.svg";
+import pinIcon from "../assets/icons/pin.svg";
 import plusIcon from "../assets/icons/plus.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { ServerConfig } from "../../shared/server";
@@ -16,6 +17,7 @@ const emit = defineEmits<{
   openConnectionDialog: [];
   openServerTerminal: [server: ServerConfig];
   editServer: [server: ServerConfig];
+  setServerPinned: [server: ServerConfig];
   deleteServer: [serverId: string];
 }>();
 </script>
@@ -53,11 +55,28 @@ const emit = defineEmits<{
         class="server-item"
         @click="emit('openServerTerminal', server)">
         <div class="server-meta">
-          <strong>{{ server.name }}</strong>
+          <div class="server-title">
+            <span
+              v-if="server.isPinned"
+              class="server-pinned-badge"
+              title="已置顶">
+              <img :src="pinIcon" alt="" />
+            </span>
+            <strong>{{ server.name }}</strong>
+          </div>
           <span>{{ server.username }}@{{ server.host }}:{{ server.port }}</span>
         </div>
         <div class="server-side">
           <div class="server-actions" aria-label="服务器操作">
+            <button
+              type="button"
+              class="server-action"
+              :class="{ active: server.isPinned }"
+              :aria-label="server.isPinned ? '取消置顶服务器' : '置顶服务器'"
+              :title="server.isPinned ? '取消置顶' : '置顶'"
+              @click.stop="emit('setServerPinned', server)">
+              <img :src="pinIcon" alt="" />
+            </button>
             <button
               type="button"
               class="server-action"

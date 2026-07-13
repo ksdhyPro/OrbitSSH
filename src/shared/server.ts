@@ -10,6 +10,7 @@ export interface ServerConfig {
   passwordKey?: string
   privateKeyPath?: string
   passphraseKey?: string
+  isPinned?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -27,6 +28,11 @@ export interface ServerInput {
 
 export interface ServerUpdateInput extends ServerInput {
   id: string
+}
+
+export interface ServerPinInput {
+  id: string
+  isPinned: boolean
 }
 
 export type ServerAuthConfig =

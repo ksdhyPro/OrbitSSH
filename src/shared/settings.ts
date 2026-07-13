@@ -37,6 +37,8 @@ export interface AiModelConfig {
 
 export interface AiSettings {
   enabled: boolean
+  /** 是否允许把脱敏后的最近终端输出发送给在线模型。 */
+  shareTerminalContext: boolean
   activeConfigId: string
   configs: AiModelConfig[]
   defaultMode: 'ask' | 'full'
@@ -87,6 +89,7 @@ export const defaultAppSettings: AppSettings = {
   },
   ai: {
     enabled: false,
+    shareTerminalContext: false,
     activeConfigId: '',
     configs: [],
     defaultMode: 'full'

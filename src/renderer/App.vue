@@ -1,9 +1,6 @@
 <script setup lang="ts">
-import { isPreviewImageFile } from "./utils/file-kind";
-import type { VisibleRemoteFileNode } from "./types/sftp";
 import {
   computed,
-  nextTick,
   onMounted,
   onUnmounted,
   reactive,
@@ -28,17 +25,14 @@ import TerminalPanel from "./components/TerminalPanel.vue";
 import TitleBarTabs from "./components/TitleBarTabs.vue";
 import type { ServerConfig } from "../shared/server";
 import type { AppMenuAction } from "../shared/app-menu";
-import type { RemoteFileNode } from "../shared/sftp";
-import { getRemoteParentPath } from "./utils/path";
 import { storeToRefs } from "pinia";
+import { useRemoteFileWorkspace } from "./composables/useRemoteFileWorkspace";
 import { useCoreStore } from "./stores/useCoreStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
 import { useWindowStore } from "./stores/useWindowStore";
 import { useSidebarStore } from "./stores/useSidebarStore";
 import { useDownloadsStore } from "./stores/useDownloadsStore";
 import { useTerminalsStore } from "./stores/useTerminalsStore";
-import { useSftpStore } from "./stores/useSftpStore";
-import { useFileEditorStore } from "./stores/useFileEditorStore";
 import { useServersStore } from "./stores/useServersStore";
 import { useUpdateStore } from "./stores/useUpdateStore";
 import { useAiStore } from "./stores/useAiStore";
@@ -49,8 +43,6 @@ const windowStore = useWindowStore();
 const sidebarStore = useSidebarStore();
 const downloadsStore = useDownloadsStore();
 const terminalsStore = useTerminalsStore();
-const sftpStore = useSftpStore();
-const fileEditorStore = useFileEditorStore();
 const serversStore = useServersStore();
 const updateStore = useUpdateStore();
 const aiStore = useAiStore();
@@ -218,69 +210,31 @@ const {
   sftpPathPromptTitle,
   sftpPathPromptMessage,
   sftpTrees,
-  fileTreeElement,
   fileContextMenu,
   blankContextMenu,
   renaming,
   fileDragTargetPath,
   imagePreview,
-} = storeToRefs(sftpStore);
-
-const {
   loadSftpHome,
   removeSftpTree,
   closeSftpSession,
   markSftpDisconnected,
-  refreshActiveDirectory: refreshSftpDirectory,
-  closeSftpPathPrompt: closeSftpPathPromptFromStore,
-  submitFilePathInput: submitFilePathInputFromStore,
-  copyActiveSftpPath: copyActiveSftpPathFromStore,
-  syncFileTreeToTerminalPath: syncFileTreeToTerminalPathFromStore,
   closeFileContextMenu,
   closeBlankContextMenu,
-  openBlankContextMenu: openBlankContextMenuFromStore,
-  startRename,
-  commitRename: commitRenameFromStore,
-  cancelRename: cancelRenameFromStore,
-  createRemoteNode,
-  clearFileSelection,
-  selectFileNode,
-  selectAllInFileTree,
-  selectFileNodesByPaths,
-  startRemoteNodeDrag,
   clearRemoteNodeDrag,
-  clearRemoteNodeDragTarget,
-  updateRemoteNodeDragTarget,
-  moveDraggedRemoteNodesToDirectory,
-  openRemoteImagePreview: openRemoteImagePreviewFromStore,
-  downloadContextFile: downloadContextFileFromStore,
   downloadImagePreviewFile,
-  uploadToContextDirectory,
-  uploadToCurrentDirectory,
-  deleteContextFile: deleteContextFileFromStore,
   closeImagePreview,
-} = sftpStore;
-
-const {
   isFileEditorOpen,
   isFileEditorCloseConfirmOpen,
   isFileEditorSearchOpen,
   isFileEditorSearchCaseSensitive,
-  fileEditorContainer,
-  fileEditorSearchInput,
-  fileEditorReplaceInput,
   fileEditorError,
   fileEditorSearchKeyword,
   fileEditorReplaceText,
   fileEditor,
   isFileEditorDirty,
   fileEditorTitle,
-} = storeToRefs(fileEditorStore);
-
-const {
-  openRemoteFileEditor: openRemoteFileEditorFromStore,
   requestCloseFileEditor,
-  closeFileEditor,
   saveFileEditor,
   saveAndCloseFileEditor,
   discardFileEditorChanges,
@@ -294,15 +248,45 @@ const {
   replaceCurrentFileEditorMatch,
   replaceAllFileEditorMatches,
   applyFileEditorTheme,
-} = fileEditorStore;
-
-const activeSftpTree = computed(() => {
-  if (!activeTabId.value) {
-    return undefined;
-  }
-
-  return sftpTrees.value[activeTabId.value];
-});
+  activeSftpTree,
+  visibleFileTree,
+  getFilePanelHint,
+  canDownloadRemoteFile,
+  canUploadRemoteNode,
+  getFileEditMenuLabel,
+  isEditableTextFile,
+  canDeleteRemoteNode,
+  openFileContextMenu,
+  handleFileSelectNode,
+  handleFileSelectAll,
+  handleFileClearSelection,
+  handleFileMarqueeSelect,
+  handleFileDragStart,
+  handleFileDragOver,
+  handleFileDragLeave,
+  handleFileDrop,
+  downloadContextFile,
+  uploadContextFile,
+  uploadToActiveSftpDirectory,
+  refreshActiveDirectory,
+  closeSftpPathPrompt,
+  submitFilePathInput,
+  copyActiveSftpPath,
+  syncFileTreeToTerminalPath,
+  setFileTreeElement,
+  setFileEditorContainer,
+  setFileEditorSearchInput,
+  setFileEditorReplaceInput,
+  editContextFile,
+  previewContextFile,
+  openRemoteNodeByDoubleClick,
+  deleteContextFile,
+  handleOpenBlankContextMenu,
+  renameContextFile,
+  handleCommitRename,
+  handleCancelRename,
+  handleCreateBlankNode,
+} = useRemoteFileWorkspace(requestConfirm);
 
 const aiContext = computed(() => ({
   tabId: activeTabId.value,
@@ -316,48 +300,8 @@ function applyAppThemeMode(): void {
   document.documentElement.dataset.theme = appSettings.appearance.themeMode;
 }
 
-const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
-  const tree = activeSftpTree.value;
-
-  if (!tree) {
-    return [];
-  }
-
-  if (tree.disconnected) {
-    return [];
-  }
-
-  const parentNode = createParentDirectoryNode(tree.root.path);
-  const currentLevelNodes = (tree.root.children ?? []).map(node => ({
-    ...node,
-    level: 0,
-  }));
-
-  return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
-});
-
 const isWindows = computed(() => appPlatform.value === "win32");
 const isMac = computed(() => appPlatform.value === "darwin");
-
-function createParentDirectoryNode(
-  currentPath: string,
-): VisibleRemoteFileNode | null {
-  const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
-
-  if (!normalizedPath || normalizedPath === "/") {
-    return null;
-  }
-
-  return {
-    path: getRemoteParentPath(currentPath),
-    name: "..",
-    type: "directory",
-    loaded: true,
-    children: [],
-    level: 0,
-    isVirtualParent: true,
-  };
-}
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
   const isSearchShortcut =
@@ -382,28 +326,6 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
   }
 }
 
-function getFilePanelHint(): string {
-  if (!activeTab.value) {
-    return "打开 SSH 会话后显示远程目录";
-  }
-
-  if (activeTab.value.status === "disconnected" || activeTab.value.status === "error") {
-    return "SFTP 已断开";
-  }
-
-  const tree = activeSftpTree.value;
-
-  if (!tree) {
-    return "正在建立 SFTP 文件会话...";
-  }
-
-  if (tree.error) {
-    return tree.error;
-  }
-
-  return tree.homePath;
-}
-
 async function loadAppInfo(): Promise<void> {
   try {
     const info = await orbitSSHApi.value?.getAppInfo();
@@ -413,341 +335,6 @@ async function loadAppInfo(): Promise<void> {
       message: error instanceof Error ? error.message : String(error),
     });
   }
-}
-
-function canDownloadRemoteFile(node: RemoteFileNode | null): boolean {
-  return sftpStore.canDownloadRemoteFile(activeTabId.value, node);
-}
-
-function canUploadRemoteNode(node: RemoteFileNode | null): boolean {
-  return sftpStore.canUploadRemoteNode(node);
-}
-
-function getFileEditMenuLabel(node: RemoteFileNode | null): string {
-  return sftpStore.getFileEditMenuLabel(node);
-}
-
-function isEditableTextFile(node: RemoteFileNode | null): boolean {
-  return sftpStore.isEditableTextFile(node);
-}
-
-function canDeleteRemoteNode(
-  node: (RemoteFileNode & { isVirtualParent?: boolean }) | null,
-): boolean {
-  if (node?.isVirtualParent) {
-    return false;
-  }
-
-  return sftpStore.canDeleteRemoteNode(activeSftpTree.value, node);
-}
-
-function isRemoteNodeDeleting(node: RemoteFileNode | null): boolean {
-  return Boolean(node && activeSftpTree.value?.deletingPaths.has(node.path));
-}
-
-function openFileContextMenu(
-  event: MouseEvent,
-  node: RemoteFileNode & { isVirtualParent?: boolean },
-): void {
-  if (node.isVirtualParent || isRemoteNodeDeleting(node)) {
-    return;
-  }
-
-  sftpStore.openFileContextMenu(activeTabId.value, event, node);
-}
-
-function handleFileSelectNode(
-  event: MouseEvent,
-  node: RemoteFileNode,
-): void {
-  if (isRemoteNodeDeleting(node)) {
-    return;
-  }
-
-  selectFileNode(activeTabId.value, node, visibleFileTree.value, event);
-}
-
-function handleFileSelectAll(): void {
-  selectAllInFileTree(activeTabId.value, visibleFileTree.value);
-}
-
-function handleFileClearSelection(): void {
-  clearFileSelection(activeTabId.value);
-}
-
-function handleFileMarqueeSelect(paths: string[]): void {
-  selectFileNodesByPaths(activeTabId.value, visibleFileTree.value, paths);
-}
-
-function handleFileDragStart(
-  event: DragEvent,
-  node: RemoteFileNode & { isVirtualParent?: boolean },
-): void {
-  if (node.isVirtualParent || isRemoteNodeDeleting(node)) {
-    event.preventDefault();
-    return;
-  }
-
-  startRemoteNodeDrag(activeSftpTree.value, node);
-  event.dataTransfer?.setData("text/plain", node.path);
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
-  }
-}
-
-function handleFileDragOver(
-  event: DragEvent,
-  node: RemoteFileNode & { isVirtualParent?: boolean },
-): void {
-  if (node.type !== "directory") {
-    clearRemoteNodeDragTarget();
-    return;
-  }
-
-  if (!updateRemoteNodeDragTarget(activeSftpTree.value, node)) {
-    event.dataTransfer && (event.dataTransfer.dropEffect = "none");
-    return;
-  }
-
-  event.preventDefault();
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "move";
-  }
-}
-
-function handleFileDragLeave(
-  event: DragEvent,
-  node: RemoteFileNode,
-): void {
-  const nextTarget = event.relatedTarget;
-  const currentTarget = event.currentTarget;
-
-  if (
-    currentTarget instanceof HTMLElement &&
-    nextTarget instanceof Node &&
-    currentTarget.contains(nextTarget)
-  ) {
-    return;
-  }
-
-  if (fileDragTargetPath.value === node.path) {
-    clearRemoteNodeDragTarget();
-  }
-}
-
-async function handleFileDrop(
-  event: DragEvent,
-  node: RemoteFileNode & { isVirtualParent?: boolean },
-): Promise<void> {
-  event.preventDefault();
-
-  if (node.type !== "directory") {
-    clearRemoteNodeDrag();
-    return;
-  }
-
-  await moveDraggedRemoteNodesToDirectory(
-    activeTabId.value,
-    activeSftpTree.value,
-    node,
-    {
-      shouldMove: (message) =>
-        requestConfirm({
-          title: "确认移动",
-          message,
-          confirmLabel: "移动",
-          danger: false,
-        }),
-    },
-  );
-}
-
-async function downloadContextFile(): Promise<void> {
-  await downloadContextFileFromStore(activeTabId.value);
-}
-
-async function uploadContextFile(
-  sourceType: "file" | "directory",
-): Promise<void> {
-  await uploadToContextDirectory(activeTabId.value, sourceType);
-}
-
-async function uploadToActiveSftpDirectory(
-  sourceType: "file" | "directory",
-): Promise<void> {
-  await uploadToCurrentDirectory(activeTabId.value, sourceType);
-}
-
-async function refreshActiveDirectory(): Promise<void> {
-  const tab = activeTab.value;
-  const tree = activeSftpTree.value;
-
-  if (!tab || !tree?.homePath) {
-    await refreshSftpDirectory(tab);
-    return;
-  }
-
-  await sftpStore.openSftpDirectoryPath(tab, tree.homePath, "刷新目录失败");
-}
-
-function closeSftpPathPrompt(): void {
-  closeSftpPathPromptFromStore(activeSftpTree.value?.homePath ?? "");
-}
-
-async function submitFilePathInput(): Promise<void> {
-  await submitFilePathInputFromStore(activeTab.value);
-}
-
-async function copyActiveSftpPath(): Promise<void> {
-  await copyActiveSftpPathFromStore(activeTabId.value, activeSftpTree.value);
-}
-
-async function syncFileTreeToTerminalPath(): Promise<void> {
-  await syncFileTreeToTerminalPathFromStore(activeTab.value);
-}
-
-function setFileTreeElement(element: unknown): void {
-  fileTreeElement.value = element instanceof HTMLElement ? element : null;
-}
-
-function setFileEditorContainer(element: unknown): void {
-  fileEditorContainer.value = element instanceof HTMLElement ? element : null;
-}
-
-function setFileEditorSearchInput(element: unknown): void {
-  fileEditorSearchInput.value =
-    element instanceof HTMLInputElement ? element : null;
-}
-
-function setFileEditorReplaceInput(element: unknown): void {
-  fileEditorReplaceInput.value =
-    element instanceof HTMLInputElement ? element : null;
-}
-
-
-async function editContextFile(): Promise<void> {
-  const node = fileContextMenu.value.node;
-
-  if (!node || !sftpStore.isEditableTextFile(node) || !activeTabId.value) {
-    return;
-  }
-
-  closeFileContextMenu();
-  await openRemoteFileEditorFromStore(activeTabId.value, node);
-}
-
-async function previewContextFile(): Promise<void> {
-  const node = fileContextMenu.value.node;
-
-  if (!node || !isPreviewImageFile(node)) {
-    return;
-  }
-
-  closeFileContextMenu();
-  await openRemoteImagePreviewFromStore(activeTabId.value, node);
-}
-
-async function openRemoteFileEditorByDoubleClick(
-  node: RemoteFileNode,
-): Promise<void> {
-  if (node.type !== "file") {
-    return;
-  }
-
-  if (isPreviewImageFile(node)) {
-    await openRemoteImagePreviewFromStore(activeTabId.value, node);
-    return;
-  }
-
-  const editable = await sftpStore.ensureEditableTextFile(
-    activeTabId.value,
-    node,
-  );
-
-  if (editable) {
-    await openRemoteFileEditorFromStore(activeTabId.value, node);
-  }
-}
-
-async function openRemoteNodeByDoubleClick(node: RemoteFileNode): Promise<void> {
-  const tab = activeTab.value;
-
-  if (isRemoteNodeDeleting(node)) {
-    return;
-  }
-
-  if ("isVirtualParent" in node && node.isVirtualParent && tab) {
-    await sftpStore.openSftpDirectoryPath(tab, node.path, "路径不存在或无法访问");
-    return;
-  }
-
-  if (node.type === "directory" && tab) {
-    // 当前层模式复用路径跳转逻辑，进入目录后仅展示该目录直属内容。
-    await sftpStore.openSftpDirectoryPath(tab, node.path, "路径不存在或无法访问");
-    return;
-  }
-
-  await openRemoteFileEditorByDoubleClick(node);
-}
-
-async function deleteContextFile(): Promise<void> {
-  await deleteContextFileFromStore(activeTabId.value, activeSftpTree.value, {
-    shouldDelete: requestDeleteConfirm,
-    onDeleted: node => {
-      if (fileEditor.value.path === node.path) {
-        closeFileEditor();
-      }
-    },
-  });
-}
-
-function handleOpenBlankContextMenu(event: MouseEvent): void {
-  if (!activeTab.value) {
-    return;
-  }
-  openBlankContextMenuFromStore(activeTabId.value, event);
-}
-
-// 右键节点选「重命名」：单选目标进入编辑态。
-function renameContextFile(): void {
-  const node = fileContextMenu.value.node;
-  if (!node || !activeTabId.value) {
-    return;
-  }
-  closeFileContextMenu();
-  startRename(activeTabId.value, node);
-}
-
-async function handleCommitRename(): Promise<void> {
-  const oldPath = renaming.value?.path;
-  await commitRenameFromStore();
-  // 重命名后，若旧文件正打开在编辑器中，关闭它避免保存到失效路径。
-  if (oldPath && fileEditor.value.path === oldPath) {
-    closeFileEditor();
-  }
-}
-
-function handleCancelRename(): void {
-  cancelRenameFromStore();
-}
-
-async function handleCreateBlankNode(
-  type: "file" | "directory",
-): Promise<void> {
-  const parentPath = activeSftpTree.value?.homePath;
-  if (!parentPath) {
-    return;
-  }
-  await createRemoteNode(activeTabId.value, parentPath, type);
-}
-
-function requestDeleteConfirm(message: string): Promise<boolean> {
-  return requestConfirm({
-    title: "确认删除",
-    message,
-    confirmLabel: "删除",
-    danger: true,
-  });
 }
 
 function requestConfirm(input: {
@@ -830,6 +417,11 @@ async function deleteServer(serverId: string): Promise<void> {
   await serversStore.deleteServer(serverId, () =>
     window.confirm("确认删除该服务器配置？"),
   );
+}
+
+// 左侧服务器列表的置顶操作由 store 统一处理并持久化。
+async function setServerPinned(server: ServerConfig): Promise<void> {
+  await serversStore.setServerPinned(server);
 }
 
 async function openServerTerminal(server: ServerConfig): Promise<void> {
@@ -959,33 +551,6 @@ onMounted(() => {
   window.addEventListener("keydown", handleGlobalKeydown);
 });
 
-watch(
-  () => activeSftpTree.value?.homePath,
-  homePath => {
-    filePathInput.value = homePath ?? "";
-  },
-  { immediate: true },
-);
-
-watch(
-  visibleFileTree,
-  async nodes => {
-    await nextTick();
-    const rect = fileTreeElement.value?.getBoundingClientRect();
-
-    writeRendererLog("文件树可见节点变化", {
-      tabId: activeTabId.value,
-      nodeCount: nodes.length,
-      paths: nodes.slice(0, 10).map(node => node.path),
-      panelWidth: rect?.width,
-      panelHeight: rect?.height,
-      scrollHeight: fileTreeElement.value?.scrollHeight,
-      clientHeight: fileTreeElement.value?.clientHeight,
-    });
-  },
-  { immediate: false },
-);
-
 onUnmounted(() => {
   terminalsStore.cleanup();
   downloadsStore.stopListeners();
@@ -1038,6 +603,7 @@ onUnmounted(() => {
           @open-connection-dialog="openConnectionDialog"
           @open-server-terminal="openServerTerminal"
           @edit-server="editServer"
+          @set-server-pinned="setServerPinned"
           @delete-server="deleteServer" />
 
         <SftpPanel

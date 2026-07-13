@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.7
+
+1. Added server pinning. Frequently used connections can be pinned or unpinned from the server list, with persistent pin state and consistent sorting across the main process, Preload bridge, and UI.
+2. Hardened the AI command policy by separating confirmed readonly commands from unknown commands allowed only in Full Access, and by detecting absolute paths, quoted executables, `env`, `command`, `nice`, `nohup`, multiline commands, and compound command risks.
+3. Added an AI terminal-context privacy control. Recent terminal output is no longer sent by default; when explicitly enabled, passwords, tokens, Authorization headers, URL credentials, and private keys are redacted before the bounded context is sent to the online model.
+4. Fixed AI cancellation and approval lifecycle handling. Regular requests and post-approval commands can both be cancelled, SSH channels are closed on timeout or cancellation, and approvals now expire proactively, are consumed once, and are cleared on new requests or terminal closure.
+5. Refactored the AI Agent into focused orchestration, provider, SSE parsing, context, input-validation, and approval-store modules. The per-turn command limit is now 10, with 15 focused tests powered by Node's built-in test runner.
+6. Strengthened AI IPC validation with message, history, and command length limits, tab-context and approval ownership checks, `run_shell_command`-only tool handling, and support for SSE responses using `data:` without a following space.
+7. Split oversized modules into focused units: Renderer tokens, terminal, dialog, and other styles now live in dedicated files, while remote-file interactions, terminal command execution, and system statistics are isolated in dedicated modules so related code files remain below 1,000 lines.
+
 ## v1.1.6
 
 1. Improved the AI auto-execution policy by simplifying modes to "Ask Every Time" and "Full Access". In Full Access, commands are split for risk checks first, then the original AI command is executed once, avoiding duplicated sub-command cards in the conversation.

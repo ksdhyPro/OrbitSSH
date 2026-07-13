@@ -1,310 +1,83 @@
-# OrbitSSH AI Agent 执行逻辑
+# OrbitSSH AI Agent 架构
 
-## 概述
+## 1. 设计目标
 
-OrbitSSH 内置了一个 AI 助手，能够根据用户提问在远程 SSH 服务器上自动执行诊断命令。AI Agent 采用**多轮对话 + 命令策略审核 + 分级审批**的架构，在保证安全的前提下实现自动化服务器诊断。
+OrbitSSH AI Agent 在 Electron 主进程内完成模型请求、命令安全审查、审批和 SSH 命令执行。Renderer 只负责会话展示和用户交互，不能绕过主进程策略直接批准 AI 命令。
 
-## 整体架构
+Agent 支持两种模式：
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  Renderer (Vue 前端)                                     │
-│  ┌──────────────┐  ┌──────────────────┐                 │
-│  │  AiPanel.vue  │  │  useAiStore.ts   │                 │
-│  │  (UI 组件)    │◄─┤  (状态管理)       │                 │
-│  └──────────────┘  └────────┬─────────┘                 │
-├─────────────────────────────┼───────────────────────────┤
-│  Preload (IPC 桥接)          │                            │
-│  ┌──────────────────────────▼─────────────────────────┐ │
-│  │  index.ts / index.cjs / preload.d.ts                │ │
-│  │  orbitSSHApi.ai.chat() / runApprovedCommand() ...   │ │
-│  └──────────────────────────┬─────────────────────────┘ │
-├─────────────────────────────┼───────────────────────────┤
-│  Main Process (Electron 后端)│                            │
-│  ┌──────────────────────────▼─────────────────────────┐ │
-│  │  ai-ipc.ts (IPC 路由)                               │ │
-│  │  ai:chat / ai:run-approved-command / ai:reject      │ │
-│  └──────┬──────────────────────────────────────────────┘ │
-│         │                                                 │
-│  ┌──────▼──────────┐  ┌──────────────┐  ┌─────────────┐ │
-│  │  ai-agent.ts     │  │  ai-tools.ts  │  │  command-    │ │
-│  │  (核心 Agent)    │  │  (工具层)     │  │  policy.ts   │ │
-│  └──────┬──────────┘  └──────────────┘  └─────────────┘ │
-│         │                                                 │
-│  ┌──────▼──────────┐                                     │
-│  │  session-        │                                     │
-│  │  manager.ts      │                                     │
-│  │  (SSH 命令执行)   │                                     │
-│  └─────────────────┘                                     │
-└─────────────────────────────────────────────────────────┘
-```
+- `ask`：每条命令都需要用户批准。
+- `full`：只读白名单和未命中高风险黑名单的简单命令可自动执行；本地策略判定为高风险或模型标记为 `high` 的命令必须批准。
 
-## 核心文件说明
+`full` 保留未知简单命令自动执行能力，因此黑名单无法提供绝对安全保证。重要服务器建议使用 `ask`。
 
-| 文件 | 作用 |
-|------|------|
-| [src/shared/ai.ts](../src/shared/ai.ts) | 所有 AI 相关的共享类型定义 |
-| [src/main/ai/command-policy.ts](../src/main/ai/command-policy.ts) | 命令安全策略：评估命令风险等级，判断是否需要审批 |
-| [src/main/ai/ai-tools.ts](../src/main/ai/ai-tools.ts) | 独立的命令审批/执行工具（用于外部调用场景） |
-| [src/main/ai/ai-agent.ts](../src/main/ai/ai-agent.ts) | AI Agent 核心：多轮对话循环、系统提示词、审批状态管理 |
-| [src/main/ipc/ai-ipc.ts](../src/main/ipc/ai-ipc.ts) | IPC 路由注册，将前端请求路由到 Agent |
-| [src/renderer/stores/useAiStore.ts](../src/renderer/stores/useAiStore.ts) | 前端 Pinia 状态管理 |
-| [src/renderer/components/AiPanel.vue](../src/renderer/components/AiPanel.vue) | AI 助手 UI 面板 |
-| [src/preload/index.ts](../src/preload/index.ts) + index.cjs | Electron contextBridge API 暴露 |
-| [src/types/preload.d.ts](../src/types/preload.d.ts) | Window.orbitSSH 的 TypeScript 类型声明 |
+## 2. 模块职责
 
-## 执行流程详解
+| 模块 | 职责 |
+| --- | --- |
+| `ai-agent.ts` | Agent 循环、命令卡状态、请求取消与审批恢复编排 |
+| `command-policy.ts` | Shell 命令规范化、只读白名单、高风险黑名单与复合命令审查 |
+| `ai-provider.ts` | OpenAI 兼容模型请求、配置选择与服务错误处理 |
+| `ai-response-parser.ts` | 纯 SSE/JSON 响应解析和 `run_shell_command` 参数校验 |
+| `ai-context.ts` | 系统指令、不可信上下文隔离、脱敏及上下文预算 |
+| `ai-approval-store.ts` | 一次性审批、五分钟 TTL 和按标签页清理 |
+| `ai-input.ts` | IPC 输入结构、标签页一致性和长度限制 |
 
-### 1. 用户发起对话
+共享类型位于 `src/shared/ai.ts` 和 `src/shared/settings.ts`，主进程 IPC 入口位于 `src/main/ipc/ai-ipc.ts`。
 
-```
-用户输入问题 → AiPanel.vue 按回车
-  → emit("send")
-  → useAiStore.sendMessage(context)
-    → 创建 user message 并加入 messages[]
-    → 调用 orbitSSHApi.ai.chat(input)  // IPC 调用
-      → preload: ipcRenderer.invoke("ai:chat", input)
-        → ai-ipc.ts: runAiChat(input, getSettings())
-```
+## 3. 执行流程
 
-**输入数据结构** (`AiChatInput`):
+1. Renderer 发送当前标签页、模式、用户消息、服务器上下文及最近历史。
+2. 主进程验证完整输入，并确认 `input.tabId` 与 `context.tabId` 一致。
+3. Agent 构建模型请求：
+   - 系统消息只包含可信规则和结构化连接信息。
+   - 命令输出与最近终端输出放入单独的不可信用户上下文。
+   - 最近终端输出默认不发送；用户开启后先脱敏再截断。
+4. 模型只能调用 `run_shell_command`；未知工具名或无效参数不会生成命令。
+5. 本地命令策略给出以下决策：
+   - `allow_readonly`：明确命中只读白名单。
+   - `allow_full`：未命中黑名单，只允许在 `full` 自动执行。
+   - `requires_approval`：必须由用户批准。
+   - `deny`：非法、超长或无法安全解析的命令，禁止执行。
+6. 自动执行或批准后执行均使用同一个可取消请求控制器。执行结果返回模型，继续下一轮，单轮最多执行 10 条命令。
 
-```typescript
-interface AiChatInput {
-  tabId: string;          // 终端标签页 ID
-  mode: "ask" | "auto" | "full";  // 审批模式
-  message: string;        // 用户问题
-  context: AiContextInput; // 服务器上下文（路径、状态等）
-  history: AiMessage[];   // 最近 10 条对话历史
-}
+## 4. 安全边界
+
+### 命令策略
+
+- 命令最大 4096 字符；NUL、未闭合引号和未完成转义直接拒绝。
+- 多行命令强制审批。
+- 识别绝对路径、引号可执行文件、环境变量前缀以及 `env`、`command`、`nice`、`nohup` 等包装器。
+- `;` 和 `&&` 复合命令逐段审查，但保持整条 Shell 命令执行，避免改变 Shell 语义。
+- 模型返回的 `risk` 只会提高限制，不能覆盖本地策略。
+
+### 上下文与隐私
+
+- `shareTerminalContext` 默认 `false`。
+- 开启后过滤常见 Token、密码、Authorization、URL 凭据和 PEM 私钥块。
+- 最近终端输出最多 3000 字符。
+- 每条命令结果最多 4000 字符，合计最多 24000 字符。
+- 模型历史最多使用最近 8 条，合计最多 16000 字符。
+- 应用日志只记录长度、状态和工具名，不记录原始模型响应或终端上下文。
+
+### 审批与取消
+
+- 审批 ID 绑定标签页和完整命令，只能成功取出一次。
+- 审批五分钟后主动过期；新请求、终端关闭、批准或拒绝都会清理状态。
+- 普通请求与审批恢复都注册到标签页活动请求表。
+- 取消或超时会停止本地子进程；SSH 命令会尝试发送 `INT` 并关闭 Channel。
+- 命令卡使用 `cancelled` 表示终止，不会遗留 `running` 状态。
+
+## 5. 验证
+
+AI 专项测试使用 Node 内置测试框架：
+
+```powershell
+npm run test:ai
 ```
 
-### 2. Agent 多轮循环 (`runAgentLoop`)
+生产构建包含 Vue、Electron TypeScript 检查和 Preload 同步：
 
-核心函数，位于 [ai-agent.ts:514](../src/main/ai/ai-agent.ts#L514)：
-
+```powershell
+npm run build
 ```
-runAgentLoop(input, settings, previousCards, executedCommands)
-  │
-  ├─ while (executedCommands.length < maxAgentCommandCount)  // 最多 6 条命令
-  │   │
-  │   ├─ requestAiTurn(input, settings, executedCommands)
-  │   │   │
-  │   │   ├─ getTerminalContextSnapshot(tabId)     // 获取终端上下文
-  │   │   ├─ buildSystemPrompt(...)                // 构建系统提示词
-  │   │   ├─ buildAiMessages(...)                  // 构建消息列表
-  │   │   │
-  │   │   ├─ AI 未启用? → createLocalFallback()    // 本地规则回退
-  │   │   │
-  │   │   └─ fetch(DeepSeek API)                   // 调用 AI 模型
-  │   │       ├─ 响应 OK → parseAssistantResponse()
-  │   │       ├─ 响应异常 → createAiStatusErrorResponse()
-  │   │       └─ 网络错误 → createAiRequestErrorResponse()
-  │   │
-  │   ├─ 解析 AI 回复：reply + commands[]
-  │   │
-  │   ├─ 无下一条命令? → 返回最终结果
-  │   │
-  │   ├─ getNextParsedCommand(parsed)  // 提取并评估命令策略
-  │   │
-  │   ├─ shouldRequestApproval(mode, command, risk)?
-  │   │   ├─ YES → 存储 PendingApprovalState，返回审批卡片，暂停循环
-  │   │   │
-  │   │   └─ NO  → 自动执行命令
-  │   │       ├─ executeTerminalCommand(tabId, command)
-  │   │       ├─ 记录到 executedCommands[]
-  │   │       ├─ 更新 commandCards[]
-  │   │       └─ 继续循环（AI 看到新结果后可能返回新命令）
-  │   │
-  │   └─ 执行失败? → 返回失败卡片，终止循环
-  │
-  └─ 达到最大命令数 → 返回结果并提示限制
-```
-
-### 3. 系统提示词 (`buildSystemPrompt`)
-
-位于 [ai-agent.ts:98](../src/main/ai/ai-agent.ts#L98)，向 AI 注入以下上下文：
-
-- **角色定义**：OrbitSSH 内置的 AI 助手
-- **安全约束**：不泄露密码/密钥，不声称未执行的命令
-- **输出格式**：严格 JSON `{"reply":"...","commands":[...]}`
-- **命令限制**：每次最多返回一条命令
-- **终止条件**：已有足够信息回答时 commands 返回空数组
-- **风险标记**：高风险操作必须标记 risk 为 "high"
-- **模式说明**：告知 AI 当前处于 ask/auto/full 模式
-- **服务器上下文**：标签页 ID、服务器名、当前路径、连接状态
-- **已执行命令结果**：之前各轮命令的输出
-- **终端最近输出**：最多 3000 字符
-
-### 4. 命令安全策略 (`command-policy.ts`)
-
-三级安全评估，位于 [command-policy.ts:137](../src/main/ai/command-policy.ts#L137)：
-
-```
-evaluateAiCommand(command)
-  │
-  ├─ 命令为空? → deny
-  │
-  ├─ 命中 DENIED_PREFIXES? → requires_approval
-  │   （rm, mkfs, dd, shutdown, reboot, poweroff, halt）
-  │
-  ├─ 包含 DANGEROUS_TOKENS? → requires_approval
-  │   （sudo, >, <, |, &&, ||, ;, `, $(), &）
-  │
-  ├─ 命中 READONLY_PATTERNS? → allow_readonly
-  │
-  └─ 其他 → requires_approval
-```
-
-**只读白名单命令示例** (~30+ 正则)：
-
-| 类别 | 示例命令 |
-|------|---------|
-| 系统信息 | `pwd`, `whoami`, `hostname`, `uname -a`, `uptime` |
-| 磁盘/内存 | `df -h`, `free -h`, `du -sh .` |
-| 进程/网络 | `ps aux`, `ss -tulpn`, `ip addr`, `netstat -lntp` |
-| 文件查看 | `ls -la`, `cat`, `head -n N`, `tail -n N`, `grep`, `stat`, `file` |
-| 服务状态 | `systemctl status`, `journalctl -u`, `service ... status` |
-| Docker | `docker ps`, `docker images`, `docker logs --tail N`, `docker inspect` |
-| Git | `git status`, `git log --oneline`, `git branch`, `git diff` |
-
-**强制审批条件** (`requiresMandatoryApproval`)：
-
-1. 风险等级为 `"high"`
-2. 命令首词在 `MUST_APPROVE_PREFIXES` 中（apt, yum, npm, pip, chmod, chown, passwd 等）
-3. 包含 `DANGEROUS_TOKENS`（管道、重定向、sudo 等）
-4. 命中 Docker 危险模式（`docker rm/stop/restart/kill/exec`）
-5. 命中服务管理模式（`systemctl stop/restart/enable/disable`）
-
-### 5. 审批模式决策 (`shouldRequestApproval`)
-
-位于 [ai-agent.ts:326](../src/main/ai/ai-agent.ts#L326)：
-
-```
-shouldRequestApproval(mode, command, risk)
-  │
-  ├─ mode === "ask"     → 始终需要审批
-  ├─ mode === "auto"    → 只读白名单命令自动执行，其他需要审批
-  └─ mode === "full"    → 仅强制审批命令需要审批，其余自动执行
-```
-
-| 模式 | 图标 | 行为 |
-|------|------|------|
-| `ask` | 🛡️ | 每条命令都需要用户手动批准 |
-| `auto` | ⚡ | 只读白名单命令自动执行，其他命令需批准 |
-| `full` | 🔓 | 除强制审批命令外全部自动执行 |
-
-### 6. 命令审批与恢复流程
-
-```
-AI 返回需审批命令
-  │
-  ├─ 创建 PendingApprovalState（5 分钟 TTL）
-  │   { input, command, reason, risk, cardId, previousCards, executedCommands }
-  │
-  ├─ 返回 AiCommandCard (status: "requires_approval") 到前端
-  │
-  ├─ 用户点击"批准执行"
-  │   → useAiStore.runApprovedCommand(card)
-  │     → IPC: "ai:run-approved-command"
-  │       → runApprovedAiCommand()
-  │         ├─ 验证 approvalId 存在且未过期
-  │         ├─ 验证 tabId 和 command 匹配
-  │         ├─ executeTerminalCommand()
-  │         └─ 恢复 runAgentLoop() 继续循环
-  │
-  └─ 用户点击"拒绝"
-      → useAiStore.rejectApproval(card)
-        → IPC: "ai:reject-command-approval"
-          → rejectAiCommandApproval()
-            ├─ 删除 PendingApprovalState
-            └─ 前端卡片状态更新为 "rejected"
-```
-
-### 7. 命令执行 (`executeTerminalCommand`)
-
-位于 [src/main/ssh/session-manager.ts](../src/main/ssh/session-manager.ts)：
-
-- 使用 `ssh2` 库的 `client.exec()` 在远程服务器执行命令
-- 默认超时 12-20 秒（AI Agent 使用 20 秒）
-- 输出截断：stdout 最大 20KB，stderr 最大 10KB
-- 返回 `AiCommandResult`：`{ stdout, stderr, exitCode, timedOut, durationMs }`
-
-### 8. 本地回退 (`createLocalFallback`)
-
-位于 [ai-agent.ts:261](../src/main/ai/ai-agent.ts#L261)，当 AI 未启用或 API Key 为空时：
-
-- 已有执行结果 → 提示用户自行判断
-- 包含 "disk"/"磁盘" → 建议 `df -h`
-- 包含 "nginx" → 建议 `systemctl status nginx` + `journalctl -u nginx`
-- 其他 → 通用建议
-
-## 数据流图
-
-```
-┌──────────┐     ┌──────────────┐     ┌───────────┐     ┌──────────────┐
-│ AiPanel  │────►│ useAiStore   │────►│ Preload   │────►│ ai-ipc.ts    │
-│ (输入框)  │     │ sendMessage()│     │ IPC.invoke│     │ ai:chat      │
-└──────────┘     └──────────────┘     └───────────┘     └──────┬───────┘
-                                                               │
-                                              ┌────────────────┘
-                                              ▼
-┌──────────┐     ┌──────────────┐     ┌───────────┐     ┌──────────────┐
-│ AiPanel  │◄────┤ useAiStore   │◄────┤ Preload   │◄────┤ runAiChat()  │
-│ (消息列表)│     │ applyResult()│     │ IPC回复   │     │ runAgentLoop │
-└──────────┘     └──────────────┘     └───────────┘     └──────┬───────┘
-                                                               │
-                                              ┌────────────────┘
-                                              ▼
-                                    ┌──────────────────┐
-                                    │ requestAiTurn()  │
-                                    │  ├─ buildPrompt  │
-                                    │  ├─ fetch(API)   │
-                                    │  └─ parseJSON    │
-                                    └──────┬───────────┘
-                                           │
-                              ┌────────────┼────────────┐
-                              ▼            ▼            ▼
-                        ┌─────────┐  ┌─────────┐  ┌─────────┐
-                        │ 自动执行 │  │ 需要审批 │  │ 无命令  │
-                        │ 命令    │  │ 暂停循环 │  │ 返回结果 │
-                        └────┬────┘  └────┬────┘  └─────────┘
-                             │            │
-                             ▼            ▼
-                    ┌──────────────┐  ┌──────────────┐
-                    │ SSH exec()   │  │ 用户批准/拒绝 │
-                    │ 收集结果     │  │ 后恢复循环   │
-                    │ 继续下一轮   │  └──────────────┘
-                    └──────────────┘
-```
-
-## 关键常量
-
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `maxAgentCommandCount` | 6 | 单轮最多执行命令数 |
-| `approvalTtlMs` | 5 分钟 | 审批请求有效期 |
-| `execTimeoutMs` | 20 秒 | Agent 命令执行超时 |
-| `historyLimit` | 最近 8 条 | 发送给 AI 的历史消息数 |
-| `stdoutLimit` | 20KB | 命令输出截断上限 |
-| `terminalContextLimit` | 3000 字符 | 终端上下文截断上限 |
-| `commandOutputLimit` | 1800 字符 | 已执行命令输出截断上限 |
-
-## ai-tools.ts 独立工具层
-
-[ai-tools.ts](../src/main/ai/ai-tools.ts) 提供了一套与 Agent 循环**独立的**命令审批/执行 API，适用于工具调用场景：
-
-- `runReadonlyAiCommand(tabId, command)` — 策略检查后直接执行只读命令
-- `requestAiCommandApproval(input)` — 创建审批请求（独立于 Agent 循环的审批存储）
-- `runApprovedAiCommand(input)` — 执行已批准的命令
-
-这些工具使用独立的 `approvals` Map 存储审批状态，与 Agent 循环中的 `pendingApprovals` 不共享。
-
-## 安全设计要点
-
-1. **多层防御**：DENIED_PREFIXES → DANGEROUS_TOKENS → 白名单匹配 → MUST_APPROVE 匹配
-2. **模式隔离**：三种模式（ask/auto/full）对应不同的自动执行权限
-3. **审批时效**：所有审批请求在 5 分钟后自动失效
-4. **命令验证**：执行前验证 approvalId、tabId、command 三重匹配
-5. **输出截断**：防止大量输出撑爆 AI 上下文
-6. **本地回退**：AI 不可用时仍可通过规则提供基础建议

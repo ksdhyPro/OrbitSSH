@@ -136,6 +136,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
 
   return {
     enabled: Boolean(value?.enabled),
+    shareTerminalContext: value?.shareTerminalContext === true,
     activeConfigId,
     configs,
     defaultMode: normalizeAiMode(mode)

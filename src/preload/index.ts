@@ -4,6 +4,7 @@ import type { LogPayload } from "../shared/logger.js";
 import type {
   ServerConfig,
   ServerInput,
+  ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server.js";
 import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
@@ -82,6 +83,8 @@ const orbitSSHApi = {
       ipcRenderer.invoke("server:create", input) as Promise<ServerConfig>,
     update: (input: ServerUpdateInput) =>
       ipcRenderer.invoke("server:update", input) as Promise<ServerConfig>,
+    setPinned: (input: ServerPinInput) =>
+      ipcRenderer.invoke("server:set-pinned", input) as Promise<ServerConfig>,
     delete: (serverId: string) =>
       ipcRenderer.invoke("server:delete", serverId) as Promise<boolean>,
   },

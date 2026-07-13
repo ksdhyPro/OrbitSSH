@@ -502,6 +502,26 @@ function removeAiConfig(configId: string): void {
 
         <div class="settings-field">
           <div>
+            <h3>发送最近终端输出</h3>
+            <p>开启后会先脱敏，再把最近终端输出发送给所选在线模型。</p>
+          </div>
+          <label class="settings-toggle">
+            <input
+              type="checkbox"
+              :checked="appSettings.ai.shareTerminalContext"
+              @change="
+                emit(
+                  'updateAiSetting',
+                  'shareTerminalContext',
+                  ($event.target as HTMLInputElement).checked,
+                )
+              " />
+            <span>{{ appSettings.ai.shareTerminalContext ? "开启" : "关闭" }}</span>
+          </label>
+        </div>
+
+        <div class="settings-field">
+          <div>
             <h3>默认模式</h3>
             <p>AI 助手启动时默认使用的权限模式。</p>
           </div>

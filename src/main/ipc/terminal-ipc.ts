@@ -8,6 +8,7 @@ import {
   resizeTerminal,
   writeTerminalInput
 } from '../ssh/session-manager.js'
+import { disposeAiTabState } from '../ai/ai-agent.js'
 import type { TerminalResizeInput } from '../../shared/terminal.js'
 import {
   assertTabAccess,
@@ -47,6 +48,7 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('terminal:close', (event, tabId: unknown) => {
     const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
     assertTabAccess(event, normalizedTabId, { allowMissing: true })
+    disposeAiTabState(normalizedTabId)
     closeTerminalSession(normalizedTabId)
     return true
   })

@@ -17,6 +17,8 @@ const DANGEROUS_TOKENS = [
   "&",
 ];
 
+const MAX_AI_COMMAND_CHARS = 4_096;
+
 const DENIED_PREFIXES = [
   "rm",
   "mkfs",
@@ -54,11 +56,12 @@ const MUST_APPROVE_PACKAGE_PATTERNS = [
 const MUST_APPROVE_DOCKER_PATTERNS = [
   /^docker\s+(build|commit|cp|create|exec|kill|login|logout|pause|pull|push|rename|restart|rm|rmi|run|save|start|stop|tag|unpause|update)\b/,
   /^docker\s+compose\s+(build|create|down|exec|kill|pause|pull|push|restart|rm|run|start|stop|up|unpause)\b/,
+  /^docker\s+(system|builder|container|image|network|volume)\s+(prune|rm|create|disconnect|connect)\b/,
 ];
 
 const MUST_APPROVE_SERVICE_PATTERNS = [
-  /^(systemctl|service)\s+\S+\s+(stop|restart|reload|disable|enable)\b/,
-  /^systemctl\s+(stop|restart|reload|disable|enable)\s+\S+/,
+  /^(systemctl|service)\s+\S+\s+(stop|restart|reload|disable|enable|mask|unmask)\b/,
+  /^systemctl\s+(stop|restart|reload|disable|enable|mask|unmask|daemon-reload)\b/,
 ];
 
 const MUST_APPROVE_GENERAL_PATTERNS = [
@@ -80,6 +83,11 @@ const MUST_APPROVE_GENERAL_PATTERNS = [
   /(^|\s)xargs\b.*\s(rm|mv|cp|chmod|chown|kill)\b/,
   /(^|\s)kubectl\s+(apply|delete|edit|exec|scale|rollout|patch|replace)\b/,
   /(^|\s)git\s+(reset|clean|checkout|switch|merge|rebase|pull|push|commit|restore)\b/,
+  /^(curl|wget)\b.*(?:\s-X\s*(POST|PUT|PATCH|DELETE)|\s--request\s+(POST|PUT|PATCH|DELETE)|\s(?:-d|--data|--data-raw|--data-binary|-F|--form|-T|--upload-file)\b)/i,
+  /^(redis-cli)\b.*\b(FLUSHALL|FLUSHDB|DEL|UNLINK|SHUTDOWN|CONFIG\s+SET|SCRIPT\s+FLUSH)\b/i,
+  /^(mysql|mariadb|psql|sqlite3)\b.*\s(?:-e|-c|--execute)(?:\s|=)/i,
+  /^(python|python3|perl|ruby|node|php)\s+(?!--version\b|-version\b|-v\b|-V\b|version\b).+/,
+  /^(sh|bash|zsh|fish)\s+(?!--version\b|-version\b).+/,
 ];
 
 const SAFE_ARG = "[A-Za-z0-9_./:@%+=,~*?-]+";
@@ -241,6 +249,143 @@ const ECHO_SEPARATOR_PATTERN = new RegExp(`^echo\\s+${SAFE_TEXT}$`);
 
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, " ");
+}
+
+function getCommandValidationError(command: string): string | null {
+  if (!command.trim()) return "命令为空";
+  if (command.length > MAX_AI_COMMAND_CHARS) {
+    return `命令长度超过 ${MAX_AI_COMMAND_CHARS} 个字符`;
+  }
+  if (command.includes("\0")) return "命令包含非法空字符";
+
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  for (const char of command) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = quote === char ? null : (quote ?? char);
+    }
+  }
+
+  if (quote) return "命令包含未闭合引号";
+  if (escaped) return "命令以未完成的转义符结尾";
+  return null;
+}
+
+interface LeadingToken {
+  value: string;
+  start: number;
+  end: number;
+}
+
+function readShellTokens(command: string): LeadingToken[] {
+  const tokens: LeadingToken[] = [];
+  let index = 0;
+
+  while (index < command.length) {
+    while (/\s/.test(command[index] ?? "")) index += 1;
+    if (index >= command.length) break;
+
+    const start = index;
+    let value = "";
+    let quote: "'" | '"' | null = null;
+    let escaped = false;
+    for (; index < command.length; index += 1) {
+      const char = command[index] ?? "";
+      if (escaped) {
+        value += char;
+        escaped = false;
+        continue;
+      }
+      if (char === "\\" && quote !== "'") {
+        escaped = true;
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        quote = quote === char ? null : (quote ?? char);
+        continue;
+      }
+      if (!quote && /\s/.test(char)) break;
+      value += char;
+    }
+    tokens.push({ value, start, end: index });
+  }
+
+  return tokens;
+}
+
+function isEnvironmentAssignment(token: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(token);
+}
+
+function getEffectiveCommand(normalized: string): {
+  commandName: string;
+  normalized: string;
+} {
+  const tokens = readShellTokens(normalized);
+  let index = 0;
+
+  while (index < tokens.length && isEnvironmentAssignment(tokens[index]!.value)) {
+    index += 1;
+  }
+
+  for (let depth = 0; depth < 8 && index < tokens.length; depth += 1) {
+    const token = getCommandBasename(tokens[index]!.value.toLowerCase());
+    if (token === "env") {
+      index += 1;
+      while (index < tokens.length) {
+        const value = tokens[index]!.value;
+        if (isEnvironmentAssignment(value)) {
+          index += 1;
+          continue;
+        }
+        if (value === "-u" || value === "--unset") {
+          index += 2;
+          continue;
+        }
+        if (value.startsWith("-")) {
+          index += 1;
+          continue;
+        }
+        break;
+      }
+      continue;
+    }
+    if (token === "command" || token === "builtin" || token === "exec") {
+      index += 1;
+      while (tokens[index]?.value.startsWith("-")) index += 1;
+      continue;
+    }
+    if (token === "nice") {
+      index += 1;
+      if (tokens[index]?.value === "-n") index += 2;
+      else if (tokens[index]?.value === "--adjustment") index += 2;
+      else if (tokens[index]?.value.startsWith("--adjustment=")) index += 1;
+      else if (/^-\d+$/.test(tokens[index]?.value ?? "")) index += 1;
+      continue;
+    }
+    if (token === "nohup") {
+      index += 1;
+      if (tokens[index]?.value === "--") index += 1;
+      continue;
+    }
+    break;
+  }
+
+  const effective = tokens[index];
+  if (!effective) return { commandName: "", normalized };
+  const commandName = getCommandBasename(effective.value.toLowerCase());
+  return {
+    commandName,
+    normalized: `${commandName}${normalized.slice(effective.end)}`,
+  };
 }
 
 function getFirstWord(normalized: string): string {
@@ -423,7 +568,7 @@ function getMandatoryApprovalReason(
   risk: "low" | "medium" | "high" = "medium",
 ): string | null {
   const normalized = normalizeCommand(command);
-  const firstWord = getFirstWord(normalized);
+  const effective = getEffectiveCommand(normalized);
 
   if (!normalized) {
     return "命令为空";
@@ -433,7 +578,11 @@ function getMandatoryApprovalReason(
     return "AI 标记为高风险命令";
   }
 
-  const commandName = getCommandBasename(firstWord);
+  if (/\r|\n/.test(command)) {
+    return "检测到多行 Shell 命令";
+  }
+
+  const commandName = effective.commandName;
 
   if (
     normalized.includes("||") &&
@@ -451,15 +600,19 @@ function getMandatoryApprovalReason(
     return "检测到写入重定向或 heredoc";
   }
 
+  if (/(^|[^<])<($|[^<])/.test(normalized)) {
+    return "检测到输入重定向";
+  }
+
   if (hasBackgroundOperator(normalized)) {
     return "检测到后台执行或复杂 Shell 控制符";
   }
 
   if (
-    MUST_APPROVE_PACKAGE_PATTERNS.some(pattern => pattern.test(normalized)) ||
-    MUST_APPROVE_DOCKER_PATTERNS.some(pattern => pattern.test(normalized)) ||
-    MUST_APPROVE_SERVICE_PATTERNS.some(pattern => pattern.test(normalized)) ||
-    MUST_APPROVE_GENERAL_PATTERNS.some(pattern => pattern.test(normalized))
+    MUST_APPROVE_PACKAGE_PATTERNS.some(pattern => pattern.test(effective.normalized)) ||
+    MUST_APPROVE_DOCKER_PATTERNS.some(pattern => pattern.test(effective.normalized)) ||
+    MUST_APPROVE_SERVICE_PATTERNS.some(pattern => pattern.test(effective.normalized)) ||
+    MUST_APPROVE_GENERAL_PATTERNS.some(pattern => pattern.test(effective.normalized))
   ) {
     return "命中本地高风险命令黑名单";
   }
@@ -596,6 +749,9 @@ function isBoundedJournalctlCommand(normalized: string): boolean {
 }
 
 export function isAutoAllowedQueryCommand(command: string): boolean {
+  if (getCommandValidationError(command) || /\r|\n/.test(command)) {
+    return false;
+  }
   const normalized = normalizeCommand(command);
 
   if (!normalized) {
@@ -621,26 +777,51 @@ export function requiresMandatoryApproval(
   command: string,
   risk: "low" | "medium" | "high" = "medium",
 ): boolean {
-  return getMandatoryApprovalReason(command, risk) !== null;
+  if (risk === "high") return true;
+  const decision = evaluateAiCommand(command).decision;
+  return decision === "requires_approval" || decision === "deny";
 }
 
 export function evaluateAiCommand(command: string): AiCommandPolicyResult {
+  const validationError = getCommandValidationError(command);
+  if (validationError) {
+    return { decision: "deny", reason: validationError };
+  }
   const normalized = normalizeCommand(command);
 
   if (!normalized) {
     return { decision: "deny", reason: "命令为空" };
   }
 
-  const firstWord = getFirstWord(normalized);
+  const compoundSegments = splitAiShellCommands(command);
+  if (compoundSegments.length > 1) {
+    const decisions = compoundSegments.map(segment =>
+      evaluateAiCommand(segment.command),
+    );
+    const denied = decisions.find(item => item.decision === "deny");
+    if (denied) return denied;
+    const approval = decisions.find(
+      item => item.decision === "requires_approval",
+    );
+    if (approval) return approval;
+    return decisions.every(item => item.decision === "allow_readonly")
+      ? { decision: "allow_readonly", reason: "复合命令均命中只读白名单" }
+      : {
+          decision: "allow_full",
+          reason: "复合命令未命中高风险黑名单，仅完全访问模式可自动执行",
+        };
+  }
 
-  if (DENIED_PREFIXES.includes(getCommandBasename(firstWord))) {
+  const effective = getEffectiveCommand(normalized);
+
+  if (DENIED_PREFIXES.includes(effective.commandName)) {
     return {
       decision: "requires_approval",
       reason: "检测到高危命令前缀，必须确认",
     };
   }
 
-  const mandatoryApprovalReason = getMandatoryApprovalReason(normalized);
+  const mandatoryApprovalReason = getMandatoryApprovalReason(command);
   if (mandatoryApprovalReason) {
     return {
       decision: "requires_approval",
@@ -648,8 +829,16 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
     };
   }
 
+
+  if (isAutoAllowedQueryCommand(command)) {
+    return {
+      decision: "allow_readonly",
+      reason: "命中本地只读命令白名单",
+    };
+  }
+
   return {
-    decision: "allow_readonly",
-    reason: "未命中本地高风险黑名单",
+    decision: "allow_full",
+    reason: "未命中本地高风险黑名单，仅完全访问模式可自动执行",
   };
 }

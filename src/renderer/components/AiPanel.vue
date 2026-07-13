@@ -215,6 +215,7 @@ const statusLabels: Record<AiCommandStatus, string> = {
   running: "执行中",
   completed: "已完成",
   failed: "执行失败",
+  cancelled: "已终止",
   requires_approval: "等待批准",
   rejected: "已拒绝",
 };
@@ -413,9 +414,12 @@ const processStatusText = computed(() => {
   const rejected = props.commandCards.filter(
     card => card.status === "rejected",
   ).length;
+  const cancelled = props.commandCards.filter(
+    card => card.status === "cancelled",
+  ).length;
 
-  if (failed > 0 || waiting > 0 || rejected > 0) {
-    return `处理完成，${completed} 条完成，${failed} 条失败，${rejected} 条已拒绝`;
+  if (failed > 0 || waiting > 0 || rejected > 0 || cancelled > 0) {
+    return `处理完成，${completed} 条完成，${failed} 条失败，${cancelled} 条终止，${rejected} 条已拒绝`;
   }
 
   return "处理完成";
@@ -572,6 +576,10 @@ function getCommandAuditText(card: AiCommandCard): string {
     return "已拒绝";
   }
 
+  if (card.status === "cancelled") {
+    return "已终止";
+  }
+
   if (card.status === "completed" || card.status === "failed") {
     return card.approvalId ? "已批准" : "自动审批";
   }
@@ -591,13 +599,16 @@ function getProcessSummary(items: ProcessTimelineItem[]): string {
   const rejectedCount = items.filter(
     item => item.type === "card" && item.card.status === "rejected",
   ).length;
+  const cancelledCount = items.filter(
+    item => item.type === "card" && item.card.status === "cancelled",
+  ).length;
 
   if (runningCount > 0) {
     return `执行过程：${commandCount} 条命令，正在处理`;
   }
 
-  if (failedCount > 0 || rejectedCount > 0) {
-    return `执行过程：${commandCount} 条命令，${failedCount} 条失败，${rejectedCount} 条已拒绝`;
+  if (failedCount > 0 || rejectedCount > 0 || cancelledCount > 0) {
+    return `执行过程：${commandCount} 条命令，${failedCount} 条失败，${cancelledCount} 条终止，${rejectedCount} 条已拒绝`;
   }
 
   if (commandCount > 0) {

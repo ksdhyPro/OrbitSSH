@@ -1,0 +1,208 @@
+﻿:root {
+  /* ===== 背景层级（由深到浅） ===== */
+  --bg-base: #101216; /* 应用最底层背景 */
+  --bg-deep: #0b0f14; /* 终端 / 编辑器 / 图片预览等深色内容区 */
+  --bg-elevated-1: #151922; /* 侧边栏、设置导航等次级面板 */
+  --bg-elevated-2: #181d27; /* 卡片面板、对话框默认底色 */
+  --bg-elevated-3: #1d2330; /* 服务器项 / 设置字段等卡片 */
+  --bg-elevated-4: #151b25; /* 传输面板、编辑器禁用态等冷调底 */
+  --bg-input: #111722; /* 输入框 / 菜单默认背景 */
+  --bg-panel: #181d27; /* 通用面板底色 */
+  --bg-hover: #222a38; /* 服务器项悬停底色 */
+  --bg-hover-item: #202838; /* 菜单项 / 进度条槽悬停底色 */
+  --bg-hover-cool: #18202d; /* 选项悬停冷调底色 */
+  --bg-badge: #263241; /* 方向徽标底色 */
+  --bg-tab: #1b222e; /* 会话标签默认底色 */
+  --bg-tab-active: #223028; /* 会话标签激活底色 */
+  --bg-replace: #1c2532; /* 编辑器替换按钮底色 */
+
+  /* ===== 边框层级 ===== */
+  --border-subtle: #272d38; /* 面板内分割线 */
+  --border-default: #2a3240; /* 卡片 / 服务器项边框 */
+  --border-input: #303847; /* 输入框 / 菜单边框 */
+  --border-strong: #3a4658; /* 悬停加重的边框、滚动条 */
+  --border-strong-hover: #4b586d; /* 滚动条悬停 */
+  --border-window: #252a33; /* 顶栏 / 分隔条边框 */
+  --border-dashed: #313948; /* 空状态虚线边框 */
+  --border-menu: #29313f; /* 右键菜单边框 */
+  --border-tab: #252d38; /* 会话标签边框 */
+  --border-float: #2f3948; /* 浮动搜索框边框 */
+  --border-hover-strong: #3b4658; /* 选项悬停边框 */
+
+  /* ===== 文字层级 ===== */
+  --text-primary: #e7edf7; /* 标题、正文主色 */
+  --text-heading: #dce5f2; /* 强调标题 */
+  --text-secondary: #c6d0df; /* 次级文字、表单标签 */
+  --text-muted: #b8c2d1; /* 图标按钮、文件节点常规文字 */
+  --text-tertiary: #8f9bad; /* 辅助说明、空状态提示 */
+  --text-disabled: #7f8da3; /* 禁用 / 弱化文字 */
+  --text-faint: #647187; /* 元信息、占位辅助 */
+  --text-placeholder: #59667a; /* 输入框 placeholder */
+  --text-dim: #9aa7ba; /* 次要描述文字、空状态副文本 */
+  --text-disabled-strong: #5f6b7e; /* 菜单禁用项文字 */
+  --text-disabled-button: #667286; /* 按钮禁用态文字 */
+  --text-stepper: #d8e2f0; /* 步进器按钮文字 */
+  --text-badge: #aebbd0; /* 徽标文字 */
+  --text-tab: #d9e2ef; /* 会话标签文字 */
+
+  /* ===== 品牌主色（绿） ===== */
+  --brand: #22a06b; /* 品牌主色：徽标、主按钮、进度条 */
+  --brand-ink: #07120d; /* 品牌色背景上的前景文字 */
+  --brand-soft: #89dcae; /* 品牌柔和态：成功提示、徽章 */
+
+  /* ===== 功能色 ===== */
+  --accent: #4b8fd8; /* 强调蓝：聚焦边框、激活态 */
+  --accent-bright: #6fb6ff; /* 亮蓝：文件图标、选中圆点 */
+  --accent-hover: #2d3748; /* 通用悬停底色（中性） */
+  --accent-soft: #263142; /* 搜索工具悬停底色 */
+
+  --danger: #ff8f82; /* 危险 / 错误文字 */
+  --danger-strong: #ffb3aa; /* 危险悬停文字 */
+  --danger-bg: #d84d42; /* 危险按钮底色 */
+  --danger-ink: #fff4f2; /* 危险按钮前景文字 */
+  --danger-hover-bg: #b3261e; /* 关闭按钮悬停红 */
+  --danger-overlay: rgba(255, 143, 130, 0.12); /* 危险悬停蒙层 */
+  --danger-border: rgba(255, 143, 130, 0.35); /* 危险虚线边框 */
+
+  /* ===== 悬停 / 选中叠层 ===== */
+  --hover-file: rgba(111, 182, 255, 0.08); /* 文件行悬停 */
+  --hover-overlay: rgba(255, 255, 255, 0.08); /* 通用半透明悬停 */
+  --selected-bg: rgba(75, 143, 216, 0.24); /* 选中行底色 */
+  --selected-ring: rgba(111, 182, 255, 0.28); /* 选中行内描边 */
+  --accent-fill: rgba(75, 143, 216, 0.14); /* 蓝色填充态 */
+  --focus-ring: rgba(75, 143, 216, 0.18); /* 表单聚焦外描边 */
+  --focus-ring-soft: rgba(75, 143, 216, 0.14); /* 弱聚焦外描边 */
+  --surface-gloss: rgba(255, 255, 255, 0.025); /* 控件顶部轻微高光 */
+  --surface-gloss-hover: rgba(255, 255, 255, 0.04); /* 控件悬停高光 */
+  --shell-gradient-start: rgba(45, 64, 89, 0.2); /* 应用背景顶部叠层 */
+  --shell-gradient-end: rgba(16, 18, 22, 0); /* 应用背景透明过渡 */
+  --surface-subtle: rgba(11, 15, 20, 0.16); /* 列表区域轻微压暗 */
+  --surface-subtle-strong: rgba(11, 15, 20, 0.26); /* 传输列表压暗 */
+  --surface-floating: rgba(15, 20, 28, 0.94); /* 浮动工具条背景 */
+  --surface-floating-strong: rgba(15, 20, 28, 0.96); /* 编辑器浮动工具条背景 */
+  --surface-topbar: rgba(18, 21, 28, 0.92); /* 顶栏半透明背景 */
+  --surface-backdrop: rgba(5, 8, 12, 0.68); /* 弹窗遮罩 */
+  --line-translucent: rgba(48, 56, 71, 0.66); /* 半透明分割线 */
+  --line-translucent-strong: rgba(48, 56, 71, 0.7); /* 列表顶部半透明分割线 */
+  --spinner-track: rgba(111, 182, 255, 0.22); /* 加载圈轨道 */
+  --brand-border-soft: rgba(34, 160, 107, 0.52); /* 品牌色弱边框 */
+  --brand-fill-soft: rgba(34, 160, 107, 0.08); /* 品牌色弱填充 */
+  --shadow-menu: 0 18px 42px rgba(0, 0, 0, 0.42);
+  --shadow-popover: 0 16px 42px rgba(0, 0, 0, 0.34);
+  --shadow-popover-soft: 0 16px 42px rgba(0, 0, 0, 0.32);
+  --shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.36);
+  --shadow-tasklist: 0 18px 52px rgba(0, 0, 0, 0.44);
+  --swatch-border: rgba(255, 255, 255, 0.16);
+
+  color-scheme: dark;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  -webkit-app-region: no-drag;
+}
+
+:root[data-theme="light"] {
+  --bg-base: #eef2f7;
+  --bg-deep: #f7f9fc;
+  --bg-elevated-1: #f5f7fb;
+  --bg-elevated-2: #ffffff;
+  --bg-elevated-3: #f8fafc;
+  --bg-elevated-4: #f2f6fb;
+  --bg-input: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-hover: #edf3fa;
+  --bg-hover-item: #e9f0f8;
+  --bg-hover-cool: #f0f5fb;
+  --bg-badge: #e5edf6;
+  --bg-tab: #e8eef6;
+  --bg-tab-active: #e3f3eb;
+  --bg-replace: #eef3f8;
+
+  --border-subtle: #dfe6ef;
+  --border-default: #d7dee8;
+  --border-input: #cbd5e1;
+  --border-strong: #aeb9c8;
+  --border-strong-hover: #8f9bad;
+  --border-window: #d7dee8;
+  --border-dashed: #c8d2df;
+  --border-menu: #d0d9e5;
+  --border-tab: #cfd8e4;
+  --border-float: #c8d4e2;
+  --border-hover-strong: #9facbc;
+
+  --text-primary: #17202b;
+  --text-heading: #1d2733;
+  --text-secondary: #334155;
+  --text-muted: #4b5b70;
+  --text-tertiary: #66768a;
+  --text-disabled: #8491a3;
+  --text-faint: #96a1b0;
+  --text-placeholder: #98a4b4;
+  --text-dim: #56677d;
+  --text-disabled-strong: #8a96a7;
+  --text-disabled-button: #7d8a9b;
+  --text-stepper: #334155;
+  --text-badge: #526277;
+  --text-tab: #243143;
+
+  --brand: #1f8a5f;
+  --brand-ink: #ffffff;
+  --brand-soft: #2f946b;
+  --accent: #2568b8;
+  --accent-bright: #347dd1;
+  --accent-hover: #e5edf6;
+  --accent-soft: #e7f0fa;
+
+  --danger: #c43c32;
+  --danger-strong: #a62e26;
+  --danger-bg: #c43c32;
+  --danger-ink: #ffffff;
+  --danger-hover-bg: #b3261e;
+  --danger-overlay: rgba(196, 60, 50, 0.1);
+  --danger-border: rgba(196, 60, 50, 0.32);
+
+  --hover-file: rgba(37, 104, 184, 0.08);
+  --hover-overlay: rgba(23, 32, 43, 0.06);
+  --selected-bg: rgba(37, 104, 184, 0.16);
+  --selected-ring: rgba(37, 104, 184, 0.24);
+  --accent-fill: rgba(37, 104, 184, 0.1);
+  --focus-ring: rgba(37, 104, 184, 0.18);
+  --focus-ring-soft: rgba(37, 104, 184, 0.14);
+  --surface-gloss: rgba(255, 255, 255, 0.72);
+  --surface-gloss-hover: rgba(255, 255, 255, 0.9);
+  --shell-gradient-start: rgba(203, 213, 225, 0.34);
+  --shell-gradient-end: rgba(238, 242, 247, 0);
+  --surface-subtle: rgba(215, 222, 232, 0.28);
+  --surface-subtle-strong: rgba(215, 222, 232, 0.36);
+  --surface-floating: rgba(255, 255, 255, 0.96);
+  --surface-floating-strong: rgba(255, 255, 255, 0.98);
+  --surface-topbar: rgba(255, 255, 255, 0.92);
+  --surface-backdrop: rgba(15, 23, 42, 0.28);
+  --line-translucent: rgba(203, 213, 225, 0.82);
+  --line-translucent-strong: rgba(203, 213, 225, 0.9);
+  --spinner-track: rgba(37, 104, 184, 0.2);
+  --brand-border-soft: rgba(31, 138, 95, 0.44);
+  --brand-fill-soft: rgba(31, 138, 95, 0.08);
+  --shadow-menu: 0 18px 42px rgba(15, 23, 42, 0.16);
+  --shadow-popover: 0 16px 42px rgba(15, 23, 42, 0.14);
+  --shadow-popover-soft: 0 16px 42px rgba(15, 23, 42, 0.12);
+  --shadow-dialog: 0 24px 80px rgba(15, 23, 42, 0.2);
+  --shadow-tasklist: 0 18px 52px rgba(15, 23, 42, 0.18);
+  --swatch-border: rgba(23, 32, 43, 0.16);
+
+  color-scheme: light;
+}

@@ -47,6 +47,7 @@ export const useSettingsStore = defineStore("settings", () => {
       },
       ai: {
         enabled: appSettings.ai.enabled,
+        shareTerminalContext: appSettings.ai.shareTerminalContext,
         activeConfigId: appSettings.ai.activeConfigId,
         configs: appSettings.ai.configs.map(config => ({ ...config })),
         defaultMode: appSettings.ai.defaultMode,
@@ -115,6 +116,7 @@ export const useSettingsStore = defineStore("settings", () => {
   async function updateAiSettings(value: AiSettings): Promise<void> {
     Object.assign(appSettings.ai, {
       enabled: value.enabled,
+      shareTerminalContext: value.shareTerminalContext,
       activeConfigId: value.activeConfigId,
       configs: value.configs.map(config => ({ ...config })),
       defaultMode: value.defaultMode,
@@ -168,6 +170,7 @@ export const useSettingsStore = defineStore("settings", () => {
         terminal: savedSettings.terminal,
         ai: {
           enabled: savedSettings.ai.enabled,
+          shareTerminalContext: savedSettings.ai.shareTerminalContext,
           activeConfigId: savedSettings.ai.activeConfigId,
           configCount: savedSettings.ai.configs.length,
           defaultMode: savedSettings.ai.defaultMode,

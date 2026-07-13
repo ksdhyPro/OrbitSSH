@@ -2,7 +2,7 @@ import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
-import type { ServerAuthConfig, ServerAuthType, ServerConfig, ServerInput, ServerUpdateInput } from '../../shared/server.js'
+import type { ServerAuthConfig, ServerAuthType, ServerConfig, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 
 interface ServerStoreSchema {
   servers: ServerConfig[]
@@ -93,7 +93,8 @@ function savePasswords(passwords: Record<string, string>): void {
 }
 
 export function listServers(): ServerConfig[] {
-  return getServers()
+  // 已置顶的服务器始终显示在列表前方，其余项目保持原有顺序。
+  return getServers().sort((left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)))
 }
 
 export function getServerAuthConfig(serverId: string): ServerAuthConfig {
@@ -162,6 +163,7 @@ export function createServer(input: ServerInput): ServerConfig {
     privateKeyPath: normalizedInput.authType === 'privateKey' ? normalizedInput.privateKeyPath : undefined,
     passphraseKey:
       normalizedInput.authType === 'privateKey' && normalizedInput.passphrase ? passphraseKey : undefined,
+    isPinned: false,
     createdAt: now,
     updatedAt: now
   }
@@ -290,4 +292,29 @@ export function deleteServer(serverId: string): void {
 
   savePasswords(passwords)
   saveServers(servers.filter((item) => item.id !== serverId))
+}
+
+// 更新置顶状态时只改动目标服务器，避免影响已保存的连接认证信息。
+export function setServerPinned(input: ServerPinInput): ServerConfig {
+  if (typeof input.id !== 'string' || !input.id.trim() || typeof input.isPinned !== 'boolean') {
+    throw new Error('服务器置顶参数无效')
+  }
+
+  const servers = getServers()
+  const serverIndex = servers.findIndex((server) => server.id === input.id)
+
+  if (serverIndex === -1) {
+    throw new Error('服务器不存在')
+  }
+
+  const updatedServer: ServerConfig = {
+    ...servers[serverIndex],
+    isPinned: input.isPinned,
+    updatedAt: Date.now()
+  }
+
+  servers[serverIndex] = updatedServer
+  saveServers(servers)
+
+  return updatedServer
 }

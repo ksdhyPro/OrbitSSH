@@ -20,6 +20,7 @@ const orbitSSHApi = {
     list: () => ipcRenderer.invoke("server:list"),
     create: input => ipcRenderer.invoke("server:create", input),
     update: input => ipcRenderer.invoke("server:update", input),
+    setPinned: input => ipcRenderer.invoke("server:set-pinned", input),
     delete: serverId => ipcRenderer.invoke("server:delete", serverId),
   },
   settings: {

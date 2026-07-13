@@ -8,6 +8,7 @@ export type AiCommandStatus =
   | "running"
   | "completed"
   | "failed"
+  | "cancelled"
   | "requires_approval"
   | "rejected";
 
@@ -41,7 +42,7 @@ export interface AiCommandResult {
 }
 
 export interface AiCommandPolicyResult {
-  decision: "allow_readonly" | "requires_approval" | "deny";
+  decision: "allow_readonly" | "allow_full" | "requires_approval" | "deny";
   reason: string;
 }
 
@@ -74,6 +75,7 @@ export interface AiApprovedCommandInput {
 }
 
 export interface AiRejectedCommandInput {
+  tabId: string;
   approvalId: string;
 }
 
