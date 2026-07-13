@@ -10,6 +10,7 @@ import {
   buildAiMessages,
   truncateText,
   type ExecutedAiCommandContext,
+  type LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
 import {
   collectSseStream,
@@ -54,6 +55,20 @@ const aiTools = [
   },
 ];
 
+// 异常响应只保留有限长度，避免单次模型响应撑大应用日志文件。
+const maxLoggedRawResponseChars = 12_000;
+const maxAiResponseAttempts = 2;
+
+type AiTurnAttemptResult = ParsedAssistantResponse & {
+  // 仅供请求层判断是否需要重试，不向渲染层暴露。
+  retryable?: boolean;
+};
+
+function getRawResponsePreview(rawResponseText: string): string {
+  if (!rawResponseText) return "";
+  return truncateText(rawResponseText, maxLoggedRawResponseChars);
+}
+
 function summarizeToolCalls(rawToolCalls: RawToolCall[]) {
   return rawToolCalls.map(toolCall => ({
     name: toolCall.function?.name ?? "",
@@ -71,14 +86,22 @@ function getErrorCode(error: unknown): string {
   return getErrorCode(record.cause);
 }
 
-function createAiRequestErrorResponse(error: unknown): ParsedAssistantResponse {
+function createAiRequestErrorResponse(error: unknown): AiTurnAttemptResult {
   if (error instanceof Error && error.message === "AI_RESPONSE_TOO_LARGE") {
-    return { reply: "AI 服务响应过大，已停止接收。", commands: [] };
+    return { reply: "AI 服务响应过大，已停止接收。", commands: [], retryable: true };
   }
   if (getErrorCode(error) === "UND_ERR_CONNECT_TIMEOUT") {
-    return { reply: "无法连接 AI 服务：连接超时。请检查网络、代理或防火墙设置后重试。", commands: [] };
+    return {
+      reply: "无法连接 AI 服务：连接超时。请检查网络、代理或防火墙设置后重试。",
+      commands: [],
+      retryable: true,
+    };
   }
-  return { reply: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。", commands: [] };
+  return {
+    reply: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。",
+    commands: [],
+    retryable: true,
+  };
 }
 
 function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
@@ -103,10 +126,17 @@ function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
   };
 }
 
-async function createAiStatusErrorResponse(response: Response): Promise<ParsedAssistantResponse> {
-  const responseText = await response.text().catch(() => "");
-  const detail = responseText ? `，返回信息：${truncateText(responseText, 300)}` : "";
-  return { reply: `AI 请求失败（HTTP ${response.status}）${detail}`, commands: [] };
+async function createAiStatusErrorResponse(
+  response: Response,
+  responseText?: string,
+): Promise<AiTurnAttemptResult> {
+  const text = responseText ?? (await response.text().catch(() => ""));
+  const detail = text ? `，返回信息：${truncateText(text, 300)}` : "";
+  return {
+    reply: `AI 请求失败（HTTP ${response.status}）${detail}`,
+    commands: [],
+    retryable: true,
+  };
 }
 
 function createLocalFallback(
@@ -135,13 +165,14 @@ function createLocalFallback(
   return { reply: "我可以根据当前服务器上下文给出建议；如果需要诊断，请描述现象或指定服务名。", commands: [] };
 }
 
-export async function requestAiTurn(
+async function requestAiTurnOnce(
   input: AiChatInput,
   settings: AppSettings,
   executedCommands: ExecutedAiCommandContext[],
   signal?: AbortSignal,
   sendChunk?: (text: string) => void,
-): Promise<ParsedAssistantResponse> {
+  policyFeedback?: LocalPolicyRejectionFeedback,
+): Promise<AiTurnAttemptResult> {
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
     : "";
@@ -149,6 +180,7 @@ export async function requestAiTurn(
   if (!activeConfig) return createLocalFallback(input, executedCommands);
 
   const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
+  let rawResponseText = "";
   try {
     writeAppLog({
       scope: "main.ai",
@@ -166,7 +198,12 @@ export async function requestAiTurn(
     });
     const fetchBody: Record<string, unknown> = {
       model: activeConfig.model,
-      messages: buildAiMessages(input, executedCommands, terminalOutput),
+      messages: buildAiMessages(
+        input,
+        executedCommands,
+        terminalOutput,
+        policyFeedback,
+      ),
       tools: aiTools,
     };
     if (sendChunk) fetchBody.stream = true;
@@ -179,20 +216,36 @@ export async function requestAiTurn(
       body: JSON.stringify(fetchBody),
       signal,
     });
-    if (!response.ok) return createAiStatusErrorResponse(response);
+    if (!response.ok) {
+      rawResponseText = await response.text().catch(() => "");
+      writeAppLog({
+        scope: "main.ai",
+        level: "error",
+        message: "AI 响应异常",
+        data: {
+          provider: providerName,
+          tabId: input.tabId,
+          status: response.status,
+          rawResponse: getRawResponsePreview(rawResponseText),
+        },
+      });
+      return createAiStatusErrorResponse(response, rawResponseText);
+    }
 
     let reply = "";
     let normalizedToolCalls: RawToolCall[] = [];
     if (sendChunk && response.body) {
       const streamed = await collectSseStream(response.body, sendChunk);
       reply = streamed.contentText;
+      rawResponseText = streamed.rawResponseText;
       normalizedToolCalls = streamed.toolCalls.map(toolCall => ({
         id: toolCall.id,
         type: "function",
         function: { name: toolCall.name, arguments: toolCall.arguments },
       }));
     } else {
-      const payload = (await response.json()) as Record<string, unknown>;
+      rawResponseText = await response.text();
+      const payload = JSON.parse(rawResponseText) as Record<string, unknown>;
       const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
       const message = (choice?.message ?? {}) as Record<string, unknown>;
       reply = typeof message.content === "string" ? message.content.trim() : "";
@@ -207,12 +260,33 @@ export async function requestAiTurn(
     }
 
     const commands = parseRunShellToolCalls(normalizedToolCalls);
+    let retryable = false;
     if (normalizedToolCalls.length > 0 && commands.length === 0) {
+      retryable = true;
       writeAppLog({
         scope: "main.ai",
         level: "warn",
         message: "AI 工具调用名称或参数无效",
-        data: { provider: providerName, tabId: input.tabId, toolCalls: summarizeToolCalls(normalizedToolCalls) },
+        data: {
+          provider: providerName,
+          tabId: input.tabId,
+          toolCalls: summarizeToolCalls(normalizedToolCalls),
+          rawResponse: getRawResponsePreview(rawResponseText),
+        },
+      });
+    }
+    if (!reply.trim() && normalizedToolCalls.length === 0) {
+      retryable = true;
+      writeAppLog({
+        scope: "main.ai",
+        level: "warn",
+        message: "AI 返回空回复",
+        data: {
+          provider: providerName,
+          tabId: input.tabId,
+          streaming: Boolean(sendChunk),
+          rawResponse: getRawResponsePreview(rawResponseText),
+        },
       });
     }
     writeAppLog({
@@ -226,7 +300,7 @@ export async function requestAiTurn(
         hasCommands: commands.length > 0,
       },
     });
-    return { reply, commands };
+    return { reply, commands, retryable };
   } catch (error) {
     if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
       return { reply: "[已终止]", commands: [] };
@@ -238,8 +312,59 @@ export async function requestAiTurn(
         provider: providerName,
         tabId: input.tabId,
         error: error instanceof Error ? error.message : String(error),
+        rawResponse: getRawResponsePreview(rawResponseText),
       },
     });
     return createAiRequestErrorResponse(error);
   }
+}
+
+/**
+ * 请求异常时最多自动重试一次；合法工具调用的空文本回复不属于异常。
+ * 第二次仍失败时将结果交给上层，由现有逻辑通知用户。
+ */
+export async function requestAiTurn(
+  input: AiChatInput,
+  settings: AppSettings,
+  executedCommands: ExecutedAiCommandContext[],
+  signal?: AbortSignal,
+  sendChunk?: (text: string) => void,
+  policyFeedback?: LocalPolicyRejectionFeedback,
+): Promise<ParsedAssistantResponse> {
+  let attempt = 1;
+  let result = await requestAiTurnOnce(
+    input,
+    settings,
+    executedCommands,
+    signal,
+    sendChunk,
+    policyFeedback,
+  );
+
+  while (result.retryable && attempt < maxAiResponseAttempts && !signal?.aborted) {
+    writeAppLog({
+      scope: "main.ai",
+      level: "warn",
+      message: "AI 响应异常，正在自动重试",
+      data: {
+        tabId: input.tabId,
+        attempt,
+        nextAttempt: attempt + 1,
+      },
+    });
+    attempt += 1;
+    result = await requestAiTurnOnce(
+      input,
+      settings,
+      executedCommands,
+      signal,
+      sendChunk,
+      policyFeedback,
+    );
+  }
+
+  return {
+    reply: result.reply,
+    commands: result.commands,
+  };
 }

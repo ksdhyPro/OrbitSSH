@@ -195,6 +195,43 @@
   background: var(--bg-elevated-2);
 }
 
+.ai-message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.ai-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 0;
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  background: none;
+}
+
+.ai-copy-btn:hover {
+  background: var(--bg-hover-item);
+  color: var(--text-primary);
+}
+
+.ai-copy-btn img {
+  width: 15px;
+  height: 15px;
+}
+
+.ai-copy-success {
+  color: var(--success, #4caf78);
+  font-size: 14px;
+  line-height: 1;
+}
+
 .ai-message.user {
   background: var(--accent-fill);
 }

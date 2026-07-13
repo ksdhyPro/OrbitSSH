@@ -13,9 +13,11 @@ import closeIcon from "../assets/icons/close.svg";
 import collapseIcon from "../assets/icons/collapse.svg";
 import aiAskIcon from "../assets/icons/ai-ask.svg";
 import aiFullIcon from "../assets/icons/ai-full.svg";
+import copyIcon from "../assets/icons/copy-ai.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { renderMarkdown } from "../utils/markdown";
 import { resolveMenuPlacement } from "../utils/menu-position";
+import { copyTextByFallback } from "../utils/clipboard";
 import ContextMenu from "./ContextMenu.vue";
 
 type AiPanelMessage = {
@@ -393,6 +395,33 @@ const timelineItems = computed<DisplayTimelineItem[]>(() => {
   return timeline;
 });
 
+const copiedMessageId = ref<string | null>(null);
+let copiedMessageTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyAssistantMessage(message: AiPanelMessage): Promise<void> {
+  if (!message.content) return;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(message.content);
+    } else if (!copyTextByFallback(message.content)) {
+      throw new Error("复制失败");
+    }
+
+    copiedMessageId.value = message.id;
+    if (copiedMessageTimer) {
+      clearTimeout(copiedMessageTimer);
+    }
+    copiedMessageTimer = setTimeout(() => {
+      copiedMessageId.value = null;
+      copiedMessageTimer = null;
+    }, 1500);
+  } catch {
+    // 剪贴板权限被拒绝时不打断对话，仅恢复按钮状态。
+    copiedMessageId.value = null;
+  }
+}
+
 const processStatusText = computed(() => {
   if (hasPendingApproval.value) {
     return "等待批准";
@@ -510,12 +539,15 @@ function handleComposeEnterKeydown(event: KeyboardEvent): void {
 
 // 消息、流式文本或命令卡片有变化时，在贴底状态下继续跟随最新内容。
 watch(
-  () => [
-    props.messages.map(message => `${message.id}:${message.content.length}`).join("|"),
-    props.commandCards
-      .map(card => `${card.id}:${card.status}:${card.reason.length}`)
-      .join("|"),
-  ] as const,
+  () =>
+    [
+      props.messages
+        .map(message => `${message.id}:${message.content.length}`)
+        .join("|"),
+      props.commandCards
+        .map(card => `${card.id}:${card.status}:${card.reason.length}`)
+        .join("|"),
+    ] as const,
   () => {
     if (isNearMessageBottom()) {
       void scheduleScrollToBottom();
@@ -560,6 +592,10 @@ onBeforeUnmount(() => {
 
   if (compositionFrameId) {
     cancelAnimationFrame(compositionFrameId);
+  }
+
+  if (copiedMessageTimer) {
+    clearTimeout(copiedMessageTimer);
   }
 });
 
@@ -647,11 +683,15 @@ function formatDuration(durationMs: number): string {
   const totalMinutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   if (totalMinutes < 60) {
-    return seconds > 0 ? `${totalMinutes}分钟${seconds}秒` : `${totalMinutes}分钟`;
+    return seconds > 0
+      ? `${totalMinutes}分钟${seconds}秒`
+      : `${totalMinutes}分钟`;
   }
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return minutes > 0 ? `${hours}小时${minutes}分钟${seconds}秒` : `${hours}小时${seconds}秒`;
+  return minutes > 0
+    ? `${hours}小时${minutes}分钟${seconds}秒`
+    : `${hours}小时${seconds}秒`;
 }
 </script>
 
@@ -678,7 +718,10 @@ function formatDuration(durationMs: number): string {
             class="ai-new-conversation-btn"
             title="新对话"
             :disabled="
-              isSending || hasPendingApproval || hasRunningCommand || !context.tabId
+              isSending ||
+              hasPendingApproval ||
+              hasRunningCommand ||
+              !context.tabId
             "
             @click="emit('startNewConversation')">
             新对话
@@ -716,18 +759,33 @@ function formatDuration(durationMs: number): string {
               item.message.role,
               { streaming: streamingMessageIds.has(item.message.id) },
             ]">
-            <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
+            <header class="ai-message-header">
+              <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
+              <button
+                v-if="item.message.role === 'assistant'"
+                type="button"
+                class="ai-copy-btn"
+                :title="copiedMessageId === item.message.id ? '已复制' : '复制'"
+                :aria-label="
+                  copiedMessageId === item.message.id ? '已复制' : '复制'
+                "
+                @click="copyAssistantMessage(item.message)">
+                <span
+                  v-if="copiedMessageId === item.message.id"
+                  class="ai-copy-success"
+                  >✓</span
+                >
+                <img v-else :src="copyIcon" alt="" />
+              </button>
+            </header>
             <div
               v-if="item.message.role === 'assistant'"
               class="ai-markdown"
-              v-html="renderMarkdown(item.message.content)">
-            </div>
+              v-html="renderMarkdown(item.message.content)"></div>
             <p v-else>{{ item.message.content }}</p>
           </article>
 
-          <details
-            v-else-if="item.type === 'process'"
-            class="ai-process-line">
+          <details v-else-if="item.type === 'process'" class="ai-process-line">
             <summary>
               <span>{{ getProcessSummary(item.items) }}</span>
               <span
@@ -748,8 +806,7 @@ function formatDuration(durationMs: number): string {
                 <div
                   v-if="processItem.type === 'assistant'"
                   class="ai-process-markdown"
-                  v-html="renderMarkdown(processItem.message.content)">
-                </div>
+                  v-html="renderMarkdown(processItem.message.content)"></div>
 
                 <template v-else>
                   <code>{{ processItem.card.command }}</code>
@@ -760,16 +817,20 @@ function formatDuration(durationMs: number): string {
                     <summary>输出</summary>
                     <pre
                       v-if="processItem.card.result?.stdout"
-                      class="ai-stdout">{{ processItem.card.result.stdout }}</pre>
+                      class="ai-stdout"
+                      >{{ processItem.card.result.stdout }}</pre
+                    >
                     <pre
                       v-if="processItem.card.result?.stderr"
-                      class="ai-stderr">{{ processItem.card.result.stderr }}</pre>
+                      class="ai-stderr"
+                      >{{ processItem.card.result.stderr }}</pre
+                    >
                     <p v-if="processItem.card.result" class="ai-exit-meta">
                       退出码：{{ processItem.card.result.exitCode ?? "未知" }}
                     </p>
-                    <pre
-                      v-if="processItem.card.error"
-                      class="ai-stderr">{{ processItem.card.error }}</pre>
+                    <pre v-if="processItem.card.error" class="ai-stderr">{{
+                      processItem.card.error
+                    }}</pre>
                   </details>
                 </template>
               </section>
@@ -791,9 +852,7 @@ function formatDuration(durationMs: number): string {
       </section>
 
       <footer class="ai-compose">
-        <article
-          v-if="pendingApprovalCard"
-          class="ai-approval-popover">
+        <article v-if="pendingApprovalCard" class="ai-approval-popover">
           <header>
             <span>需要确认</span>
             <strong>{{ statusLabels[pendingApprovalCard.status] }}</strong>

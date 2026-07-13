@@ -106,8 +106,12 @@ export function parseRunShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCom
 export async function collectSseStream(
   body: ReadableStream<Uint8Array> | null,
   sendChunk?: (text: string) => void,
-): Promise<{ contentText: string; toolCalls: StreamedToolCall[] }> {
-  if (!body) return { contentText: "", toolCalls: [] };
+): Promise<{
+  contentText: string;
+  toolCalls: StreamedToolCall[];
+  rawResponseText: string;
+}> {
+  if (!body) return { contentText: "", toolCalls: [], rawResponseText: "" };
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -186,7 +190,11 @@ export async function collectSseStream(
     toolCall => toolCall.name && toolCall.arguments,
   );
   if (contentText || streamedToolCalls.length > 0) {
-    return { contentText, toolCalls: streamedToolCalls };
+    return {
+      contentText,
+      toolCalls: streamedToolCalls,
+      rawResponseText: rawText,
+    };
   }
 
   let fallbackContent = "";
@@ -218,5 +226,9 @@ export async function collectSseStream(
     // 回退解析失败时保持空结果，由上层生成可读提示。
   }
   if (fallbackContent) sendChunk?.(fallbackContent);
-  return { contentText: fallbackContent, toolCalls: fallbackToolCalls };
+  return {
+    contentText: fallbackContent,
+    toolCalls: fallbackToolCalls,
+    rawResponseText: rawText,
+  };
 }

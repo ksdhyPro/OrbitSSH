@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.8
+
+1. Added one-click Markdown copying for AI replies, preserving the original formatted response and showing feedback after a successful copy.
+2. Improved AI response diagnostics by logging a truncated raw response structure for empty replies, HTTP errors, invalid tool calls, and response parsing failures.
+3. Added one automatic retry for empty or abnormal AI responses; the user is notified only if the retry also fails, while valid tool calls are never executed twice.
+4. Aligned the AI reply action hover style with the context-menu hover colors.
+
 ## v1.1.7
 
 1. Added server pinning. Frequently used connections can be pinned or unpinned from the server list, with persistent pin state and consistent sorting across the main process, Preload bridge, and UI.

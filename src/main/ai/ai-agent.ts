@@ -20,6 +20,7 @@ import {
   formatCommandResultForPrompt,
   truncateText,
   type ExecutedAiCommandContext,
+  type LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
 import {
   requestAiTurn,
@@ -40,6 +41,8 @@ interface PendingApprovalState {
   previousCards: AiCommandCard[];
   executedCommands: ExecutedAiCommandContext[];
   createdAt: number;
+  /** AI 已耗尽本地策略重试后，用户可显式决定是否绕过该次拒绝。 */
+  allowPolicyBypass?: boolean;
   emit?: AgentEmitter;
 }
 
@@ -54,6 +57,7 @@ interface AgentEmitter {
 }
 
 const maxAgentCommandCount = 10;
+const maxLocalPolicyRetries = 3;
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
 const activeRequests = new Map<string, AbortController>();
@@ -185,6 +189,24 @@ function createFailedCard(
     ...createRunningCard(input, command, cardId, createdAt, approvalId),
     status: "failed",
     error: error instanceof Error ? error.message : String(error),
+  };
+}
+
+/** 记录本地策略拒绝，便于用户查看模型生成的原始命令与拒绝原因。 */
+function createRejectedCard(
+  input: AiChatInput,
+  command: EvaluatedAiCommand,
+  policyReason: string,
+): AiCommandCard {
+  return {
+    id: createId(),
+    tabId: input.tabId,
+    command: command.command,
+    reason: command.reason,
+    risk: command.risk,
+    status: "rejected",
+    createdAt: Date.now(),
+    error: policyReason,
   };
 }
 
@@ -327,6 +349,20 @@ function getApprovalReason(
   return null;
 }
 
+function createPolicyRejectionFeedback(
+  command: EvaluatedAiCommand,
+  retryCount: number,
+): LocalPolicyRejectionFeedback {
+  return {
+    type: "local_command_policy_rejection",
+    retryCount,
+    maxRetries: maxLocalPolicyRetries,
+    command: command.command,
+    decision: "deny",
+    reason: command.policy.reason,
+  };
+}
+
 type CommandExecutionResult =
   | {
       status: "continue";
@@ -346,6 +382,7 @@ async function executeAgentCommand(
   options: {
     approvalId?: string;
     bypassApproval?: boolean;
+    bypassPolicyDeny?: boolean;
     cardId?: string;
     cardCreatedAt?: number;
   } = {},
@@ -354,7 +391,7 @@ async function executeAgentCommand(
   const cardCreatedAt = options.cardCreatedAt ?? Date.now();
   let nextCards = commandCards;
 
-  if (command.policy.decision === "deny") {
+  if (command.policy.decision === "deny" && !options.bypassPolicyDeny) {
     messages.push(createAssistantMessage(`命令已被本地策略拒绝：${command.policy.reason}`));
     return { status: "return", result: { messages, commandCards: nextCards } };
   }
@@ -494,6 +531,8 @@ async function runAgentLoop(
   const messages: AiMessage[] = [];
   let commandCards = [...previousCards];
   let executedCommands = [...initialExecutedCommands];
+  let policyFeedback: LocalPolicyRejectionFeedback | undefined;
+  let localPolicyRetryCount = 0;
 
   while (executedCommands.length < maxAgentCommandCount) {
     if (signal.aborted) {
@@ -509,6 +548,7 @@ async function runAgentLoop(
       executedCommands,
       signal,
       emit ? text => emit.sendChunk(messageId, text) : undefined,
+      policyFeedback,
     );
     const reply = parsed.reply?.trim();
     const nextCommand = getNextParsedCommand(parsed);
@@ -530,14 +570,76 @@ async function runAgentLoop(
       return { messages, commandCards };
     }
 
+    const defaultMessage = nextCommand
+      ? `执行：${nextCommand.command}（${nextCommand.reason}）`
+      : "未收到有效回复。";
+
+    if (nextCommand?.policy.decision === "deny") {
+      const rejectedCard = createRejectedCard(
+        input,
+        nextCommand,
+        nextCommand.policy.reason,
+      );
+      emit?.sendCommandCard(rejectedCard);
+      commandCards = mergeCards(commandCards, rejectedCard);
+
+      if (localPolicyRetryCount < maxLocalPolicyRetries) {
+        localPolicyRetryCount += 1;
+        policyFeedback = createPolicyRejectionFeedback(
+          nextCommand,
+          localPolicyRetryCount,
+        );
+        messages.push({
+          id: messageId,
+          role: "assistant",
+          content: `${reply || defaultMessage}\n\n本地策略已拦截：${nextCommand.policy.reason}。正在请求模型第 ${localPolicyRetryCount}/${maxLocalPolicyRetries} 次修正。`,
+          createdAt: messageCreatedAt,
+        });
+        continue;
+      }
+
+      const approvalId = createId();
+      const approvalReason = [
+        `模型连续 ${maxLocalPolicyRetries} 次修正后仍被本地策略拦截。`,
+        `拦截原因：${nextCommand.policy.reason}`,
+        "请人工确认是否仍要执行该命令；批准后将按原样执行。",
+      ].join("\n");
+      const approvalCard = createApprovalCard(
+        input,
+        nextCommand,
+        approvalId,
+        createId(),
+        Date.now(),
+        approvalReason,
+      );
+      emit?.sendCommandCard(approvalCard);
+      commandCards = mergeCards(commandCards, approvalCard);
+      storePendingApproval(approvalId, {
+        tabId: input.tabId,
+        input,
+        command: nextCommand,
+        cardId: approvalCard.id,
+        previousCards: commandCards,
+        executedCommands,
+        createdAt: Date.now(),
+        allowPolicyBypass: true,
+        emit,
+      });
+      messages.push({
+        id: messageId,
+        role: "assistant",
+        content: `${reply || defaultMessage}\n\n本地策略重试已耗尽，已转交人工审批。`,
+        createdAt: messageCreatedAt,
+      });
+      return { messages, commandCards };
+    }
+
+    policyFeedback = undefined;
+    localPolicyRetryCount = 0;
     messages.push({
       id: messageId,
       role: "assistant",
-      content: reply
-        ? reply
-        : nextCommand
-          ? `执行：${nextCommand.command}（${nextCommand.reason}）`
-          : "未收到有效回复。",
+      content: reply || defaultMessage,
       createdAt: messageCreatedAt,
     });
     if (!nextCommand) return { messages, commandCards };
@@ -641,6 +743,7 @@ export async function runApprovedAiCommand(
       {
         approvalId: input.approvalId,
         bypassApproval: true,
+        bypassPolicyDeny: approval.allowPolicyBypass,
         cardId: approval.cardId,
         cardCreatedAt,
       },
