@@ -24,8 +24,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 let tray: Tray | null = null;
+let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let hasCleanedUpConnections = false;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 // Windows: 确保任务栏图标正确、通知分组正确（需在 app.whenReady 之前设置）
 if (process.platform === "win32") {
@@ -53,8 +55,22 @@ function cleanupConnections(): void {
   void closeAllSftpSessions();
 }
 
+// 恢复并聚焦已有主窗口，供托盘和重复启动事件复用。
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 // 创建系统托盘，单击时恢复主窗口，右键菜单保留彻底关闭入口。
-function createTray(mainWindow: BrowserWindow): void {
+function createTray(): void {
   if (tray) {
     return;
   }
@@ -64,19 +80,7 @@ function createTray(mainWindow: BrowserWindow): void {
   tray = new Tray(trayIcon);
   tray.setToolTip("OrbitSSH");
 
-  tray.on("click", () => {
-    if (mainWindow.isDestroyed()) {
-      return;
-    }
-
-    // 主窗口最小化时需要先恢复，确保窗口能够正常显示到前台。
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-
-    mainWindow.show();
-    mainWindow.focus();
-  });
+  tray.on("click", showMainWindow);
 
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -280,26 +284,35 @@ function registerBaseIpc(): void {
   registerAiIpc();
 }
 
-app.whenReady().then(() => {
-  writeAppLog({
-    scope: "main.app",
-    message: "应用 ready",
-  });
-  registerBaseIpc();
-  const mainWindow = createMainWindow();
-  registerCloseToTray(mainWindow);
-  createTray(mainWindow);
-  registerMacApplicationMenu(mainWindow);
-  initUpdateManager(mainWindow);
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  // 再次启动应用时不创建新实例，直接唤醒首个实例的主窗口。
+  app.on("second-instance", showMainWindow);
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      const activatedWindow = createMainWindow();
-      registerCloseToTray(activatedWindow);
-      registerMacApplicationMenu(activatedWindow);
-    }
+  app.whenReady().then(() => {
+    writeAppLog({
+      scope: "main.app",
+      message: "应用 ready",
+    });
+    registerBaseIpc();
+    mainWindow = createMainWindow();
+    registerCloseToTray(mainWindow);
+    createTray();
+    registerMacApplicationMenu(mainWindow);
+    initUpdateManager(mainWindow);
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        mainWindow = createMainWindow();
+        registerCloseToTray(mainWindow);
+        registerMacApplicationMenu(mainWindow);
+      } else {
+        showMainWindow();
+      }
+    });
   });
-});
+}
 
 app.on("before-quit", () => {
   isQuitting = true;

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.10
+
+1. Added single-instance enforcement so only one OrbitSSH instance can run at a time. Launching the application again now restores, shows, and focuses the existing main window.
+
 ## v1.1.9
 
 1. Fixed an issue where the main window could not be reopened after being hidden to the system tray. Clicking the tray icon now restores, shows, and focuses the main window.
