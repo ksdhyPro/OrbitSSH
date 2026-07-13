@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.9
+
+1. Fixed an issue where the main window could not be reopened after being hidden to the system tray. Clicking the tray icon now restores, shows, and focuses the main window.
+2. Fixed an issue that prevented the AI from running the same command again within one turn. Repeated execution is now supported for state checks and change verification, while retaining the 10-command per-turn safety limit.
+
 ## v1.1.8
 
 1. Added one-click Markdown copying for AI replies, preserving the original formatted response and showing feedback after a successful copy.

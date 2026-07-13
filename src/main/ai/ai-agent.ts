@@ -73,32 +73,6 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
-function normalizeCommandForCompare(command: string): string {
-  return command.trim().replace(/\s+/g, " ");
-}
-
-function findExecutedCommand(
-  executedCommands: ExecutedAiCommandContext[],
-  command: string,
-): ExecutedAiCommandContext | undefined {
-  const normalized = normalizeCommandForCompare(command);
-  return executedCommands.find(
-    item => normalizeCommandForCompare(item.command) === normalized,
-  );
-}
-
-function formatRepeatedCommandMessage(
-  command: string,
-  result: AiCommandResult,
-): string {
-  return [
-    `命令 ${command} 刚刚已经执行过，本轮不再重复执行。`,
-    `退出码：${result.exitCode ?? "未知"}。`,
-    `结果摘要：\n${truncateText(formatCommandResultForPrompt(result), 2_000)}`,
-    "请基于以上结果继续判断。",
-  ].join("\n");
-}
-
 function getNextParsedCommand(
   parsed: ParsedAssistantResponse,
 ): EvaluatedAiCommand | null {
@@ -552,23 +526,6 @@ async function runAgentLoop(
     );
     const reply = parsed.reply?.trim();
     const nextCommand = getNextParsedCommand(parsed);
-    const repeatedCommand = nextCommand
-      ? findExecutedCommand(executedCommands, nextCommand.command)
-      : undefined;
-
-    if (nextCommand && repeatedCommand) {
-      const repeatedMessage = formatRepeatedCommandMessage(
-        nextCommand.command,
-        repeatedCommand.result,
-      );
-      messages.push({
-        id: messageId,
-        role: "assistant",
-        content: reply ? `${reply}\n\n${repeatedMessage}` : repeatedMessage,
-        createdAt: messageCreatedAt,
-      });
-      return { messages, commandCards };
-    }
 
     const defaultMessage = nextCommand
       ? `执行：${nextCommand.command}（${nextCommand.reason}）`

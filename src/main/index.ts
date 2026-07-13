@@ -53,8 +53,8 @@ function cleanupConnections(): void {
   void closeAllSftpSessions();
 }
 
-// 创建系统托盘，右键菜单只保留彻底关闭入口。
-function createTray(): void {
+// 创建系统托盘，单击时恢复主窗口，右键菜单保留彻底关闭入口。
+function createTray(mainWindow: BrowserWindow): void {
   if (tray) {
     return;
   }
@@ -63,6 +63,21 @@ function createTray(): void {
 
   tray = new Tray(trayIcon);
   tray.setToolTip("OrbitSSH");
+
+  tray.on("click", () => {
+    if (mainWindow.isDestroyed()) {
+      return;
+    }
+
+    // 主窗口最小化时需要先恢复，确保窗口能够正常显示到前台。
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -273,7 +288,7 @@ app.whenReady().then(() => {
   registerBaseIpc();
   const mainWindow = createMainWindow();
   registerCloseToTray(mainWindow);
-  createTray();
+  createTray(mainWindow);
   registerMacApplicationMenu(mainWindow);
   initUpdateManager(mainWindow);
 
