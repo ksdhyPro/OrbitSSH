@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.11
+
+1. Added local endpoints to File Transfer. The left side now opens the system user directory by default, while the right side selects the active server and its current SFTP path. Both sides can switch between Local and server endpoints, with local file/folder uploads and remote file downloads to the current local directory.
+2. Improved transfer target refresh and endpoint guards. Completed transfers now refresh the actual destination pane, transfers are disabled when both sides are Local, and existing server-to-server transfers remain available.
+3. Improved repeated large-file transfers. Uploads and server-to-server transfers larger than 5 MiB now use full SHA-256 fingerprint comparison and skip files only when both source and destination are stable and identical; verification failures safely fall back to normal transfer.
+4. Refactored SFTP sessions, uploads, downloads, server-to-server transfers, and the shared transfer queue into focused modules, with additional SFTP and Renderer tests.
+5. Fixed file or folder creation and renaming in File Transfer repeatedly selecting the entire name after each typed character, which caused the next character to overwrite the previous one.
+6. Fixed `Ctrl+S` not saving in the remote file editor, with `Cmd+S` support on macOS. Newly opened files now place the cursor at the end of the content.
+
 ## v1.1.10
 
 1. Added single-instance enforcement so only one OrbitSSH instance can run at a time. Launching the application again now restores, shows, and focuses the existing main window.

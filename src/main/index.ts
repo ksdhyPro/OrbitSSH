@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { registerLoggerIpc } from "./ipc/logger-ipc.js";
 import { registerClipboardIpc } from "./ipc/clipboard-ipc.js";
 import { registerDialogIpc } from "./ipc/dialog-ipc.js";
+import { registerLocalFilesIpc } from "./ipc/local-files-ipc.js";
 import { registerServerIpc } from "./ipc/server-ipc.js";
 import { registerSettingsIpc } from "./ipc/settings-ipc.js";
 import { registerSftpIpc } from "./ipc/sftp-ipc.js";
@@ -267,6 +268,7 @@ function registerBaseIpc(): void {
   registerLoggerIpc();
   registerClipboardIpc();
   registerDialogIpc();
+  registerLocalFilesIpc();
 
   ipcMain.handle("app:get-info", () => ({
     name: app.getName(),

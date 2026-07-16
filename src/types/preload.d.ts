@@ -2,6 +2,10 @@ export {};
 
 import type { SystemStats } from "../main/ipc/system-ipc";
 import type { AppMenuAction } from "../shared/app-menu";
+import type {
+  LocalDirectoryInput,
+  LocalDirectoryResult,
+} from "../shared/local-files";
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
@@ -72,6 +76,10 @@ declare global {
       clipboard: {
         readText: () => Promise<string>;
         writeText: (text: string) => Promise<boolean>;
+      };
+      localFiles: {
+        openDefault: () => Promise<LocalDirectoryResult>;
+        list: (input: LocalDirectoryInput) => Promise<LocalDirectoryResult>;
       };
       servers: {
         list: () => Promise<ServerConfig[]>;

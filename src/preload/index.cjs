@@ -16,6 +16,10 @@ const orbitSSHApi = {
     readText: () => ipcRenderer.invoke("clipboard:read-text"),
     writeText: text => ipcRenderer.invoke("clipboard:write-text", text),
   },
+  localFiles: {
+    openDefault: () => ipcRenderer.invoke("local-files:open-default"),
+    list: input => ipcRenderer.invoke("local-files:list", input),
+  },
   servers: {
     list: () => ipcRenderer.invoke("server:list"),
     create: input => ipcRenderer.invoke("server:create", input),

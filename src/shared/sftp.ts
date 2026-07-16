@@ -37,6 +37,7 @@ export interface SftpDownloadInput {
   size?: number
   taskId?: string
   localPath?: string
+  localDirectoryPath?: string
   transferredBytes?: number
 }
 
@@ -50,6 +51,7 @@ export interface SftpUploadInput {
   tabId: string
   remoteDirectoryPath: string
   sourceType?: 'file' | 'directory'
+  localPaths?: string[]
   taskId?: string
 }
 

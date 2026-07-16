@@ -97,6 +97,10 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
             settingsStore.appSettings.appearance.themeMode,
           ),
         ),
+        // CodeMirror 内部消费编辑快捷键，避免浏览器接管 Ctrl/Cmd+S。
+        onSaveShortcut: () => {
+          void saveFileEditor();
+        },
         onSearchShortcut: () => {
           void openFileEditorSearch();
         },

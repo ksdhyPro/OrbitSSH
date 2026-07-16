@@ -1,5 +1,6 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
+import { basename, join } from 'node:path'
 
 import {
   closeSftpSession,
@@ -45,7 +46,8 @@ import {
   requireOptionalFiniteNumber,
   requireOptionalString,
   requireRecord,
-  requireString
+  requireString,
+  requireStringArray
 } from './validation.js'
 
 const remoteNodeTypes = ['file', 'directory'] as const
@@ -119,6 +121,7 @@ function normalizeDownloadInput(
     size: requireOptionalFiniteNumber(record.size, '文件大小'),
     taskId: requireOptionalString(record.taskId, '任务 ID'),
     localPath: requireOptionalString(record.localPath, '本地路径'),
+    localDirectoryPath: requireOptionalString(record.localDirectoryPath, '本地目录'),
     transferredBytes: requireOptionalFiniteNumber(record.transferredBytes, '已传输字节数')
   }
 }
@@ -138,6 +141,12 @@ function normalizeUploadInput(
       record.sourceType === undefined
         ? undefined
         : requireEnum(record.sourceType, '上传来源类型', uploadSourceTypes),
+    localPaths:
+      record.localPaths === undefined
+        ? undefined
+        : requireStringArray(record.localPaths, '本地来源路径')
+            .map(path => path.trim())
+            .filter(Boolean),
     taskId: requireOptionalString(record.taskId, '任务 ID')
   }
 }
@@ -284,6 +293,11 @@ export function registerSftpIpc(): void {
     const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
     let filePath = input.localPath
 
+    if (!filePath && input.localDirectoryPath) {
+      // 目标文件名只取 basename，避免远程名称跳出用户当前选择的本地目录。
+      filePath = join(input.localDirectoryPath, basename(input.name))
+    }
+
     if (!filePath) {
       const saveDialogOptions = {
         title: '下载远程文件',
@@ -354,16 +368,22 @@ export function registerSftpIpc(): void {
           ? ['openDirectory', 'multiSelections', 'showHiddenFiles']
           : ['openFile', 'multiSelections', 'showHiddenFiles']
     }
-    const result = ownerWindow
-      ? await dialog.showOpenDialog(ownerWindow, openDialogOptions)
-      : await dialog.showOpenDialog(openDialogOptions)
+    let localPaths = input.localPaths
 
-    if (result.canceled || result.filePaths.length === 0) {
-      return { uploaded: false }
+    if (!localPaths || localPaths.length === 0) {
+      const result = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, openDialogOptions)
+        : await dialog.showOpenDialog(openDialogOptions)
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { uploaded: false }
+      }
+
+      localPaths = result.filePaths
     }
 
     const taskId = input.taskId ?? randomUUID()
-    const uploadPlan = await createUploadPlan(input.remoteDirectoryPath, result.filePaths)
+    const uploadPlan = await createUploadPlan(input.remoteDirectoryPath, localPaths)
     const baseEvent = {
       taskId,
       tabId: input.tabId,

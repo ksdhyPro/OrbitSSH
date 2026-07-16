@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import type { LogPayload } from "../shared/logger.js";
 import type {
+  LocalDirectoryInput,
+  LocalDirectoryResult,
+} from "../shared/local-files.js";
+import type {
   ServerConfig,
   ServerInput,
   ServerPinInput,
@@ -76,6 +80,12 @@ const orbitSSHApi = {
       ipcRenderer.invoke("clipboard:read-text") as Promise<string>,
     writeText: (text: string) =>
       ipcRenderer.invoke("clipboard:write-text", text) as Promise<boolean>,
+  },
+  localFiles: {
+    openDefault: () =>
+      ipcRenderer.invoke("local-files:open-default") as Promise<LocalDirectoryResult>,
+    list: (input: LocalDirectoryInput) =>
+      ipcRenderer.invoke("local-files:list", input) as Promise<LocalDirectoryResult>,
   },
   servers: {
     list: () => ipcRenderer.invoke("server:list") as Promise<ServerConfig[]>,

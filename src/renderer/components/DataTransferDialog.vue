@@ -16,8 +16,10 @@ import trashIcon from "../assets/icons/trash.svg";
 import type { ServerConfig } from "../../shared/server";
 import type {
   RemoteFileNode,
+  SftpDownloadProgressEvent,
   SftpRemoteTransferProgressEvent,
   SftpRemoteTransferSource,
+  SftpUploadProgressEvent,
 } from "../../shared/sftp";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import { resolveLocalMenuPlacement } from "../utils/menu-position";
@@ -46,10 +48,12 @@ import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 type TransferPaneKey = "left" | "right";
+const LOCAL_ENDPOINT_ID = "__local__";
 interface TransferPaneState {
   tabId: string;
   serverId: string;
   currentPath: string;
+  parentPath: string;
   pathInput: string;
   nodes: RemoteFileNode[];
   selectedPaths: Set<string>;
@@ -88,8 +92,9 @@ const sftpStore = useSftpStore();
 const fileEditorStore = useFileEditorStore();
 const leftPane = reactive<TransferPaneState>({
   tabId: `data-transfer-left-${crypto.randomUUID()}`,
-  serverId: "",
+  serverId: LOCAL_ENDPOINT_ID,
   currentPath: "",
+  parentPath: "",
   pathInput: "",
   nodes: [],
   selectedPaths: new Set<string>(),
@@ -102,6 +107,7 @@ const rightPane = reactive<TransferPaneState>({
   tabId: `data-transfer-right-${crypto.randomUUID()}`,
   serverId: "",
   currentPath: "",
+  parentPath: "",
   pathInput: "",
   nodes: [],
   selectedPaths: new Set<string>(),
@@ -130,7 +136,11 @@ const deleteConfirmDialog = reactive({
 });
 let resolveDeleteConfirm: ((confirmed: boolean) => void) | null = null;
 const pendingTransferRefreshes = new Map<string, PendingTransferRefresh>();
+const pendingUploadRefreshes = new Map<string, PendingTransferRefresh>();
+const pendingLocalDownloadRefreshes = new Map<string, PendingTransferRefresh>();
 let removeRemoteTransferProgressListener: (() => void) | undefined;
+let removeUploadProgressListener: (() => void) | undefined;
+let removeDownloadProgressListener: (() => void) | undefined;
 const transferDrag = reactive<{
   paneKey: TransferPaneKey | null;
   sourcePaths: Set<string>;
@@ -143,16 +153,22 @@ const transferDrag = reactive<{
 const leftSelectedNodes = computed(() => getSelectedNodes(leftPane));
 const rightSelectedNodes = computed(() => getSelectedNodes(rightPane));
 const leftServerOptions = computed<AppSelectOption[]>(() =>
-  props.servers.map((server) => ({
-    value: server.id,
-    label: server.name,
-  })),
+  [
+    { value: LOCAL_ENDPOINT_ID, label: "本地" },
+    ...props.servers.map((server) => ({
+      value: server.id,
+      label: server.name,
+    })),
+  ],
 );
 const rightServerOptions = computed<AppSelectOption[]>(() =>
-  props.servers.map((server) => ({
-    value: server.id,
-    label: server.name,
-  })),
+  [
+    { value: LOCAL_ENDPOINT_ID, label: "本地" },
+    ...props.servers.map((server) => ({
+      value: server.id,
+      label: server.name,
+    })),
+  ],
 );
 const transferMenuItems = computed<ContextMenuItem[]>(() => {
   const paneKey = transferContextMenu.paneKey ?? focusedPane.value;
@@ -169,6 +185,10 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
       disabled: !canTransferFromPane(paneKey),
     },
   ];
+  if (isLocalPane(pane)) {
+    return items;
+  }
+
   const uploadItems: ContextMenuItem[] = [
     {
       key: "upload-file",
@@ -286,6 +306,9 @@ const footerText = computed(
 function getPaneByKey(paneKey: TransferPaneKey): TransferPaneState {
   return paneKey === "left" ? leftPane : rightPane;
 }
+function isLocalPane(pane: TransferPaneState): boolean {
+  return pane.serverId === LOCAL_ENDPOINT_ID;
+}
 function getOppositePaneKey(paneKey: TransferPaneKey): TransferPaneKey {
   return paneKey === "left" ? "right" : "left";
 }
@@ -358,12 +381,19 @@ function selectPaneNodesByPaths(
 function canTransferFromPane(paneKey: TransferPaneKey): boolean {
   const sourcePane = getPaneByKey(paneKey);
   const targetPane = getPaneByKey(getOppositePaneKey(paneKey));
+  const selectedNodes = getSelectedNodes(sourcePane);
+  // 左右都选择本地时没有跨端传输意义，避免误走 SFTP 上传流程。
+  const hasRemoteEndpoint = !isLocalPane(sourcePane) || !isLocalPane(targetPane);
+  const canDownloadToLocal = !isLocalPane(targetPane) ||
+    selectedNodes.every((node) => node.type === "file");
 
   return Boolean(
     sourcePane.serverId &&
     targetPane.serverId &&
     targetPane.currentPath &&
-    getSelectedNodes(sourcePane).length > 0 &&
+    selectedNodes.length > 0 &&
+    hasRemoteEndpoint &&
+    canDownloadToLocal &&
     !sourcePane.loading &&
     !targetPane.loading,
   );
@@ -412,7 +442,20 @@ function canDeleteContextNodes(): boolean {
   return getContextDeleteNodes().length > 0;
 }
 
-function createParentNode(currentPath: string): RemoteFileListNode | null {
+function createParentNode(pane: TransferPaneState): RemoteFileListNode | null {
+  if (isLocalPane(pane)) {
+    return pane.parentPath
+      ? {
+          path: pane.parentPath,
+          name: "..",
+          type: "directory",
+          loaded: true,
+          isVirtualParent: true,
+        }
+      : null;
+  }
+
+  const currentPath = pane.currentPath;
   const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
 
   if (!normalizedPath || normalizedPath === "/") {
@@ -429,7 +472,7 @@ function createParentNode(currentPath: string): RemoteFileListNode | null {
 }
 
 function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
-  const parentNode = createParentNode(pane.currentPath);
+  const parentNode = createParentNode(pane);
 
   return parentNode ? [parentNode, ...pane.nodes] : pane.nodes;
 }
@@ -449,6 +492,7 @@ async function loadPaneHome(
   pane.error = "";
   pane.nodes = [];
   pane.currentPath = "";
+  pane.parentPath = "";
   pane.pathInput = "";
   pane.selectedPaths = new Set<string>();
   pane.deletingPaths = new Set<string>();
@@ -463,6 +507,18 @@ async function loadPaneHome(
 
   try {
     await closePaneSession(pane);
+
+    if (isLocalPane(pane)) {
+      const result = initialPath
+        ? await window.orbitSSH.localFiles.list({ path: initialPath })
+        : await window.orbitSSH.localFiles.openDefault();
+      pane.currentPath = result.currentPath;
+      pane.parentPath = result.parentPath ?? "";
+      pane.pathInput = result.currentPath;
+      pane.nodes = result.nodes;
+      return;
+    }
+
     const result = await window.orbitSSH.sftp.open(pane.tabId, pane.serverId);
 
     if (initialPath && initialPath !== result.homePath) {
@@ -494,12 +550,18 @@ async function refreshPaneDirectory(
     return;
   }
 
-  pane.nodes = await refreshRemoteDirectory(
-    window.orbitSSH.sftp,
-    pane.tabId,
-    path,
-  );
+  if (isLocalPane(pane)) {
+    const result = await window.orbitSSH.localFiles.list({ path });
+    pane.nodes = result.nodes;
+    pane.currentPath = result.currentPath;
+    pane.parentPath = result.parentPath ?? "";
+    pane.pathInput = result.currentPath;
+    return;
+  }
+
+  pane.nodes = await refreshRemoteDirectory(window.orbitSSH.sftp, pane.tabId, path);
   pane.currentPath = path;
+  pane.parentPath = "";
   pane.pathInput = path;
 }
 
@@ -514,7 +576,7 @@ async function openPaneDirectory(
   }
 
   if (!targetPath) {
-    pane.error = "请输入远程路径";
+    pane.error = isLocalPane(pane) ? "请输入本地路径" : "请输入远程路径";
     pane.pathInput = pane.currentPath;
     return;
   }
@@ -579,6 +641,10 @@ async function openNodeByDoubleClick(
     return;
   }
 
+  if (isLocalPane(pane)) {
+    return;
+  }
+
   if (isPreviewImageFile(node)) {
     await sftpStore.openRemoteImagePreview(pane.tabId, node);
     return;
@@ -627,6 +693,12 @@ function startTransferDrag(
   node: RemoteFileListNode,
 ): void {
   const pane = getPaneByKey(paneKey);
+
+  if (isLocalPane(pane)) {
+    event.preventDefault();
+    return;
+  }
+
   const nodes = getDragMoveNodes(pane, node);
 
   if (nodes.length === 0) {
@@ -828,7 +900,7 @@ function openTransferContextMenu(
 
   setContextMenuState(paneKey, node);
 
-  if (node.type === "file") {
+  if (node.type === "file" && !isLocalPane(getPaneByKey(paneKey))) {
     void sftpStore.probeFileTextSupport(getPaneByKey(paneKey).tabId, node);
   }
 
@@ -886,8 +958,10 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
   }
 
   const sourcePane = getPaneByKey(paneKey);
-  const targetPane = getPaneByKey(getOppositePaneKey(paneKey));
-  const sources: SftpRemoteTransferSource[] = getSelectedNodes(sourcePane).map(
+  const targetPaneKey = getOppositePaneKey(paneKey);
+  const targetPane = getPaneByKey(targetPaneKey);
+  const selectedNodes = getSelectedNodes(sourcePane);
+  const sources: SftpRemoteTransferSource[] = selectedNodes.map(
     (node) => ({
       path: node.path,
       name: node.name,
@@ -897,6 +971,46 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
   );
 
   try {
+    if (isLocalPane(sourcePane)) {
+      const result = await window.orbitSSH.sftp.upload({
+        tabId: targetPane.tabId,
+        remoteDirectoryPath: targetPane.currentPath,
+        localPaths: selectedNodes.map((node) => node.path),
+      });
+
+      if (result.taskId) {
+        pendingUploadRefreshes.set(result.taskId, {
+          targetPaneKey,
+          targetDirectoryPath: targetPane.currentPath,
+        });
+      }
+      sourcePane.selectedPaths = new Set<string>();
+      return;
+    }
+
+    if (isLocalPane(targetPane)) {
+      const results = await Promise.all(selectedNodes.map((node) =>
+        window.orbitSSH.sftp.download({
+          tabId: sourcePane.tabId,
+          path: node.path,
+          name: node.name,
+          size: node.size,
+          localDirectoryPath: targetPane.currentPath,
+        })
+      ));
+
+      for (const result of results) {
+        if (result.taskId) {
+          pendingLocalDownloadRefreshes.set(result.taskId, {
+            targetPaneKey,
+            targetDirectoryPath: targetPane.currentPath,
+          });
+        }
+      }
+      sourcePane.selectedPaths = new Set<string>();
+      return;
+    }
+
     if (!window.orbitSSH.sftp.remoteTransfer) {
       throw new Error("当前窗口未加载文件传输能力，请重启应用后重试");
     }
@@ -909,7 +1023,7 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
     });
     if (result.taskId) {
       pendingTransferRefreshes.set(result.taskId, {
-        targetPaneKey: getOppositePaneKey(paneKey),
+        targetPaneKey,
         targetDirectoryPath: targetPane.currentPath,
       });
     }
@@ -947,6 +1061,51 @@ async function handleRemoteTransferProgress(
   }
 
   await Promise.all(refreshes);
+}
+
+async function handleUploadProgress(event: SftpUploadProgressEvent): Promise<void> {
+  if (event.status !== "completed") {
+    return;
+  }
+
+  const refreshState = pendingUploadRefreshes.get(event.taskId);
+
+  if (!refreshState) {
+    return;
+  }
+
+  pendingUploadRefreshes.delete(event.taskId);
+  const targetPane = getPaneByKey(refreshState.targetPaneKey);
+
+  if (targetPane.currentPath === refreshState.targetDirectoryPath) {
+    await refreshPaneDirectory(targetPane).catch((error) => {
+      targetPane.error = error instanceof Error ? error.message : "刷新目标目录失败";
+    });
+  }
+}
+
+async function handleDownloadProgress(event: SftpDownloadProgressEvent): Promise<void> {
+  if (event.status !== "completed") {
+    return;
+  }
+
+  const refreshState = pendingLocalDownloadRefreshes.get(event.taskId);
+
+  if (!refreshState) {
+    return;
+  }
+
+  pendingLocalDownloadRefreshes.delete(event.taskId);
+  const targetPane = getPaneByKey(refreshState.targetPaneKey);
+
+  if (
+    isLocalPane(targetPane) &&
+    targetPane.currentPath === refreshState.targetDirectoryPath
+  ) {
+    await refreshPaneDirectory(targetPane).catch((error) => {
+      targetPane.error = error instanceof Error ? error.message : "刷新本地目录失败";
+    });
+  }
 }
 
 async function previewContextNode(paneKey: TransferPaneKey): Promise<void> {
@@ -1198,6 +1357,10 @@ async function deleteContextNodes(paneKey: TransferPaneKey): Promise<void> {
 }
 
 function getServerLabel(serverId: string): string {
+  if (serverId === LOCAL_ENDPOINT_ID) {
+    return "本地";
+  }
+
   const server = props.servers.find((item) => item.id === serverId);
 
   if (!server) {
@@ -1211,6 +1374,7 @@ async function resetPaneSelection(pane: TransferPaneState): Promise<void> {
   await closePaneSession(pane);
   pane.serverId = "";
   pane.currentPath = "";
+  pane.parentPath = "";
   pane.pathInput = "";
   pane.nodes = [];
   pane.selectedPaths = new Set<string>();
@@ -1220,22 +1384,22 @@ async function resetPaneSelection(pane: TransferPaneState): Promise<void> {
   pane.error = "";
 }
 
-let leftInitialPath = "";
+let rightInitialPath = "";
 
 watch(
   () => props.servers,
   (servers) => {
-    if (!leftPane.serverId) {
+    if (!rightPane.serverId) {
       const active = props.activeSource;
 
       if (
         active?.serverId &&
         servers.some((item) => item.id === active.serverId)
       ) {
-        leftInitialPath = active.currentPath ?? "";
-        leftPane.serverId = active.serverId;
+        rightInitialPath = active.currentPath ?? "";
+        rightPane.serverId = active.serverId;
       } else if (servers[0]) {
-        leftPane.serverId = servers[0].id;
+        rightPane.serverId = servers[0].id;
       }
     }
   },
@@ -1245,9 +1409,7 @@ watch(
 watch(
   () => leftPane.serverId,
   () => {
-    const initialPath = leftInitialPath;
-    leftInitialPath = "";
-    void loadPaneHome(leftPane, initialPath);
+    void loadPaneHome(leftPane);
   },
   { immediate: true },
 );
@@ -1255,7 +1417,9 @@ watch(
 watch(
   () => rightPane.serverId,
   () => {
-    void loadPaneHome(rightPane);
+    const initialPath = rightInitialPath;
+    rightInitialPath = "";
+    void loadPaneHome(rightPane, initialPath);
   },
   { immediate: true },
 );
@@ -1265,13 +1429,25 @@ onMounted(() => {
     window.orbitSSH?.sftp.onRemoteTransferProgress?.((event) => {
       void handleRemoteTransferProgress(event);
     });
+  removeUploadProgressListener = window.orbitSSH?.sftp.onUploadProgress((event) => {
+    void handleUploadProgress(event);
+  });
+  removeDownloadProgressListener = window.orbitSSH?.sftp.onDownloadProgress((event) => {
+    void handleDownloadProgress(event);
+  });
 });
 
 onUnmounted(() => {
   resolveDeleteConfirm?.(false);
   removeRemoteTransferProgressListener?.();
+  removeUploadProgressListener?.();
+  removeDownloadProgressListener?.();
   removeRemoteTransferProgressListener = undefined;
+  removeUploadProgressListener = undefined;
+  removeDownloadProgressListener = undefined;
   pendingTransferRefreshes.clear();
+  pendingUploadRefreshes.clear();
+  pendingLocalDownloadRefreshes.clear();
   void closePaneSession(leftPane);
   void closePaneSession(rightPane);
 });
@@ -1285,9 +1461,9 @@ onUnmounted(() => {
           <strong>左侧</strong>
           <AppSelect
             v-model="leftPane.serverId"
-            title="左侧服务器"
-            ariaLabel="左侧服务器"
-            placeholder="请选择连接"
+            title="左侧位置"
+            ariaLabel="左侧位置"
+            placeholder="请选择位置"
             :options="leftServerOptions"
           />
         </header>
@@ -1296,7 +1472,7 @@ onUnmounted(() => {
           class="transfer-path-input"
           type="text"
           spellcheck="false"
-          aria-label="左侧远程路径"
+          :aria-label="isLocalPane(leftPane) ? '左侧本地路径' : '左侧远程路径'"
           :disabled="!leftPane.serverId || leftPane.loading"
           :title="leftPane.currentPath || getServerLabel(leftPane.serverId)"
           :placeholder="getServerLabel(leftPane.serverId)"
@@ -1314,6 +1490,7 @@ onUnmounted(() => {
           <RemoteFileList
             v-else
             :nodes="getVisibleNodes(leftPane) as RemoteFileListNode[]"
+            :aria-label="isLocalPane(leftPane) ? '本地文件列表' : '左侧远程文件列表'"
             list-class="transfer-file-list-inner"
             row-class="transfer-file-row"
             :selected-paths="leftPane.selectedPaths"

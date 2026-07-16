@@ -29,6 +29,7 @@ export interface CreateFileEditorStateOptions {
   content: string;
   fileName: string;
   themeExtension: Extension;
+  onSaveShortcut: () => void;
   onSearchShortcut: () => void;
   shouldCloseOnEscape: () => boolean;
   onCloseSearch: () => void;
@@ -42,6 +43,7 @@ export function createFileEditorState(
     content,
     fileName,
     themeExtension,
+    onSaveShortcut,
     onSearchShortcut,
     shouldCloseOnEscape,
     onCloseSearch,
@@ -50,6 +52,8 @@ export function createFileEditorState(
 
   return EditorState.create({
     doc: content,
+    // 文件首次打开时从内容末尾继续编辑，空文件仍自然落在位置 0。
+    selection: { anchor: content.length },
     extensions: [
       lineNumbers(),
       highlightActiveLineGutter(),
@@ -64,6 +68,13 @@ export function createFileEditorState(
       search({ top: true }),
       getFileEditorLanguageExtension(fileName),
       keymap.of([
+        {
+          key: "Mod-s",
+          run: () => {
+            onSaveShortcut();
+            return true;
+          },
+        },
         {
           key: "Mod-f",
           run: () => {

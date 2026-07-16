@@ -111,8 +111,8 @@ onUnmounted(() => {
 });
 
 watch(
-  () => [props.renamingPath, props.nodes] as const,
-  ([path]) => {
+  () => props.renamingPath,
+  (path) => {
     if (path) {
       void focusRenameInput();
     }
