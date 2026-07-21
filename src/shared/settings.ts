@@ -122,7 +122,7 @@ export const defaultAppSettings: AppSettings = {
     updateFeedUrl: ''
   },
   ai: {
-    enabled: false,
+    enabled: true,
     shareTerminalContext: true,
     maxAttachmentSizeMb: DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB,
     maxAgentCommandCount: 20,

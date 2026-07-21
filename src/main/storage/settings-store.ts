@@ -288,7 +288,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     : ''
 
   return {
-    enabled: Boolean(value?.enabled),
+    enabled: value?.enabled !== false,
     shareTerminalContext: value?.shareTerminalContext !== false,
     maxAttachmentSizeMb: normalizeMaxAttachmentSizeMb(value?.maxAttachmentSizeMb),
     maxAgentCommandCount: normalizeMaxAgentCommandCount(value?.maxAgentCommandCount),

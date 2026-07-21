@@ -138,7 +138,11 @@ const {
   aiPanelWidth,
   isResizingAiPanel,
 } = storeToRefs(sidebarStore);
-const { startSidebarResize, startAiPanelResize } = sidebarStore;
+const {
+  startSidebarResize,
+  startAiPanelResize,
+  clampAiPanelWidth,
+} = sidebarStore;
 
 // downloads
 const {
@@ -592,6 +596,7 @@ async function closeTerminalTab(tabId: string): Promise<void> {
 
 // 窗口尺寸变化（含最大化/还原）后重新 fit 终端。
 function handleWindowResize(): void {
+  aiPanelWidth.value = clampAiPanelWidth(aiPanelWidth.value);
   scheduleTerminalFit();
 }
 
@@ -620,6 +625,7 @@ watch(
 
 // 侧边栏拖动改变终端区宽度，需重新 fit（store 内不反向依赖终端域）。
 watch(sidebarWidth, () => {
+  aiPanelWidth.value = clampAiPanelWidth(aiPanelWidth.value);
   scheduleTerminalFit();
 });
 

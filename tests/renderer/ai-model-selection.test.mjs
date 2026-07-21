@@ -35,6 +35,47 @@ const settingsMainUrl = new URL(
   '../../src/main/storage/settings-store.ts',
   import.meta.url,
 )
+const sharedSettingsUrl = new URL(
+  '../../src/shared/settings.ts',
+  import.meta.url,
+)
+const sidebarStoreUrl = new URL(
+  '../../src/renderer/stores/useSidebarStore.ts',
+  import.meta.url,
+)
+
+test('AI defaults to enabled while preserving an explicit disabled preference', async () => {
+  const [sharedSource, mainStoreSource] = await Promise.all([
+    readFile(sharedSettingsUrl, 'utf8'),
+    readFile(settingsMainUrl, 'utf8'),
+  ])
+
+  assert.match(sharedSource, /ai:\s*\{[\s\S]*?enabled: true/)
+  assert.match(mainStoreSource, /enabled:\s*value\?\.enabled !== false/)
+})
+
+test('narrow AI panels keep their right edge and message content inside the viewport', async () => {
+  const [appSource, sidebarSource, redesignSource] = await Promise.all([
+    readFile(appUrl, 'utf8'),
+    readFile(sidebarStoreUrl, 'utf8'),
+    readFile(redesignStylesUrl, 'utf8'),
+  ])
+
+  assert.match(sidebarSource, /const MIN_AI_PANEL_WIDTH = 320/)
+  assert.match(sidebarSource, /Math\.max\(\s*MIN_AI_PANEL_WIDTH,/)
+  assert.match(
+    appSource,
+    /function handleWindowResize\(\): void \{\s*aiPanelWidth\.value = clampAiPanelWidth\(aiPanelWidth\.value\)/,
+  )
+  assert.match(
+    redesignSource,
+    /\.ai-message-list\s*\{[\s\S]*?scrollbar-gutter: stable/,
+  )
+  assert.match(
+    redesignSource,
+    /\.ai-message\.user\s*\{[\s\S]*?align-self: flex-end;[\s\S]*?max-width: calc\(100% - 8px\)/,
+  )
+})
 
 test('workspace keeps servers and session files stacked without a navigation rail', async () => {
   const [appSource, styleSource] = await Promise.all([

@@ -1,6 +1,9 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 
+const MIN_AI_PANEL_WIDTH = 320;
+const MAX_AI_PANEL_WIDTH = 620;
+
 // 侧边栏宽度拖拽 store。拖动会改变终端区宽度，
 // 由 App.vue watch(sidebarWidth) 调度终端 fit，避免反向依赖终端 store。
 export const useSidebarStore = defineStore("sidebar", () => {
@@ -16,10 +19,13 @@ export const useSidebarStore = defineStore("sidebar", () => {
   function clampAiPanelWidth(width: number): number {
     // 右侧 AI 面板不能挤掉主终端区域，按当前窗口和左侧栏宽度动态收口。
     const viewportMax = Math.max(
-      300,
+      MIN_AI_PANEL_WIDTH,
       window.innerWidth - sidebarWidth.value - 54 - 520,
     );
-    return Math.min(Math.max(width, 300), Math.min(620, viewportMax));
+    return Math.min(
+      Math.max(width, MIN_AI_PANEL_WIDTH),
+      Math.min(MAX_AI_PANEL_WIDTH, viewportMax),
+    );
   }
 
   function handleSidebarResizeMove(event: MouseEvent): void {
