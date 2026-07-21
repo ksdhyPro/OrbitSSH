@@ -28,3 +28,16 @@ test('agent loop 在执行前拦截本轮重复命令', async () => {
   assert.match(agent, /findExecutedAiCommand\(executedCommands, nextCommand\.command\)/)
   assert.match(agent, /AI 重复命令已拦截/)
 })
+
+test('有副作用的命令成功后关闭工具并只生成最终总结', async () => {
+  const agent = await readFile(agentUrl, 'utf8')
+
+  assert.match(agent, /shouldFinalizeAfterAiCommand/)
+  assert.match(agent, /appendFinalExecutionSummary/)
+  assert.match(agent, /toolsEnabled: false, finalSummary: true/)
+  assert.match(agent, /AI 最终总结阶段返回了命令调用，已忽略/)
+  assert.match(
+    agent,
+    /shouldFinalizeAfterAiCommand\(\s*evaluatedCommand,[\s\S]*?return \{\s*messages,\s*commandCards,/,
+  )
+})

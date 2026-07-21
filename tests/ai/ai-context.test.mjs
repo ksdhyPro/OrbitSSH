@@ -64,6 +64,35 @@ test("命令结果与终端输出受总量限制", () => {
   assert.match(contextMessage, /已截断/);
 });
 
+test("最终总结阶段明确禁止新命令并要求基于退出码总结", () => {
+  const messages = buildAiMessages(
+    input,
+    [{
+      command: "docker-compose up -d",
+      reason: "更新服务",
+      risk: "high",
+      result: {
+        stdout: "service is up",
+        stderr: "",
+        exitCode: 0,
+        timedOut: false,
+        durationMs: 100,
+      },
+    }],
+    "",
+    undefined,
+    200_000,
+    8_192,
+    [],
+    "final_summary",
+  );
+
+  assert.match(messages[0].content, /最终总结阶段/);
+  assert.match(messages[0].content, /所有工具均已禁用/);
+  assert.match(messages[0].content, /不要生成、建议、请求批准或声称将执行任何新命令/);
+  assert.match(messages.at(-2).content, /退出码：0/);
+});
+
 test("图片、视频、音频和普通文件会生成对应的多模态内容段", () => {
   const messages = buildAiMessages({
     ...input,

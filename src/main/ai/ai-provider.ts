@@ -119,6 +119,11 @@ type AiTurnAttemptResult = ParsedAssistantResponse & {
   retryable?: boolean;
 };
 
+export interface AiTurnOptions {
+  toolsEnabled?: boolean;
+  finalSummary?: boolean;
+}
+
 function getErrorCode(error: unknown): string {
   if (!error || typeof error !== "object") return "";
   const record = error as Record<string, unknown>;
@@ -206,6 +211,7 @@ async function requestAiTurnOnce(
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
   attachmentReads: AiAttachmentReadResult[] = [],
+  options: AiTurnOptions = {},
 ): Promise<AiTurnAttemptResult> {
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
@@ -236,6 +242,7 @@ async function requestAiTurnOnce(
         executedCommandCount: executedCommands.length,
         streaming: Boolean(sendChunk),
         sharedTerminalContext: settings.ai.shareTerminalContext,
+        finalSummary: Boolean(options.finalSummary),
       },
     });
     const apiRequest = createAiApiRequest(
@@ -248,8 +255,9 @@ async function requestAiTurnOnce(
         activeConfig.contextWindow,
         activeConfig.maxOutputTokens,
         attachmentReads,
+        options.finalSummary ? "final_summary" : "agent",
       ),
-      createAiTools(input),
+      options.toolsEnabled === false ? [] : createAiTools(input),
       activeConfig.maxOutputTokens,
       Boolean(sendChunk),
       true,
@@ -396,6 +404,7 @@ export async function requestAiTurn(
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
   attachmentReads: AiAttachmentReadResult[] = [],
+  options: AiTurnOptions = {},
 ): Promise<ParsedAssistantResponse> {
   let attempt = 1;
   let result = await requestAiTurnOnce(
@@ -406,6 +415,7 @@ export async function requestAiTurn(
     sendChunk,
     policyFeedback,
     attachmentReads,
+    options,
   );
 
   while (result.retryable && attempt < maxAiResponseAttempts && !signal?.aborted) {
@@ -431,6 +441,7 @@ export async function requestAiTurn(
       sendChunk,
       policyFeedback,
       attachmentReads,
+      options,
     );
   }
 

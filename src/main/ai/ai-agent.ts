@@ -37,6 +37,7 @@ import { findExecutedAiCommand } from "./ai-command-dedup.js";
 import { prepareAiChatInput } from "./ai-compaction.js";
 import { readAiAttachmentChunk } from "./ai-attachment-reader.js";
 import { describeAiCommandForApproval } from "./command-description.js";
+import { shouldFinalizeAfterAiCommand } from "./ai-execution-guard.js";
 
 interface PendingApprovalState {
   tabId: string;
@@ -393,6 +394,48 @@ type CommandExecutionResult =
       executedCommands: ExecutedAiCommandContext[];
     }
   | { status: "return"; result: AiChatResult };
+
+async function appendFinalExecutionSummary(
+  input: AiChatInput,
+  settings: AppSettings,
+  signal: AbortSignal,
+  emit: AgentEmitter | undefined,
+  executedCommands: ExecutedAiCommandContext[],
+  attachmentReads: AiAttachmentReadResult[],
+  messages: AiMessage[],
+): Promise<void> {
+  const messageId = createId();
+  const createdAt = Date.now() + 1;
+  emit?.sendMessageStart(messageId, createdAt);
+  const parsed = await requestAiTurn(
+    input,
+    settings,
+    executedCommands,
+    signal,
+    emit ? text => emit.sendChunk(messageId, text) : undefined,
+    undefined,
+    attachmentReads,
+    { toolsEnabled: false, finalSummary: true },
+  );
+  const latestResult = executedCommands.at(-1)?.result;
+  const fallback = latestResult?.exitCode === 0
+    ? "命令已成功执行，本轮自动操作已结束。请根据上方输出确认最终状态。"
+    : "命令执行阶段已结束，请根据上方退出码和输出确认当前状态。";
+  messages.push({
+    id: messageId,
+    role: "assistant",
+    content: parsed.reply?.trim() || fallback,
+    createdAt,
+  });
+  if (parsed.commands?.length) {
+    writeAppLog({
+      scope: "main.ai",
+      level: "warn",
+      message: "AI 最终总结阶段返回了命令调用，已忽略",
+      data: { tabId: input.tabId, commandCount: parsed.commands.length },
+    });
+  }
+}
 
 async function executeAgentCommand(
   input: AiChatInput,
@@ -800,6 +843,23 @@ async function runAgentLoop(
     if (execution.status === "return") return execution.result;
     commandCards = execution.commandCards;
     executedCommands = execution.executedCommands;
+    if (
+      shouldFinalizeAfterAiCommand(
+        nextCommand,
+        executedCommands.at(-1)?.result,
+      )
+    ) {
+      await appendFinalExecutionSummary(
+        input,
+        settings,
+        signal,
+        emit,
+        executedCommands,
+        attachmentReads,
+        messages,
+      );
+      return { messages, commandCards };
+    }
   }
 
   messages.push(
@@ -906,6 +966,27 @@ export async function runApprovedAiCommand(
     }
     commandCards = execution.commandCards;
     executedCommands = execution.executedCommands;
+    if (
+      shouldFinalizeAfterAiCommand(
+        evaluatedCommand,
+        executedCommands.at(-1)?.result,
+      )
+    ) {
+      await appendFinalExecutionSummary(
+        approval.input,
+        settings,
+        signal,
+        emit,
+        executedCommands,
+        attachmentReads,
+        messages,
+      );
+      return {
+        messages,
+        commandCards,
+        compaction: approval.input.compaction,
+      };
+    }
     const loopResult = await runAgentLoop(
       approval.input,
       settings,
