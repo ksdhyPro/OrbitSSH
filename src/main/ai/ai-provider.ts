@@ -1,7 +1,9 @@
-import type { AiChatInput } from "../../shared/ai.js";
+import { AI_ATTACHMENT_CHUNK_MAX_BYTES } from "../../shared/ai.js";
 import type {
-  AiModelConfig,
-  AiProvider,
+  AiAttachmentReadResult,
+  AiChatInput,
+} from "../../shared/ai.js";
+import type {
   AppSettings,
 } from "../../shared/settings.js";
 import { writeAppLog } from "../logger.js";
@@ -13,29 +15,42 @@ import {
   type LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
 import {
-  collectSseStream,
+  collectAiApiStream,
+  parseAttachmentReadToolCalls,
+  parseAiApiResponsePayload,
   parseRunShellToolCalls,
   type ParsedAssistantResponse,
   type RawToolCall,
 } from "./ai-response-parser.js";
+import {
+  createAiApiRequest,
+  type AiApiTool,
+} from "./ai-api-adapter.js";
+import { getActiveAiConfig } from "./ai-model-selection.js";
+import {
+  getAiRetryDelayMs,
+  isRetryableAiNetworkError,
+  isRetryableAiStatus,
+  maxAiResponseAttempts,
+  waitForAiRetry,
+} from "./ai-retry.js";
 
 export type {
   ParsedAiCommand,
   ParsedAssistantResponse,
 } from "./ai-response-parser.js";
 
-const aiProviderLabels: Record<AiProvider, string> = {
+const aiProviderLabels: Record<string, string> = {
   deepseek: "DeepSeek",
   glm: "GLM",
   other: "其他",
 };
 
-const aiTools = [
-  {
-    type: "function" as const,
-    function: {
+const runShellTool: AiApiTool = {
+  type: "function",
+  function: {
       name: "run_shell_command",
-      description: "在远程服务器上执行一条 Shell 命令，用于查看系统状态、日志、文件、进程等。",
+      description: "在当前标签页对应的终端会话中执行一条 Shell 命令；命令和输出会显示在该终端，用于查看系统状态、日志、文件、进程等。",
       parameters: {
         type: "object" as const,
         properties: {
@@ -51,18 +66,65 @@ const aiTools = [
         additionalProperties: false,
       },
       strict: true,
-    },
   },
-];
+};
+
+const readAttachmentChunkTool: AiApiTool = {
+  type: "function",
+  function: {
+    name: "read_attachment_chunk",
+    description:
+      "按字节偏移读取用户上传的大型文本、代码、配置或日志附件。只读取解决当前问题所需的片段，并使用返回的 nextOffset 继续读取。",
+    parameters: {
+      type: "object",
+      properties: {
+        attachment_id: {
+          type: "string",
+          description: "附件清单中显示的附件 ID",
+        },
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description: "从 0 开始的字节偏移；继续读取时使用上次返回的 nextOffset",
+        },
+        max_bytes: {
+          type: "integer",
+          minimum: 1,
+          maximum: AI_ATTACHMENT_CHUNK_MAX_BYTES,
+          description: `本次最多读取的字节数，最大 ${AI_ATTACHMENT_CHUNK_MAX_BYTES}`,
+        },
+      },
+      required: ["attachment_id", "offset", "max_bytes"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+};
+
+function createAiTools(input: AiChatInput): AiApiTool[] {
+  const tools = [runShellTool];
+  if (
+    input.attachments?.some(attachment => attachment.delivery === "chunked")
+  ) {
+    tools.push(readAttachmentChunkTool);
+  }
+  return tools;
+}
 
 // 异常响应只保留有限长度，避免单次模型响应撑大应用日志文件。
 const maxLoggedRawResponseChars = 12_000;
-const maxAiResponseAttempts = 2;
 
 type AiTurnAttemptResult = ParsedAssistantResponse & {
   // 仅供请求层判断是否需要重试，不向渲染层暴露。
   retryable?: boolean;
 };
+
+function getErrorCode(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const record = error as Record<string, unknown>;
+  if (typeof record.code === "string") return record.code;
+  return getErrorCode(record.cause);
+}
 
 function getRawResponsePreview(rawResponseText: string): string {
   if (!rawResponseText) return "";
@@ -79,16 +141,9 @@ function summarizeToolCalls(rawToolCalls: RawToolCall[]) {
   }));
 }
 
-function getErrorCode(error: unknown): string {
-  if (!error || typeof error !== "object") return "";
-  const record = error as Record<string, unknown>;
-  if (typeof record.code === "string") return record.code;
-  return getErrorCode(record.cause);
-}
-
 function createAiRequestErrorResponse(error: unknown): AiTurnAttemptResult {
   if (error instanceof Error && error.message === "AI_RESPONSE_TOO_LARGE") {
-    return { reply: "AI 服务响应过大，已停止接收。", commands: [], retryable: true };
+    return { reply: "AI 服务响应过大，已停止接收。", commands: [], retryable: false };
   }
   if (getErrorCode(error) === "UND_ERR_CONNECT_TIMEOUT") {
     return {
@@ -101,28 +156,6 @@ function createAiRequestErrorResponse(error: unknown): AiTurnAttemptResult {
     reply: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。",
     commands: [],
     retryable: true,
-  };
-}
-
-function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
-  const activeConfig =
-    settings.ai.configs.find(config => config.id === settings.ai.activeConfigId) ??
-    settings.ai.configs[0];
-  if (
-    !settings.ai.enabled ||
-    !activeConfig ||
-    activeConfig.spec !== "openai" ||
-    !activeConfig.baseUrl.trim() ||
-    !activeConfig.apiKey.trim() ||
-    !activeConfig.model.trim()
-  ) {
-    return null;
-  }
-  return {
-    ...activeConfig,
-    baseUrl: activeConfig.baseUrl.trim().replace(/\/+$/, ""),
-    apiKey: activeConfig.apiKey.trim(),
-    model: activeConfig.model.trim(),
   };
 }
 
@@ -172,14 +205,23 @@ async function requestAiTurnOnce(
   signal?: AbortSignal,
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
+  attachmentReads: AiAttachmentReadResult[] = [],
 ): Promise<AiTurnAttemptResult> {
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
     : "";
-  const activeConfig = getActiveAiConfig(settings);
-  if (!activeConfig) return createLocalFallback(input, executedCommands);
+  const activeConfig = getActiveAiConfig(settings, input);
+  if (!activeConfig) {
+    return {
+      reply: input.attachments?.length
+        ? "当前模型不支持附件输入，请在 AI 设置中选择支持图片或文件的多模态模型。"
+        : createLocalFallback(input, executedCommands).reply,
+      commands: [],
+    };
+  }
 
-  const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
+  const providerName =
+    aiProviderLabels[activeConfig.provider] || activeConfig.providerName || activeConfig.name;
   let rawResponseText = "";
   try {
     writeAppLog({
@@ -196,24 +238,26 @@ async function requestAiTurnOnce(
         sharedTerminalContext: settings.ai.shareTerminalContext,
       },
     });
-    const fetchBody: Record<string, unknown> = {
-      model: activeConfig.model,
-      messages: buildAiMessages(
+    const apiRequest = createAiApiRequest(
+      activeConfig,
+      buildAiMessages(
         input,
         executedCommands,
         terminalOutput,
         policyFeedback,
+        activeConfig.contextWindow,
+        activeConfig.maxOutputTokens,
+        attachmentReads,
       ),
-      tools: aiTools,
-    };
-    if (sendChunk) fetchBody.stream = true;
-    const response = await fetch(`${activeConfig.baseUrl}/chat/completions`, {
+      createAiTools(input),
+      activeConfig.maxOutputTokens,
+      Boolean(sendChunk),
+      true,
+    );
+    const response = await fetch(apiRequest.url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${activeConfig.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(fetchBody),
+      headers: apiRequest.headers,
+      body: JSON.stringify(apiRequest.body),
       signal,
     });
     if (!response.ok) {
@@ -229,13 +273,15 @@ async function requestAiTurnOnce(
           rawResponse: getRawResponsePreview(rawResponseText),
         },
       });
-      return createAiStatusErrorResponse(response, rawResponseText);
+      const statusError = await createAiStatusErrorResponse(response, rawResponseText);
+      statusError.retryable = isRetryableAiStatus(response.status);
+      return statusError;
     }
 
     let reply = "";
     let normalizedToolCalls: RawToolCall[] = [];
     if (sendChunk && response.body) {
-      const streamed = await collectSseStream(response.body, sendChunk);
+      const streamed = await collectAiApiStream(activeConfig.spec, response.body, sendChunk);
       reply = streamed.contentText;
       rawResponseText = streamed.rawResponseText;
       normalizedToolCalls = streamed.toolCalls.map(toolCall => ({
@@ -243,25 +289,31 @@ async function requestAiTurnOnce(
         type: "function",
         function: { name: toolCall.name, arguments: toolCall.arguments },
       }));
+      if (!reply && normalizedToolCalls.length === 0 && rawResponseText.trim().startsWith("{")) {
+        const parsed = parseAiApiResponsePayload(
+          activeConfig.spec,
+          JSON.parse(rawResponseText) as Record<string, unknown>,
+        );
+        reply = parsed.contentText;
+        normalizedToolCalls = parsed.toolCalls;
+        if (reply) sendChunk(reply);
+      }
     } else {
       rawResponseText = await response.text();
       const payload = JSON.parse(rawResponseText) as Record<string, unknown>;
-      const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
-      const message = (choice?.message ?? {}) as Record<string, unknown>;
-      reply = typeof message.content === "string" ? message.content.trim() : "";
-      normalizedToolCalls = ((message.tool_calls as RawToolCall[]) ?? []).slice();
-      const legacy = message.function_call as Record<string, unknown> | undefined;
-      if (typeof legacy?.name === "string" && typeof legacy.arguments === "string") {
-        normalizedToolCalls.push({
-          type: "function",
-          function: { name: legacy.name, arguments: legacy.arguments },
-        });
-      }
+      const parsed = parseAiApiResponsePayload(activeConfig.spec, payload);
+      reply = parsed.contentText;
+      normalizedToolCalls = parsed.toolCalls;
     }
 
     const commands = parseRunShellToolCalls(normalizedToolCalls);
+    const parsedAttachmentReads = parseAttachmentReadToolCalls(normalizedToolCalls);
     let retryable = false;
-    if (normalizedToolCalls.length > 0 && commands.length === 0) {
+    if (
+      normalizedToolCalls.length > 0 &&
+      commands.length === 0 &&
+      parsedAttachmentReads.length === 0
+    ) {
       retryable = true;
       writeAppLog({
         scope: "main.ai",
@@ -298,9 +350,15 @@ async function requestAiTurnOnce(
         contentLength: reply.length,
         toolCallCount: normalizedToolCalls.length,
         hasCommands: commands.length > 0,
+        hasAttachmentReads: parsedAttachmentReads.length > 0,
       },
     });
-    return { reply, commands, retryable };
+    return {
+      reply,
+      commands,
+      attachmentReads: parsedAttachmentReads,
+      retryable,
+    };
   } catch (error) {
     if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
       return { reply: "[已终止]", commands: [] };
@@ -315,13 +373,20 @@ async function requestAiTurnOnce(
         rawResponse: getRawResponsePreview(rawResponseText),
       },
     });
-    return createAiRequestErrorResponse(error);
+    const requestError = createAiRequestErrorResponse(error);
+    if (
+      (error instanceof Error && error.message === "AI_RESPONSE_TOO_LARGE") ||
+      !isRetryableAiNetworkError(error)
+    ) {
+      requestError.retryable = false;
+    }
+    return requestError;
   }
 }
 
 /**
- * 请求异常时最多自动重试一次；合法工具调用的空文本回复不属于异常。
- * 第二次仍失败时将结果交给上层，由现有逻辑通知用户。
+ * 请求异常时使用指数退避自动重试；合法工具调用的空文本回复不属于异常。
+ * 重试次数耗尽后将结果交给上层，由现有逻辑通知用户。
  */
 export async function requestAiTurn(
   input: AiChatInput,
@@ -330,6 +395,7 @@ export async function requestAiTurn(
   signal?: AbortSignal,
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
+  attachmentReads: AiAttachmentReadResult[] = [],
 ): Promise<ParsedAssistantResponse> {
   let attempt = 1;
   let result = await requestAiTurnOnce(
@@ -339,9 +405,11 @@ export async function requestAiTurn(
     signal,
     sendChunk,
     policyFeedback,
+    attachmentReads,
   );
 
   while (result.retryable && attempt < maxAiResponseAttempts && !signal?.aborted) {
+    const delayMs = getAiRetryDelayMs(attempt);
     writeAppLog({
       scope: "main.ai",
       level: "warn",
@@ -350,8 +418,10 @@ export async function requestAiTurn(
         tabId: input.tabId,
         attempt,
         nextAttempt: attempt + 1,
+        delayMs,
       },
     });
+    if (!(await waitForAiRetry(delayMs, signal))) break;
     attempt += 1;
     result = await requestAiTurnOnce(
       input,
@@ -360,11 +430,13 @@ export async function requestAiTurn(
       signal,
       sendChunk,
       policyFeedback,
+      attachmentReads,
     );
   }
 
   return {
     reply: result.reply,
     commands: result.commands,
+    attachmentReads: result.attachmentReads,
   };
 }

@@ -9,12 +9,13 @@ import { writeAppLog } from "../logger.js";
 import { createServerConnectOptions } from "./auth-options.js";
 import {
   getIdleDisconnectMs,
-  getSshKeepaliveIntervalMs,
+  getSshConnectionOptions,
 } from "./connection-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
 import type {
   TerminalSessionKind,
   TerminalOpenResult,
+  TerminalInputLockEvent,
   TerminalResizeInput,
   TerminalStatusEvent,
 } from "../../shared/terminal.js";
@@ -30,6 +31,7 @@ import {
   collectTerminalSystemStats,
   type RemoteSystemStats,
 } from "./terminal-system-stats.js";
+import { normalizeTerminalOutputForXterm } from "./terminal-output.js";
 
 export type { RemoteSystemStats } from "./terminal-system-stats.js";
 
@@ -41,6 +43,7 @@ interface BaseTerminalSession {
   status: TerminalStatusEvent["status"];
   lastActiveAt: number;
   outputBuffer: string;
+  aiInputLocked: boolean;
 }
 
 interface SshTerminalSession extends BaseTerminalSession {
@@ -63,7 +66,7 @@ const pathIntegrationInstallDelayMs = 120;
 const idleDisconnectCheckIntervalMs = 30_000;
 const maxTerminalOutputBufferChars = 12_000;
 
-function appendTerminalOutput(session: TerminalSession, chunk: string): void {
+function appendTerminalOutput(session: BaseTerminalSession, chunk: string): void {
   session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(
     -maxTerminalOutputBufferChars,
   );
@@ -93,7 +96,70 @@ export function getTerminalContextSnapshot(
   };
 }
 
-export function executeTerminalCommand(
+function setAiTerminalInputLocked(
+  session: TerminalSession,
+  locked: boolean,
+): void {
+  if (session.aiInputLocked === locked) return;
+  session.aiInputLocked = locked;
+  if (session.webContents.isDestroyed()) return;
+  session.webContents.send("terminal:input-lock", {
+    tabId: session.tabId,
+    locked,
+    owner: "ai",
+  } satisfies TerminalInputLockEvent);
+}
+
+function writeRawTerminalInput(session: TerminalSession, data: string): void {
+  if (session.kind === "local") {
+    session.localPty.write(data);
+    return;
+  }
+  session.shellStream?.write(Buffer.from(data, "utf8"));
+}
+
+async function restoreInteractivePrompt(session: TerminalSession): Promise<void> {
+  if (
+    !isCurrentTerminalSession(session) ||
+    session.status !== "connected"
+  ) {
+    return;
+  }
+
+  // AI 命令运行在独立 exec channel；向交互 Shell 发送 Ctrl+C，
+  // 让 readline 清空空输入并重新输出真实提示符。
+  writeRawTerminalInput(session, "\x03");
+  await new Promise(resolve => setTimeout(resolve, 120));
+}
+
+function createAiTerminalOutputForwarder(session: TerminalSession): {
+  write: (chunk: string) => void;
+  flush: () => void;
+} {
+  let pendingCarriageReturn = false;
+
+  return {
+    write(chunk: string): void {
+      if (!chunk) return;
+      let value = pendingCarriageReturn ? `\r${chunk}` : chunk;
+      pendingCarriageReturn = value.endsWith("\r");
+      if (pendingCarriageReturn) value = value.slice(0, -1);
+      if (!value) return;
+      forwardTerminalData(
+        session,
+        normalizeTerminalOutputForXterm(value),
+        false,
+      );
+    },
+    flush(): void {
+      if (!pendingCarriageReturn) return;
+      pendingCarriageReturn = false;
+      forwardTerminalData(session, "\r", false);
+    },
+  };
+}
+
+export async function executeTerminalCommand(
   tabId: string,
   command: string,
   options: { timeoutMs?: number; signal?: AbortSignal } = {},
@@ -110,16 +176,52 @@ export function executeTerminalCommand(
     throw new Error("终端会话未连接");
   }
 
-  if (session.kind === "local") {
-    return executeLocalTerminalCommand(session.cwd, command, timeoutMs, signal);
-  }
+  const terminalCommand = command.replace(/[\r\n]/g, " ").trim();
+  const outputForwarder = createAiTerminalOutputForwarder(session);
+  setAiTerminalInputLocked(session, true);
 
-  return executeSshTerminalCommand(
-    session.sshClient,
-    command,
-    timeoutMs,
-    signal,
-  );
+  try {
+    forwardTerminalData(
+      session,
+      `\r\n[AI] $ ${terminalCommand}\r\n`,
+      false,
+    );
+    const execution = session.kind === "local"
+      ? executeLocalTerminalCommand(
+          session.cwd,
+          command,
+          timeoutMs,
+          signal,
+          chunk => outputForwarder.write(chunk),
+        )
+      : executeSshTerminalCommand(
+          session.sshClient,
+          command,
+          timeoutMs,
+          signal,
+          chunk => outputForwarder.write(chunk),
+        );
+    const result = await execution;
+    outputForwarder.flush();
+    const status = result.timedOut
+      ? "command timed out"
+      : `exit code ${result.exitCode ?? "unknown"}`;
+    forwardTerminalData(session, `\r\n[AI] ${status}\r\n`, false);
+    await restoreInteractivePrompt(session);
+    return result;
+  } catch (error) {
+    outputForwarder.flush();
+    const message = error instanceof Error ? error.message : String(error);
+    forwardTerminalData(
+      session,
+      `\r\n[AI] command failed: ${normalizeTerminalOutputForXterm(message)}\r\n`,
+      false,
+    );
+    await restoreInteractivePrompt(session);
+    throw error;
+  } finally {
+    setAiTerminalInputLocked(session, false);
+  }
 }
 
 function getDefaultLocalCwd(): string {
@@ -208,12 +310,12 @@ function sendStatus(
   } satisfies TerminalStatusEvent);
 }
 
-function touchTerminalSession(session: TerminalSession): void {
+function touchTerminalSession(session: BaseTerminalSession): void {
   session.lastActiveAt = Date.now();
 }
 
 // 判断回调所属会话是否仍是当前有效会话，避免旧连接事件影响新连接。
-function isCurrentTerminalSession(session: TerminalSession): boolean {
+function isCurrentTerminalSession(session: BaseTerminalSession): boolean {
   return terminalSessions.get(session.tabId) === session;
 }
 
@@ -310,21 +412,35 @@ function createSshShellEnv(): NodeJS.ProcessEnv {
   };
 }
 
-function forwardSshShellData(
-  session: SshTerminalSession,
+function forwardTerminalData(
+  session: BaseTerminalSession,
   data: string,
+  includeInContext = true,
 ): void {
+  if (!isCurrentTerminalSession(session)) {
+    return;
+  }
+
   touchTerminalSession(session);
 
   if (!data) {
     return;
   }
 
-  appendTerminalOutput(session, data);
+  if (includeInContext) {
+    appendTerminalOutput(session, data);
+  }
   session.webContents.send("terminal:data", {
     tabId: session.tabId,
     data,
   });
+}
+
+function forwardSshShellData(
+  session: SshTerminalSession,
+  data: string,
+): void {
+  forwardTerminalData(session, data);
 }
 
 function forwardSshShellBuffer(
@@ -407,15 +523,14 @@ function createLocalTerminalSession(
     status: "connecting",
     lastActiveAt: Date.now(),
     outputBuffer,
+    aiInputLocked: false,
   };
 
   terminalSessions.set(tabId, session);
   sendStatus(session, "connecting");
 
   localPty.onData(data => {
-    touchTerminalSession(session);
-    appendTerminalOutput(session, data);
-    webContents.send("terminal:data", { tabId, data });
+    forwardTerminalData(session, data);
   });
 
   localPty.onExit(event => {
@@ -429,6 +544,7 @@ function createLocalTerminalSession(
       data: { tabId, exitCode: event.exitCode, signal: event.signal },
     });
     sendStatus(session, "disconnected");
+    setAiTerminalInputLocked(session, false);
     terminalSessions.delete(tabId);
     clearRemoteSystemStatsCache(tabId);
   });
@@ -483,6 +599,7 @@ export function openTerminalSession(
     status: "connecting",
     lastActiveAt: Date.now(),
     outputBuffer: "",
+    aiInputLocked: false,
   };
 
   terminalSessions.set(tabId, session);
@@ -572,6 +689,7 @@ export function openTerminalSession(
     .on("close", () => {
       if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
+        setAiTerminalInputLocked(session, false);
         terminalSessions.delete(tabId);
         clearRemoteSystemStatsCache(tabId);
       }
@@ -597,8 +715,7 @@ export function openTerminalSession(
 
     sshClient.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs(),
+      ...getSshConnectionOptions(),
     });
   });
 
@@ -609,22 +726,20 @@ export function openTerminalSession(
   };
 }
 
-export function writeTerminalInput(tabId: string, data: string): void {
+export function writeTerminalInput(tabId: string, data: string): boolean {
   const session = terminalSessions.get(tabId);
 
   if (!session || typeof data !== "string") {
-    return;
+    return false;
+  }
+
+  if (session.aiInputLocked) {
+    return false;
   }
 
   touchTerminalSession(session);
-
-  if (session.kind === "local") {
-    session.localPty.write(data);
-    return;
-  }
-
-  // SSH 输入显式按 UTF-8 写入，保证中文按终端编码传给远端 shell。
-  session.shellStream?.write(Buffer.from(data, "utf8"));
+  writeRawTerminalInput(session, data);
+  return true;
 }
 
 export function resizeTerminal(input: TerminalResizeInput): void {
@@ -653,6 +768,7 @@ export function closeTerminalSession(tabId: string): void {
     return;
   }
 
+  setAiTerminalInputLocked(session, false);
   terminalSessions.delete(tabId);
   clearRemoteSystemStatsCache(tabId);
   if (session.kind === "local") {
@@ -695,6 +811,7 @@ export function reconnectTerminalSession(
     const sessionWebContents = existing?.webContents ?? webContents;
 
     if (existing?.kind === "local") {
+      setAiTerminalInputLocked(existing, false);
       terminalSessions.delete(tabId);
       existing.localPty.kill();
     }
@@ -737,6 +854,7 @@ export function reconnectTerminalSession(
 
   // 清理旧连接资源；后续 close 回调通过会话身份判断，避免误删新连接。
   if (existing?.kind === "ssh") {
+    setAiTerminalInputLocked(existing, false);
     existing.shellStream?.end();
     existing.sshClient.end();
   }
@@ -759,6 +877,7 @@ export function reconnectTerminalSession(
     status: "connecting",
     lastActiveAt: Date.now(),
     outputBuffer,
+    aiInputLocked: false,
   };
 
   terminalSessions.set(tabId, session);
@@ -820,6 +939,7 @@ export function reconnectTerminalSession(
     .on("close", () => {
       if (isCurrentTerminalSession(session)) {
         sendStatus(session, "disconnected");
+        setAiTerminalInputLocked(session, false);
         terminalSessions.delete(tabId);
         clearRemoteSystemStatsCache(tabId);
       }
@@ -829,8 +949,7 @@ export function reconnectTerminalSession(
     try {
       sshClient.connect({
         ...createServerConnectOptions(server),
-        readyTimeout: 15000,
-        keepaliveInterval: getSshKeepaliveIntervalMs(),
+        ...getSshConnectionOptions(),
       });
     } catch (error) {
       sendStatus(session, "error", createSafeErrorMessage(error));

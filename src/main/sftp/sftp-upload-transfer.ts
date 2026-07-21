@@ -5,7 +5,7 @@ import { basename, dirname, join as joinLocalPath, relative } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
-import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
+import { getSshConnectionOptions } from '../ssh/connection-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
 import type {
@@ -283,6 +283,7 @@ export async function uploadLocalPathsToRemoteDirectory(
     onProgress?.({
       taskId: task.taskId,
       tabId,
+      serverId: session.serverId,
       name,
       path: normalizedRemoteDirectoryPath,
       status,
@@ -322,8 +323,7 @@ export async function uploadLocalPathsToRemoteDirectory(
   try {
     await uploadClient.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs()
+      ...getSshConnectionOptions()
     })
     await uploadClient.mkdir(normalizedRemoteDirectoryPath, true)
 

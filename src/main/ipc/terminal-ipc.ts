@@ -31,8 +31,10 @@ export function registerTerminalIpc(): void {
   ipcMain.handle('terminal:write', (event, tabId: unknown, data: unknown) => {
     const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
     assertTabAccess(event, normalizedTabId)
-    writeTerminalInput(normalizedTabId, requireString(data, '终端输入'))
-    return true
+    return writeTerminalInput(
+      normalizedTabId,
+      requireString(data, '终端输入'),
+    )
   })
 
   ipcMain.handle('terminal:resize', (event, input: unknown) => {

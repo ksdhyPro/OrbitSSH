@@ -5,15 +5,17 @@ import { extname } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
-import { getIdleDisconnectMs, getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
+import { getIdleDisconnectMs, getSshConnectionOptions } from '../ssh/connection-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
+import { normalizeUnixMode, unixRightsToMode } from '../../shared/file-permissions.js'
 import type {
   RemoteFileNode,
   SftpInitResult,
   SftpPreviewImageResult,
   SftpProbeTextResult,
-  SftpReadTextResult
+  SftpReadTextResult,
+  SftpStatResult
 } from '../../shared/sftp.js'
 import {
   deleteSftpSession,
@@ -33,6 +35,8 @@ import {
 
 const { maxEditableFileSizeBytes, textProbeSampleBytes } = appConfig.sftp.textEditor
 const idleDisconnectCheckIntervalMs = 30_000
+const maxRecursiveChmodDepth = 64
+const maxRecursiveChmodNodes = 10_000
 const imageMimeTypes: Record<string, string> = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -100,6 +104,9 @@ function toRemoteFileNode(item: SftpClient.FileInfo, parentPath: string): Remote
     type,
     size: item.size,
     modifyTime: item.modifyTime,
+    mode: unixRightsToMode(item.rights),
+    ownerId: item.owner,
+    groupId: item.group,
     loaded: type === 'file'
   }
 }
@@ -235,8 +242,7 @@ export async function openSftpSession(
   try {
     await client.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs()
+      ...getSshConnectionOptions()
     })
   } catch (error) {
     writeAppLog({
@@ -563,6 +569,113 @@ export async function createRemoteDirectory(tabId: string, path: string): Promis
   })
 
   return true
+}
+
+export async function changeRemoteNodeMode(
+  tabId: string,
+  path: string,
+  mode: number,
+  recursive = false
+): Promise<boolean> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+  const normalizedMode = normalizeUnixMode(mode)
+
+  if (!normalizedPath || normalizedPath === '.') {
+    throw new Error('无效的远程路径')
+  }
+
+  let changedNodeCount = 1
+  if (!recursive) {
+    await session.client.chmod(normalizedPath, normalizedMode)
+  } else {
+    const rootType = await session.client.exists(normalizedPath)
+    if (!rootType) {
+      throw new Error('远程路径不存在')
+    }
+    if (rootType === 'l') {
+      throw new Error('符号链接不支持递归修改权限')
+    }
+
+    if (rootType !== 'd') {
+      await session.client.chmod(normalizedPath, normalizedMode)
+    } else {
+      const pendingDirectories = [{ path: normalizedPath, depth: 0 }]
+      const childPaths: Array<{ path: string; depth: number }> = []
+
+      while (pendingDirectories.length > 0) {
+        const current = pendingDirectories.shift()
+        if (!current) break
+        if (current.depth >= maxRecursiveChmodDepth) {
+          throw new Error(`递归权限修改超过最大深度 ${maxRecursiveChmodDepth}，操作已停止`)
+        }
+
+        const items = await session.client.list(current.path)
+        for (const item of items) {
+          if (item.type === 'l') continue
+
+          const childPath = normalizeRemotePath(
+            `${current.path.endsWith('/') ? current.path : `${current.path}/`}${item.name}`
+          )
+          const depth = current.depth + 1
+          childPaths.push({ path: childPath, depth })
+
+          if (childPaths.length + 1 > maxRecursiveChmodNodes) {
+            throw new Error(`递归权限修改超过 ${maxRecursiveChmodNodes} 个节点，操作已停止`)
+          }
+          if (item.type === 'd') pendingDirectories.push({ path: childPath, depth })
+        }
+      }
+
+      childPaths.sort((left, right) => right.depth - left.depth)
+      let appliedNodeCount = 0
+      try {
+        for (const child of childPaths) {
+          await session.client.chmod(child.path, normalizedMode)
+          appliedNodeCount += 1
+        }
+        await session.client.chmod(normalizedPath, normalizedMode)
+        appliedNodeCount += 1
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(
+          `递归权限修改仅完成 ${appliedNodeCount}/${childPaths.length + 1} 个节点，已完成部分不会回滚：${reason}`
+        )
+      }
+      changedNodeCount = appliedNodeCount
+    }
+  }
+  writeAppLog({
+    scope: 'main.sftp',
+    message: recursive ? '远程目录权限递归修改完成' : '远程文件权限修改完成',
+    data: {
+      tabId,
+      path: normalizedPath,
+      mode: normalizedMode.toString(8).padStart(4, '0'),
+      recursive,
+      changedNodeCount
+    }
+  })
+
+  return true
+}
+
+export async function statRemoteNode(tabId: string, path: string): Promise<SftpStatResult> {
+  const session = getSftpSession(tabId)
+  const normalizedPath = normalizeRemotePath(path)
+
+  if (!normalizedPath || normalizedPath === '.') {
+    throw new Error('无效的远程路径')
+  }
+
+  const stat = await session.client.stat(normalizedPath)
+  return {
+    path: normalizedPath,
+    type: stat.isDirectory ? 'directory' : 'file',
+    mode: normalizeUnixMode(stat.mode & 0o7777),
+    ownerId: stat.uid,
+    groupId: stat.gid
+  }
 }
 
 export async function deleteRemoteNode(

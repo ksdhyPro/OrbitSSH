@@ -7,7 +7,10 @@ import { computed, nextTick, reactive, ref } from "vue";
 
 import { appConfig } from "../../shared/config";
 import type { ServerConfig } from "../../shared/server";
-import type { TerminalStatusEvent } from "../../shared/terminal";
+import type {
+  TerminalInputLockEvent,
+  TerminalStatusEvent,
+} from "../../shared/terminal";
 import { LOCAL_TERMINAL_SERVER_ID } from "../../shared/terminal";
 import type {
   TerminalInstance,
@@ -53,13 +56,18 @@ export const useTerminalsStore = defineStore("terminals", () => {
   const lastSentTerminalSizes = new Map<string, { cols: number; rows: number }>();
   const pendingTerminalSizes = new Map<string, { cols: number; rows: number }>();
   const terminalResizeTimers = new Map<string, number>();
+  const aiInputLockedTabIds = reactive(new Set<string>());
   let removeTerminalDataListener: (() => void) | undefined;
   let removeTerminalStatusListener: (() => void) | undefined;
+  let removeTerminalInputLockListener: (() => void) | undefined;
   let fitScheduleTimer: number | undefined;
   let lastTerminalSearchKeyword = "";
 
   const activeTab = computed(() =>
     tabs.value.find(tab => tab.id === activeTabId.value),
+  );
+  const isActiveTerminalInputLocked = computed(() =>
+    aiInputLockedTabIds.has(activeTabId.value),
   );
 
   function resetTerminalSearchResult(): void {
@@ -333,7 +341,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     const tabId = activeTabId.value;
     const terminalEntry = terminalInstances.get(tabId);
 
-    if (!tabId || !terminalEntry) {
+    if (!tabId || !terminalEntry || aiInputLockedTabIds.has(tabId)) {
       return;
     }
 
@@ -358,7 +366,10 @@ export const useTerminalsStore = defineStore("terminals", () => {
     }
   }
 
-  function handleTerminalKeyEvent(event: KeyboardEvent): boolean {
+  function handleTerminalKeyEvent(
+    event: KeyboardEvent,
+    tabId = activeTabId.value,
+  ): boolean {
     const isSearchShortcut =
       event.type === "keydown" &&
       (event.ctrlKey || event.metaKey) &&
@@ -398,6 +409,11 @@ export const useTerminalsStore = defineStore("terminals", () => {
     ) {
       event.preventDefault();
       void closeTerminalSearch();
+      return false;
+    }
+
+    if (aiInputLockedTabIds.has(tabId)) {
+      event.preventDefault();
       return false;
     }
 
@@ -526,7 +542,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
     const addonLoadedAt = performance.now();
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(searchAddon);
-    terminal.attachCustomKeyEventHandler(handleTerminalKeyEvent);
+    terminal.attachCustomKeyEventHandler(event =>
+      handleTerminalKeyEvent(event, tab.id),
+    );
     const searchResultsDisposable = searchAddon.onDidChangeResults(event => {
       terminalSearchResult.index =
         event.resultIndex >= 0 ? event.resultIndex + 1 : 0;
@@ -556,6 +574,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     });
 
     terminal.onData(data => {
+      if (aiInputLockedTabIds.has(tab.id)) return;
       void core.orbitSSHApi?.terminals.write(tab.id, data);
     });
 
@@ -582,7 +601,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
   async function openServerTerminal(
     server: ServerConfig,
     callbacks: Pick<TerminalStoreCallbacks, "afterOpen"> = {},
-  ): Promise<void> {
+  ): Promise<TerminalTab> {
     if (!core.orbitSSHApi) {
       throw new Error("请通过 Electron 窗口启动应用");
     }
@@ -621,6 +640,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       afterOpenCallbackMs: Math.round(afterCallbackAt - afterCreateAt),
       totalMs: Math.round(afterCallbackAt - startedAt),
     });
+    return tab;
   }
 
   async function openLocalTerminal(): Promise<void> {
@@ -681,6 +701,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalEntry?.searchResultsDisposable.dispose();
     terminalEntry?.terminal.dispose();
     terminalInstances.delete(tabId);
+    aiInputLockedTabIds.delete(tabId);
     lastSentTerminalSizes.delete(tabId);
     pendingTerminalSizes.delete(tabId);
     const resizeTimer = terminalResizeTimers.get(tabId);
@@ -769,6 +790,14 @@ export const useTerminalsStore = defineStore("terminals", () => {
     }
   }
 
+  function handleTerminalInputLock(event: TerminalInputLockEvent): void {
+    if (event.locked) {
+      aiInputLockedTabIds.add(event.tabId);
+      return;
+    }
+    aiInputLockedTabIds.delete(event.tabId);
+  }
+
   function startListeners(): void {
     if (core.orbitSSHApi && !removeTerminalDataListener) {
       removeTerminalDataListener =
@@ -779,13 +808,20 @@ export const useTerminalsStore = defineStore("terminals", () => {
       removeTerminalStatusListener =
         core.orbitSSHApi.terminals.onStatus(handleTerminalStatus);
     }
+
+    if (core.orbitSSHApi && !removeTerminalInputLockListener) {
+      removeTerminalInputLockListener =
+        core.orbitSSHApi.terminals.onInputLock(handleTerminalInputLock);
+    }
   }
 
   function stopListeners(): void {
     removeTerminalDataListener?.();
     removeTerminalStatusListener?.();
+    removeTerminalInputLockListener?.();
     removeTerminalDataListener = undefined;
     removeTerminalStatusListener = undefined;
+    removeTerminalInputLockListener = undefined;
   }
 
   function disposeAllTerminals(): void {
@@ -803,6 +839,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalResizeTimers.clear();
     pendingTerminalSizes.clear();
     lastSentTerminalSizes.clear();
+    aiInputLockedTabIds.clear();
     disposeAllTerminals();
   }
 
@@ -810,6 +847,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     tabs,
     activeTabId,
     activeTab,
+    isActiveTerminalInputLocked,
     isTerminalSearchOpen,
     isTerminalSearchCaseSensitive,
     terminalSearchKeyword,
@@ -836,6 +874,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     reconnectTerminal,
     handleTerminalData,
     handleTerminalStatus,
+    handleTerminalInputLock,
     startListeners,
     stopListeners,
     disposeAllTerminals,

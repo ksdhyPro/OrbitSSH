@@ -5,6 +5,7 @@ import type { AppMenuAction } from "../shared/app-menu";
 import type {
   LocalDirectoryInput,
   LocalDirectoryResult,
+  LocalRootsResult,
 } from "../shared/local-files";
 import type { LogPayload } from "../shared/logger";
 import type {
@@ -16,6 +17,7 @@ import type {
 import type { AppSettings, UpdateStatusInfo } from "../shared/settings";
 import type {
   RemoteFileNode,
+  SftpChmodInput,
   SftpCreateNodeInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
@@ -34,6 +36,8 @@ import type {
   SftpRemoteTransferInput,
   SftpRemoteTransferProgressEvent,
   SftpRenameInput,
+  SftpStatInput,
+  SftpStatResult,
   SftpRemoteTransferResult,
   SftpUploadControlInput,
   SftpUploadInput,
@@ -43,6 +47,7 @@ import type {
 } from "../shared/sftp";
 import type {
   TerminalDataEvent,
+  TerminalInputLockEvent,
   TerminalOpenResult,
   TerminalResizeInput,
   TerminalStatusEvent,
@@ -57,6 +62,7 @@ import type {
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai";
+import type { AiModelCatalog } from "../shared/ai-catalog";
 
 declare global {
   interface Window {
@@ -75,11 +81,14 @@ declare global {
       };
       clipboard: {
         readText: () => Promise<string>;
+        readImageDataUrl: () => Promise<string | null>;
         writeText: (text: string) => Promise<boolean>;
       };
       localFiles: {
+        listRoots: () => Promise<LocalRootsResult>;
         openDefault: () => Promise<LocalDirectoryResult>;
         list: (input: LocalDirectoryInput) => Promise<LocalDirectoryResult>;
+        getPathForFile: (file: File) => string;
       };
       servers: {
         list: () => Promise<ServerConfig[]>;
@@ -93,6 +102,7 @@ declare global {
         save: (settings: AppSettings) => Promise<AppSettings>;
       };
       ai: {
+        getCatalog: () => Promise<AiModelCatalog>;
         chat: (input: AiChatInput) => Promise<AiChatResult>;
         runApprovedCommand: (
           input: AiApprovedCommandInput,
@@ -132,6 +142,8 @@ declare global {
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
         delete: (input: SftpDeleteInput) => Promise<boolean>;
         rename: (input: SftpRenameInput) => Promise<boolean>;
+        stat: (input: SftpStatInput) => Promise<SftpStatResult>;
+        chmod: (input: SftpChmodInput) => Promise<boolean>;
         createFile: (input: SftpCreateNodeInput) => Promise<boolean>;
         createDirectory: (input: SftpCreateNodeInput) => Promise<boolean>;
         onDownloadProgress: (
@@ -167,6 +179,9 @@ declare global {
         onData: (callback: (event: TerminalDataEvent) => void) => () => void;
         onStatus: (
           callback: (event: TerminalStatusEvent) => void,
+        ) => () => void;
+        onInputLock: (
+          callback: (event: TerminalInputLockEvent) => void,
         ) => () => void;
       };
       windowControls: {

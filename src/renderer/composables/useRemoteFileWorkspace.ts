@@ -43,6 +43,7 @@ export function useRemoteFileWorkspace(
     renaming,
     fileDragTargetPath,
     imagePreview,
+    filePermissionDialog,
   } = storeToRefs(sftpStore);
   const {
     isFileEditorOpen,
@@ -319,6 +320,12 @@ export function useRemoteFileWorkspace(
     await sftpStore.openRemoteImagePreview(activeTabId.value, node);
   }
 
+  function openContextFilePermissions(): void {
+    const node = fileContextMenu.value.node;
+    if (!node || node.mode === undefined || !activeTabId.value) return;
+    sftpStore.openFilePermissionDialog(activeTabId.value, node);
+  }
+
   async function openRemoteFileEditorByDoubleClick(
     node: RemoteFileNode,
   ): Promise<void> {
@@ -434,6 +441,7 @@ export function useRemoteFileWorkspace(
     renaming,
     fileDragTargetPath,
     imagePreview,
+    filePermissionDialog,
     isFileEditorOpen,
     isFileEditorCloseConfirmOpen,
     isFileEditorSearchOpen,
@@ -453,6 +461,8 @@ export function useRemoteFileWorkspace(
     clearRemoteNodeDrag: sftpStore.clearRemoteNodeDrag,
     downloadImagePreviewFile: sftpStore.downloadImagePreviewFile,
     closeImagePreview: sftpStore.closeImagePreview,
+    closeFilePermissionDialog: sftpStore.closeFilePermissionDialog,
+    saveFilePermissions: sftpStore.saveFilePermissions,
     requestCloseFileEditor: fileEditorStore.requestCloseFileEditor,
     saveFileEditor: fileEditorStore.saveFileEditor,
     saveAndCloseFileEditor: fileEditorStore.saveAndCloseFileEditor,
@@ -497,6 +507,7 @@ export function useRemoteFileWorkspace(
     setFileEditorReplaceInput,
     editContextFile,
     previewContextFile,
+    openContextFilePermissions,
     openRemoteNodeByDoubleClick,
     deleteContextFile,
     handleOpenBlankContextMenu,

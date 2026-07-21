@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, watch } from "vue";
 import { useTerminalsStore } from "../stores/useTerminalsStore";
 
 interface StatsEntry {

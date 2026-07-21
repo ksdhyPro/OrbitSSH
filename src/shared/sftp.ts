@@ -4,6 +4,9 @@ export interface RemoteFileNode {
   type: 'file' | 'directory'
   size?: number
   modifyTime?: number
+  mode?: number
+  ownerId?: number
+  groupId?: number
   children?: RemoteFileNode[]
   loaded?: boolean
 }
@@ -23,6 +26,26 @@ export interface SftpRenameInput {
   tabId: string
   path: string
   newPath: string
+}
+
+export interface SftpChmodInput {
+  tabId: string
+  path: string
+  mode: number
+  recursive?: boolean
+}
+
+export interface SftpStatInput {
+  tabId: string
+  path: string
+}
+
+export interface SftpStatResult {
+  path: string
+  type: RemoteFileNode['type']
+  mode: number
+  ownerId: number
+  groupId: number
 }
 
 export interface SftpCreateNodeInput {
@@ -104,6 +127,7 @@ export interface SftpDownloadProgressEvent {
 export interface SftpUploadProgressEvent {
   taskId: string
   tabId: string
+  serverId?: string
   name: string
   path: string
   status: 'queued' | 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'

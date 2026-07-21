@@ -359,8 +359,36 @@
   text-align: center;
 }
 .terminal-hosts {
+  position: relative;
   padding: 20px;
   box-sizing: border-box;
+}
+
+.terminal-ai-lock-status {
+  position: absolute;
+  z-index: 4;
+  top: 28px;
+  right: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 45%, var(--border-default));
+  border-radius: 6px;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, #000 22%, transparent);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.terminal-ai-lock-status > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
 }
 .terminal-hosts,
 .terminal-host {

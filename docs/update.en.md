@@ -8,6 +8,10 @@
 4. Refactored SFTP sessions, uploads, downloads, server-to-server transfers, and the shared transfer queue into focused modules, with additional SFTP and Renderer tests.
 5. Fixed file or folder creation and renaming in File Transfer repeatedly selecting the entire name after each typed character, which caused the next character to overwrite the previous one.
 6. Fixed `Ctrl+S` not saving in the remote file editor, with `Cmd+S` support on macOS. Newly opened files now place the cursor at the end of the content.
+7. SSH and SFTP connections now send protocol-level keepalive packets every 30 seconds by default. AI commands run in and are mirrored to the active terminal session, with access to redacted session context.
+8. AI reasoning content now appears as it streams. Disconnects, timeouts, rate limits, and transient service failures use cancellable exponential-backoff retries.
+9. AI model settings now use the `models.dev` provider and model catalog, with multiple model IDs, custom providers, context and output limits, reasoning effort, input modalities, and a dedicated multimodal model.
+10. AI chat now accepts images, audio, video, PDFs, and regular files. Attachment requests route to the dedicated multimodal model and validate each file against its configured input capabilities.
 
 ## v1.1.10
 
@@ -111,8 +115,8 @@
 
 ## v1.0.1
 
-- Added an SSH/SFTP keepalive interval setting. The default is 10 seconds, it can be changed in Settings, and it can be set to 0 to disable keepalive.
-- Added an idle disconnect setting. The default is 5 minutes; terminal and main SFTP sessions are automatically disconnected after a long period without activity, and it can be set to 0 to disable automatic disconnect.
+- Added an SSH/SFTP keepalive interval setting. The default is 30 seconds, it can be changed in Settings, and it can be set to 0 to disable keepalive.
+- Added an idle disconnect setting. It is disabled by default; terminal and main SFTP sessions can be disconnected after a long period without activity, and it can be set to 0 to disable automatic disconnect.
 - Improved SFTP connection stability. Main SFTP sessions, uploads, downloads, and remote transfers now all apply the keepalive configuration.
 - Added the `dist-mac` script for building macOS packages.
 - Improved the macOS window experience with left-side red/yellow/green window controls and integration with the native macOS menu bar.

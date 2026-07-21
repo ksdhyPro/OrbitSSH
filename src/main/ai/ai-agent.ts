@@ -1,5 +1,6 @@
 import type {
   AiApprovedCommandInput,
+  AiAttachmentReadResult,
   AiCancelInput,
   AiChatInput,
   AiChatResult,
@@ -32,6 +33,9 @@ import {
   splitAiShellCommands,
 } from "./command-policy.js";
 import { ExpiringApprovalStore } from "./ai-approval-store.js";
+import { findExecutedAiCommand } from "./ai-command-dedup.js";
+import { prepareAiChatInput } from "./ai-compaction.js";
+import { readAiAttachmentChunk } from "./ai-attachment-reader.js";
 
 interface PendingApprovalState {
   tabId: string;
@@ -40,6 +44,7 @@ interface PendingApprovalState {
   cardId: string;
   previousCards: AiCommandCard[];
   executedCommands: ExecutedAiCommandContext[];
+  attachmentReads: AiAttachmentReadResult[];
   createdAt: number;
   /** AI 已耗尽本地策略重试后，用户可显式决定是否绕过该次拒绝。 */
   allowPolicyBypass?: boolean;
@@ -56,9 +61,8 @@ interface AgentEmitter {
   sendCommandCard(card: AiCommandCard): void;
 }
 
-const maxAgentCommandCount = 10;
 const maxLocalPolicyRetries = 3;
-const approvalTtlMs = 5 * 60 * 1000;
+const maxAttachmentReadCount = 64;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
 const activeRequests = new Map<string, AbortController>();
 
@@ -261,11 +265,12 @@ function notifyExpiredApproval(
 function storePendingApproval(
   approvalId: string,
   state: PendingApprovalState,
+  ttlMs: number,
 ): void {
   pendingApprovals.set(
     approvalId,
     state,
-    approvalTtlMs,
+    ttlMs,
     notifyExpiredApproval,
   );
 }
@@ -352,6 +357,7 @@ async function executeAgentCommand(
   command: EvaluatedAiCommand,
   commandCards: AiCommandCard[],
   executedCommands: ExecutedAiCommandContext[],
+  attachmentReads: AiAttachmentReadResult[],
   messages: AiMessage[],
   options: {
     approvalId?: string;
@@ -359,6 +365,7 @@ async function executeAgentCommand(
     bypassPolicyDeny?: boolean;
     cardId?: string;
     cardCreatedAt?: number;
+    approvalTtlMs?: number;
   } = {},
 ): Promise<CommandExecutionResult> {
   const cardId = options.cardId ?? createId();
@@ -385,16 +392,21 @@ async function executeAgentCommand(
     );
     emit?.sendCommandCard(approvalCard);
     nextCards = mergeCards(nextCards, approvalCard);
-    storePendingApproval(approvalId, {
-      tabId: input.tabId,
-      input,
-      command,
-      cardId,
-      previousCards: nextCards,
-      executedCommands,
-      createdAt: Date.now(),
-      emit,
-    });
+    storePendingApproval(
+      approvalId,
+      {
+        tabId: input.tabId,
+        input,
+        command,
+        cardId,
+        previousCards: nextCards,
+        executedCommands,
+        attachmentReads,
+        createdAt: Date.now(),
+        emit,
+      },
+      options.approvalTtlMs ?? 0,
+    );
     return { status: "return", result: { messages, commandCards: nextCards } };
   }
 
@@ -501,10 +513,18 @@ async function runAgentLoop(
   emit?: AgentEmitter,
   previousCards: AiCommandCard[] = [],
   initialExecutedCommands: ExecutedAiCommandContext[] = [],
+  initialAttachmentReads: AiAttachmentReadResult[] = [],
 ): Promise<AiChatResult> {
+  const maxAgentCommandCount = settings.ai.maxAgentCommandCount;
+  const approvalTtlMs = settings.ai.commandApprovalTimeoutMinutes * 60_000;
   const messages: AiMessage[] = [];
   let commandCards = [...previousCards];
   let executedCommands = [...initialExecutedCommands];
+  let attachmentReads = [...initialAttachmentReads];
+  const attachmentBufferCache = new Map<string, Buffer>();
+  const readOffsets = new Set(
+    attachmentReads.map(read => `${read.attachmentId}:${read.offset}`),
+  );
   let policyFeedback: LocalPolicyRejectionFeedback | undefined;
   let localPolicyRetryCount = 0;
 
@@ -523,8 +543,72 @@ async function runAgentLoop(
       signal,
       emit ? text => emit.sendChunk(messageId, text) : undefined,
       policyFeedback,
+      attachmentReads,
     );
     const reply = parsed.reply?.trim();
+    const nextAttachmentRead = parsed.attachmentReads?.[0];
+    if (nextAttachmentRead) {
+      const readKey = `${nextAttachmentRead.attachmentId}:${nextAttachmentRead.offset}`;
+      if (attachmentReads.length >= maxAttachmentReadCount) {
+        messages.push({
+          id: messageId,
+          role: "assistant",
+          content: [
+            reply,
+            `已达到单次任务最多 ${maxAttachmentReadCount} 次附件分段读取限制，请缩小问题范围或拆分附件后继续。`,
+          ].filter(Boolean).join("\n\n"),
+          createdAt: messageCreatedAt,
+        });
+        return { messages, commandCards };
+      }
+      if (readOffsets.has(readKey)) {
+        messages.push({
+          id: messageId,
+          role: "assistant",
+          content: [
+            reply,
+            "模型重复请求了同一附件的相同字节位置，已停止读取以避免无限循环。",
+          ].filter(Boolean).join("\n\n"),
+          createdAt: messageCreatedAt,
+        });
+        return { messages, commandCards };
+      }
+      try {
+        const readResult = readAiAttachmentChunk(
+          input.attachments ?? [],
+          nextAttachmentRead,
+          attachmentBufferCache,
+        );
+        attachmentReads.push(readResult);
+        readOffsets.add(readKey);
+        writeAppLog({
+          scope: "main.ai",
+          message: "AI 分段读取附件",
+          data: {
+            tabId: input.tabId,
+            attachmentId: readResult.attachmentId,
+            name: readResult.name,
+            offset: readResult.offset,
+            nextOffset: readResult.nextOffset,
+            totalBytes: readResult.totalBytes,
+            eof: readResult.eof,
+            readCount: attachmentReads.length,
+          },
+        });
+        continue;
+      } catch (readError) {
+        messages.push({
+          id: messageId,
+          role: "assistant",
+          content: [
+            reply,
+            `附件分段读取失败：${readError instanceof Error ? readError.message : String(readError)}`,
+          ].filter(Boolean).join("\n\n"),
+          createdAt: messageCreatedAt,
+        });
+        return { messages, commandCards };
+      }
+    }
     const nextCommand = getNextParsedCommand(parsed);
 
     const defaultMessage = nextCommand
@@ -571,17 +655,22 @@ async function runAgentLoop(
       );
       emit?.sendCommandCard(approvalCard);
       commandCards = mergeCards(commandCards, approvalCard);
-      storePendingApproval(approvalId, {
-        tabId: input.tabId,
-        input,
-        command: nextCommand,
-        cardId: approvalCard.id,
-        previousCards: commandCards,
-        executedCommands,
-        createdAt: Date.now(),
-        allowPolicyBypass: true,
-        emit,
-      });
+      storePendingApproval(
+        approvalId,
+        {
+          tabId: input.tabId,
+          input,
+          command: nextCommand,
+          cardId: approvalCard.id,
+          previousCards: commandCards,
+          executedCommands,
+          attachmentReads,
+          createdAt: Date.now(),
+          allowPolicyBypass: true,
+          emit,
+        },
+        approvalTtlMs,
+      );
       messages.push({
         id: messageId,
         role: "assistant",
@@ -593,6 +682,36 @@ async function runAgentLoop(
 
     policyFeedback = undefined;
     localPolicyRetryCount = 0;
+    const duplicateCommand = nextCommand
+      ? findExecutedAiCommand(executedCommands, nextCommand.command)
+      : undefined;
+    if (nextCommand && duplicateCommand) {
+      const previousResult = truncateText(
+        formatCommandResultForPrompt(duplicateCommand.result),
+        800,
+      );
+      messages.push({
+        id: messageId,
+        role: "assistant",
+        content: [
+          reply || defaultMessage,
+          "检测到模型重复请求本轮已执行过的相同命令，已停止继续执行，避免重复重启、写入或产生其他副作用。",
+          `上次执行结果：\n${previousResult}`,
+        ].join("\n\n"),
+        createdAt: messageCreatedAt,
+      });
+      writeAppLog({
+        scope: "main.ai",
+        level: "warn",
+        message: "AI 重复命令已拦截",
+        data: {
+          tabId: input.tabId,
+          command: nextCommand.command,
+          executedCommandCount: executedCommands.length,
+        },
+      });
+      return { messages, commandCards };
+    }
     messages.push({
       id: messageId,
       role: "assistant",
@@ -608,7 +727,9 @@ async function runAgentLoop(
       nextCommand,
       commandCards,
       executedCommands,
+      attachmentReads,
       messages,
+      { approvalTtlMs },
     );
     if (execution.status === "return") return execution.result;
     commandCards = execution.commandCards;
@@ -644,9 +765,11 @@ export async function runAiChat(
 ): Promise<AiChatResult> {
   const emit = makeEmitter(input.tabId, webContents);
   clearPendingApprovalsForTab(input.tabId, "已开始新的 AI 请求", emit);
-  return runTrackedRequest(input.tabId, signal =>
-    runAgentLoop(input, settings, signal, emit),
-  );
+  return runTrackedRequest(input.tabId, async signal => {
+    const prepared = await prepareAiChatInput(input, settings, signal);
+    const result = await runAgentLoop(prepared.input, settings, signal, emit);
+    return { ...result, compaction: prepared.compaction };
+  });
 }
 
 export function cancelAiRequest(input: AiCancelInput): boolean {
@@ -682,6 +805,7 @@ export async function runApprovedAiCommand(
   return runTrackedRequest(input.tabId, async signal => {
     let commandCards = approval.previousCards;
     let executedCommands = [...approval.executedCommands];
+    const attachmentReads = [...approval.attachmentReads];
     const messages: AiMessage[] = [];
     const previousCard = commandCards.find(card => card.id === approval.cardId);
     const cardCreatedAt = previousCard?.createdAt ?? Date.now();
@@ -696,6 +820,7 @@ export async function runApprovedAiCommand(
       evaluatedCommand,
       commandCards,
       executedCommands,
+      attachmentReads,
       messages,
       {
         approvalId: input.approvalId,
@@ -705,7 +830,12 @@ export async function runApprovedAiCommand(
         cardCreatedAt,
       },
     );
-    if (execution.status === "return") return execution.result;
+    if (execution.status === "return") {
+      return {
+        ...execution.result,
+        compaction: approval.input.compaction,
+      };
+    }
     commandCards = execution.commandCards;
     executedCommands = execution.executedCommands;
     const loopResult = await runAgentLoop(
@@ -715,10 +845,12 @@ export async function runApprovedAiCommand(
       emit,
       commandCards,
       executedCommands,
+      attachmentReads,
     );
     return {
       messages: [...messages, ...loopResult.messages],
       commandCards: loopResult.commandCards,
+      compaction: approval.input.compaction,
     };
   });
 }

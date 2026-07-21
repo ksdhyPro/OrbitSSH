@@ -1,10 +1,13 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { type Client, type ClientChannel } from "ssh2";
 
 import type { AiCommandResult } from "../../shared/ai.js";
 
-const execAsync = promisify(exec);
+export type TerminalCommandOutputHandler = (
+  chunk: string,
+  stream: "stdout" | "stderr",
+) => void;
 
 function createCommandAbortError(): Error {
   const error = new Error("命令执行已终止");
@@ -20,6 +23,7 @@ export function executeSshTerminalCommand(
   command: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  onOutput?: TerminalCommandOutputHandler,
 ): Promise<AiCommandResult> {
   if (signal?.aborted) {
     return Promise.reject(createCommandAbortError());
@@ -32,12 +36,33 @@ export function executeSshTerminalCommand(
     let stdout = "";
     let stderr = "";
     let stream: ClientChannel | undefined;
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    let decodersFlushed = false;
 
     const onStdout = (data: Buffer): void => {
-      stdout = `${stdout}${data.toString("utf8")}`.slice(-20_000);
+      const chunk = stdoutDecoder.write(data);
+      stdout = `${stdout}${chunk}`.slice(-20_000);
+      if (chunk) onOutput?.(chunk, "stdout");
     };
     const onStderr = (data: Buffer): void => {
-      stderr = `${stderr}${data.toString("utf8")}`.slice(-10_000);
+      const chunk = stderrDecoder.write(data);
+      stderr = `${stderr}${chunk}`.slice(-10_000);
+      if (chunk) onOutput?.(chunk, "stderr");
+    };
+    const flushDecoders = (): void => {
+      if (decodersFlushed) return;
+      decodersFlushed = true;
+      const stdoutTail = stdoutDecoder.end();
+      const stderrTail = stderrDecoder.end();
+      if (stdoutTail) {
+        stdout = `${stdout}${stdoutTail}`.slice(-20_000);
+        onOutput?.(stdoutTail, "stdout");
+      }
+      if (stderrTail) {
+        stderr = `${stderr}${stderrTail}`.slice(-10_000);
+        onOutput?.(stderrTail, "stderr");
+      }
     };
     const cleanup = (): void => {
       clearTimeout(timer);
@@ -61,11 +86,12 @@ export function executeSshTerminalCommand(
       if (settled) return;
 
       settled = true;
+      flushDecoders();
       cleanup();
       resolve({
         ...result,
-        stdout: result.stdout.slice(0, 20_000),
-        stderr: result.stderr.slice(0, 10_000),
+        stdout: stdout.slice(-20_000),
+        stderr: stderr.slice(-10_000),
         durationMs: Date.now() - startedAt,
       });
     };
@@ -141,51 +167,103 @@ export async function executeSshTextCommand(
   return result.stdout.trim() || result.stderr.trim();
 }
 
-/** 在本地子进程中执行 AI 命令，复用 Node 原生的超时与 AbortSignal。 */
+/** 在本地子进程中执行 AI 命令，输出直接流式转发，不受 exec 缓冲上限影响。 */
 export async function executeLocalTerminalCommand(
   cwd: string,
   command: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  onOutput?: TerminalCommandOutputHandler,
 ): Promise<AiCommandResult> {
+  if (signal?.aborted) {
+    return Promise.reject(createCommandAbortError());
+  }
   const startedAt = Date.now();
 
-  try {
-    const { stdout, stderr } = await execAsync(command, {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    const child = spawn(command, {
       cwd,
-      timeout: timeoutMs,
+      shell: true,
       windowsHide: true,
-      maxBuffer: 30_000,
-      signal,
+      stdio: ["ignore", "pipe", "pipe"],
     });
 
-    return {
-      stdout: stdout.slice(0, 20_000),
-      stderr: stderr.slice(0, 10_000),
-      exitCode: 0,
-      timedOut: false,
-      durationMs: Date.now() - startedAt,
+    const appendOutput = (
+      data: Buffer,
+      stream: "stdout" | "stderr",
+    ): void => {
+      const decoder = stream === "stdout" ? stdoutDecoder : stderrDecoder;
+      const value = decoder.write(data);
+      if (!value) return;
+      if (stream === "stdout") {
+        stdout = `${stdout}${value}`.slice(-20_000);
+      } else {
+        stderr = `${stderr}${value}`.slice(-10_000);
+      }
+      onOutput?.(value, stream);
     };
-  } catch (error) {
-    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
-      throw createCommandAbortError();
-    }
+    const flushDecoders = (): void => {
+      const stdoutTail = stdoutDecoder.end();
+      const stderrTail = stderrDecoder.end();
+      if (stdoutTail) {
+        stdout = `${stdout}${stdoutTail}`.slice(-20_000);
+        onOutput?.(stdoutTail, "stdout");
+      }
+      if (stderrTail) {
+        stderr = `${stderr}${stderrTail}`.slice(-10_000);
+        onOutput?.(stderrTail, "stderr");
+      }
+    };
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      child.stdout.removeAllListeners();
+      child.stderr.removeAllListeners();
+      child.removeAllListeners();
+    };
+    const finish = (
+      exitCode: number | null,
+      timedOut: boolean,
+    ): void => {
+      if (settled) return;
+      settled = true;
+      flushDecoders();
+      cleanup();
+      resolve({
+        stdout,
+        stderr,
+        exitCode,
+        timedOut,
+        durationMs: Date.now() - startedAt,
+      });
+    };
+    const fail = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const stopChild = (): void => {
+      if (!child.killed) child.kill();
+    };
+    const onAbort = (): void => {
+      fail(createCommandAbortError());
+      stopChild();
+    };
+    const timer = setTimeout(() => {
+      finish(null, true);
+      stopChild();
+    }, timeoutMs);
 
-    const record = error as {
-      stdout?: string;
-      stderr?: string;
-      code?: number | string;
-      killed?: boolean;
-    };
-
-    return {
-      stdout: String(record.stdout ?? "").slice(0, 20_000),
-      stderr: String(
-        record.stderr ?? (error instanceof Error ? error.message : ""),
-      ).slice(0, 10_000),
-      exitCode: typeof record.code === "number" ? record.code : null,
-      timedOut: Boolean(record.killed),
-      durationMs: Date.now() - startedAt,
-    };
-  }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    child.stdout.on("data", data => appendOutput(data as Buffer, "stdout"));
+    child.stderr.on("data", data => appendOutput(data as Buffer, "stderr"));
+    child.on("error", fail);
+    child.on("close", code => finish(code, false));
+  });
 }

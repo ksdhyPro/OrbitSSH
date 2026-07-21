@@ -4,19 +4,22 @@ import { ref } from "vue";
 // 侧边栏宽度拖拽 store。拖动会改变终端区宽度，
 // 由 App.vue watch(sidebarWidth) 调度终端 fit，避免反向依赖终端 store。
 export const useSidebarStore = defineStore("sidebar", () => {
-  const sidebarWidth = ref(320);
+  const sidebarWidth = ref(360);
   const isResizingSidebar = ref(false);
-  const aiPanelWidth = ref(360);
+  const aiPanelWidth = ref(340);
   const isResizingAiPanel = ref(false);
 
   function clampSidebarWidth(width: number): number {
-    return Math.min(Math.max(width, 260), 520);
+    return Math.min(Math.max(width, 320), 560);
   }
 
   function clampAiPanelWidth(width: number): number {
     // 右侧 AI 面板不能挤掉主终端区域，按当前窗口和左侧栏宽度动态收口。
-    const viewportMax = Math.max(320, window.innerWidth - sidebarWidth.value - 260);
-    return Math.min(Math.max(width, 320), Math.min(680, viewportMax));
+    const viewportMax = Math.max(
+      300,
+      window.innerWidth - sidebarWidth.value - 54 - 520,
+    );
+    return Math.min(Math.max(width, 300), Math.min(620, viewportMax));
   }
 
   function handleSidebarResizeMove(event: MouseEvent): void {

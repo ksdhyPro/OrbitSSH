@@ -94,7 +94,8 @@ async function openTerminalContextMenu(event: MouseEvent): Promise<void> {
   const canPaste = await props.hasClipboardText();
 
   if (terminalContextMenu.open) {
-    terminalContextMenu.canPaste = canPaste;
+    terminalContextMenu.canPaste =
+      canPaste && !terminalsStore.isActiveTerminalInputLocked;
   }
 }
 
@@ -240,6 +241,14 @@ watch(
         </button>
       </div>
       <div v-else class="terminal-hosts">
+        <div
+          v-if="terminalsStore.isActiveTerminalInputLocked"
+          class="terminal-ai-lock-status"
+          role="status"
+          aria-live="polite">
+          <span aria-hidden="true"></span>
+          AI 正在操作终端
+        </div>
         <div
           v-for="tab in tabs"
           :key="tab.id"

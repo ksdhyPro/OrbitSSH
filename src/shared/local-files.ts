@@ -9,3 +9,14 @@ export interface LocalDirectoryResult {
   parentPath?: string
   nodes: RemoteFileNode[]
 }
+
+export interface LocalRootEntry {
+  path: string
+  label: string
+  kind: 'home' | 'drive' | 'root'
+}
+
+export interface LocalRootsResult {
+  homePath: string
+  roots: LocalRootEntry[]
+}

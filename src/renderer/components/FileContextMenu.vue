@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { PhLockKey } from "@phosphor-icons/vue";
 import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import editIcon from "../assets/icons/edit.svg";
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   upload: [sourceType: "file" | "directory"];
   create: [type: "file" | "directory"];
   rename: [];
+  permissions: [];
   delete: [];
   close: [];
 }>();
@@ -45,12 +47,18 @@ const menuItems = computed<ContextMenuItem[]>(() => {
     label: "上传文件夹",
     icon: arrowUpIcon,
   };
+  const permissionItem: ContextMenuItem = {
+    key: "permissions",
+    label: "权限",
+    iconComponent: PhLockKey,
+  };
 
   // 右键目标属于多选选区时，菜单执行批量操作；右键未选中项时不影响既有选区。
   if (props.menu.contextNodeSelected && count > 1) {
     return [
       uploadFileItem,
       uploadDirectoryItem,
+      permissionItem,
       {
         key: "delete",
         label: `删除 ${count} 项`,
@@ -81,6 +89,7 @@ const menuItems = computed<ContextMenuItem[]>(() => {
       ...createItems,
       uploadFileItem,
       uploadDirectoryItem,
+      permissionItem,
       {
         key: "rename",
         label: "重命名",
@@ -121,6 +130,7 @@ const menuItems = computed<ContextMenuItem[]>(() => {
       icon: arrowDownIcon,
       disabled: !props.canDownloadRemoteFile(node),
     },
+    permissionItem,
     {
       key: "rename",
       label: "重命名",
@@ -155,6 +165,8 @@ function selectMenuItem(item: ContextMenuItem): void {
     emit("create", "directory");
   } else if (item.key === "rename") {
     emit("rename");
+  } else if (item.key === "permissions") {
+    emit("permissions");
   } else if (item.key === "delete") {
     emit("delete");
   }

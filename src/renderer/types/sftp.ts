@@ -56,3 +56,12 @@ export interface ImagePreviewState {
   loading: boolean;
   error: string;
 }
+
+export interface FilePermissionDialogState {
+  open: boolean;
+  tabId: string;
+  node: RemoteFileNode | null;
+  loading: boolean;
+  saving: boolean;
+  error: string;
+}

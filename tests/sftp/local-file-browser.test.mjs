@@ -4,7 +4,20 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 
-import { readLocalDirectory } from '../../dist-electron/main/local-files/local-file-browser.js'
+import {
+  listLocalRoots,
+  readLocalDirectory,
+} from '../../dist-electron/main/local-files/local-file-browser.js'
+
+test('本地位置包含主目录和可用文件系统根目录', async () => {
+  const result = await listLocalRoots(tmpdir())
+
+  assert.equal(result.homePath, tmpdir())
+  assert.equal(result.roots[0].kind, 'home')
+  assert.equal(result.roots[0].path, tmpdir())
+  assert.ok(result.roots.some((root) => root.kind === 'drive' || root.kind === 'root'))
+  assert.equal(new Set(result.roots.map((root) => root.path.toLowerCase())).size, result.roots.length)
+})
 
 test('本地目录默认按文件夹优先展示并返回父目录', async (context) => {
   const directoryPath = await mkdtemp(join(tmpdir(), 'orbitssh-local-files-'))
