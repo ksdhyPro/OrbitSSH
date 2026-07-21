@@ -5,7 +5,7 @@ import { open as openLocalFile, rename, rm, stat } from 'node:fs/promises'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
-import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
+import { getSshConnectionOptions } from '../ssh/connection-options.js'
 import { appConfig } from '../../shared/config.js'
 import type { ServerAuthConfig } from '../../shared/server.js'
 import type { FileFingerprintReader } from './file-fingerprint.js'
@@ -243,8 +243,7 @@ export function createSftpClient(name: string, server: ServerAuthConfig): Promis
   return client
     .connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs()
+      ...getSshConnectionOptions()
     })
     .then(() => client)
 }
@@ -258,8 +257,7 @@ export function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
       .once('error', reject)
       .connect({
         ...createServerConnectOptions(server),
-        readyTimeout: 15000,
-        keepaliveInterval: getSshKeepaliveIntervalMs()
+        ...getSshConnectionOptions()
       })
   })
 }

@@ -29,3 +29,14 @@ test("审批到期后主动清理并触发通知", async () => {
   assert.equal(store.get("expired"), null);
   assert.equal(expiredId, "expired");
 });
+
+test("审批有效期为 0 时不会自动过期", async () => {
+  const store = new ExpiringApprovalStore();
+  let expired = false;
+  store.set("persistent", { tabId: "tab-1" }, 0, () => {
+    expired = true;
+  });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(store.get("persistent"), { tabId: "tab-1" });
+  assert.equal(expired, false);
+});

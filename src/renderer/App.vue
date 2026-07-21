@@ -14,6 +14,7 @@ import ConnectionDialog from "./components/ConnectionDialog.vue";
 import DataTransferDialog from "./components/DataTransferDialog.vue";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
+import FilePermissionDialog from "./components/FilePermissionDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
@@ -25,6 +26,7 @@ import TerminalPanel from "./components/TerminalPanel.vue";
 import TitleBarTabs from "./components/TitleBarTabs.vue";
 import type { ServerConfig } from "../shared/server";
 import type { AppMenuAction } from "../shared/app-menu";
+import type { AiSettings } from "../shared/settings";
 import { storeToRefs } from "pinia";
 import { useRemoteFileWorkspace } from "./composables/useRemoteFileWorkspace";
 import { useCoreStore } from "./stores/useCoreStore";
@@ -81,11 +83,31 @@ const {
   stepTerminalNumberSetting,
   updateKeepaliveIntervalSeconds,
   updateIdleDisconnectMinutes,
+  updateOpenLocalTerminalOnStartup,
   updateAiSetting,
   updateAiSettings,
+  updateAiModelReasoning,
   updateThemeMode,
   selectSelectionBackground,
 } = settingsStore;
+
+async function handleUpdateAiSettings(
+  value: AiSettings,
+  onComplete?: (saved: boolean) => void,
+): Promise<void> {
+  let saved = false;
+  try {
+    saved = await updateAiSettings(value);
+  } catch (error) {
+    writeRendererLog(
+      "Failed to update AI settings",
+      { error: error instanceof Error ? error.message : String(error) },
+      "error",
+    );
+  } finally {
+    onComplete?.(saved);
+  }
+}
 
 // update
 const {
@@ -168,21 +190,33 @@ const {
   inputText: aiInputText,
   isSending: isAiSending,
   error: aiError,
+  pendingAttachments: aiAttachments,
+  attachmentModelName: aiAttachmentModelName,
   messages: aiMessages,
   commandCards: aiCommandCards,
   shouldSuggestNewConversation,
+  conversations: aiConversations,
+  activeConversationId: aiActiveConversationId,
+  activeConversationServerName: aiConversationServerName,
+  conversationContextReady: aiConversationContextReady,
 } = storeToRefs(aiStore);
 
 const {
   togglePanel: toggleAiPanel,
   setMode: setAiMode,
   setActiveTabId: setAiActiveTabId,
+  getConversation: getAiConversation,
+  activateConversation: activateAiConversation,
+  renameConversation: renameAiConversation,
+  deleteConversation: deleteAiConversationFromStore,
   startNewConversation: startNewAiConversation,
   removeTabSession: removeAiTabSession,
   sendMessage: sendAiMessage,
   runApprovedCommand: runAiApprovedCommand,
   rejectApproval: rejectAiApproval,
   cancelMessage: cancelAiMessage,
+  addAttachments: addAiAttachments,
+  removeAttachment: removeAiAttachment,
 } = aiStore;
 
 const {
@@ -215,6 +249,7 @@ const {
   renaming,
   fileDragTargetPath,
   imagePreview,
+  filePermissionDialog,
   loadSftpHome,
   removeSftpTree,
   closeSftpSession,
@@ -224,6 +259,8 @@ const {
   clearRemoteNodeDrag,
   downloadImagePreviewFile,
   closeImagePreview,
+  closeFilePermissionDialog,
+  saveFilePermissions,
   isFileEditorOpen,
   isFileEditorCloseConfirmOpen,
   isFileEditorSearchOpen,
@@ -279,6 +316,7 @@ const {
   setFileEditorReplaceInput,
   editContextFile,
   previewContextFile,
+  openContextFilePermissions,
   openRemoteNodeByDoubleClick,
   deleteContextFile,
   handleOpenBlankContextMenu,
@@ -290,11 +328,104 @@ const {
 
 const aiContext = computed(() => ({
   tabId: activeTabId.value,
+  serverId: activeTab.value?.serverId,
   serverName: activeTab.value?.title,
   currentPath: activeTab.value?.currentPath,
   status: activeTab.value?.status,
   sftpPath: activeSftpTree.value?.homePath,
 }));
+
+async function selectAiConversation(conversationId: string): Promise<void> {
+  const conversation = getAiConversation(conversationId);
+  if (!conversation) return;
+
+  // 优先回到历史会话原来绑定的 Tab；只有已解绑的历史会话才按服务器寻找可用 Tab。
+  const existingTab = tabs.value.find(
+    tab => tab.id === conversation.tabId,
+  );
+  const associatedTab = conversation.tabId ? existingTab : undefined;
+  const fallbackTab = conversation.tabId
+    ? undefined
+    : tabs.value.find(tab => tab.serverId === conversation.serverId);
+  const connectedTab = associatedTab?.status === "connected"
+    ? associatedTab
+    : fallbackTab?.status === "connected"
+      ? fallbackTab
+      : undefined;
+  if (connectedTab) {
+    await activateTerminalTab(connectedTab.id);
+    activateAiConversation(conversationId);
+    return;
+  }
+
+  const shouldConnect = await requestConfirm({
+    title: "连接会话服务器",
+    message: `会话“${conversation.title}”关联的服务器“${conversation.serverName || "未知服务器"}”当前未连接，是否打开终端并连接？`,
+    confirmLabel: "打开并连接",
+    danger: false,
+  });
+  if (!shouldConnect) return;
+
+  const reconnectTab = associatedTab ?? fallbackTab;
+  if (reconnectTab) {
+    await activateTerminalTab(reconnectTab.id);
+    if (["disconnected", "error"].includes(reconnectTab.status)) {
+      await terminalsStore.reconnectTerminal(reconnectTab.id);
+    }
+    activateAiConversation(conversationId);
+    return;
+  }
+
+  const server = servers.value.find(item => item.id === conversation.serverId);
+  if (!server) {
+    setListError("该会话关联的服务器配置已不存在");
+    return;
+  }
+
+  try {
+    await openTerminalFromStore(server, {
+      afterOpen: tab => {
+        void loadSftpHome(tab);
+      },
+    });
+    activateAiConversation(conversationId);
+  } catch (error) {
+    setListError(error instanceof Error ? error.message : "打开会话服务器失败");
+  }
+}
+
+function renameAiConversationById(
+  conversationId: string,
+  title: string,
+): void {
+  renameAiConversation(conversationId, title);
+}
+
+async function deleteAiConversation(conversationId: string): Promise<void> {
+  const conversation = getAiConversation(conversationId);
+  if (!conversation) return;
+
+  const hasBlockingTask = conversation.commandCards.some(card =>
+    ["pending", "running", "requires_approval"].includes(card.status),
+  );
+  if (
+    hasBlockingTask ||
+    (conversationId === aiActiveConversationId.value && isAiSending.value)
+  ) {
+    aiError.value = "该会话仍有正在执行或等待确认的任务，暂时无法删除。";
+    return;
+  }
+
+  const confirmed = await requestConfirm({
+    title: "删除会话",
+    message: `确定删除会话“${conversation.title}”吗？删除后无法恢复。`,
+    confirmLabel: "删除",
+    danger: true,
+  });
+  if (!confirmed) return;
+
+  deleteAiConversationFromStore(conversationId);
+}
 
 function applyAppThemeMode(): void {
   document.documentElement.dataset.theme = appSettings.appearance.themeMode;
@@ -515,34 +646,52 @@ watch(
   { deep: true },
 );
 
-// AI 面板跟随当前终端标签页切换，确保不同服务器的对话历史互相隔离。
+// AI 面板跟随当前终端标签页切换，同时把当前连接信息同步给会话路由。
 watch(
-  activeTabId,
-  tabId => {
-    setAiActiveTabId(tabId);
+  () => [
+    activeTabId.value,
+    activeTab.value?.serverId ?? "",
+    activeTab.value?.title ?? "",
+    activeTab.value?.status ?? "disconnected",
+  ] as const,
+  ([tabId, serverId, serverName, status]) => {
+    setAiActiveTabId(tabId, serverId, serverName, status);
   },
   { immediate: true },
 );
+
+async function initializeSettingsAndLocalTerminal(): Promise<void> {
+  await settingsStore.loadAppSettings();
+  if (
+    !appSettings.terminal.openLocalTerminalOnStartup ||
+    !orbitSSHApi.value
+  ) {
+    return;
+  }
+
+  try {
+    await openLocalTerminal();
+  } catch (error) {
+    writeRendererLog(
+      "默认本地终端打开失败",
+      { error: error instanceof Error ? error.message : String(error) },
+      "error",
+    );
+  }
+}
 
 onMounted(() => {
   writeRendererLog("Renderer mounted", {
     hasOrbitSSHApi: Boolean(orbitSSHApi.value),
   });
   void loadServers();
-  void settingsStore.loadAppSettings();
+  void initializeSettingsAndLocalTerminal();
   void loadAppInfo();
   void windowStore.initMaximized();
   void windowStore.initFullScreen();
   windowStore.startFullScreenListener();
   downloadsStore.startListeners();
   terminalsStore.startListeners();
-  void openLocalTerminal().catch(error => {
-    writeRendererLog(
-      "默认本地终端打开失败",
-      { error: error instanceof Error ? error.message : String(error) },
-      "error",
-    );
-  });
   stopAppMenuListener =
     orbitSSHApi.value?.appMenu.onAction(handleAppMenuAction) ?? null;
   initUpdate();
@@ -647,6 +796,7 @@ onUnmounted(() => {
           @upload-context-file="uploadContextFile"
           @upload-to-current-directory="uploadToActiveSftpDirectory"
           @rename-context-file="renameContextFile"
+          @permissions-context-file="openContextFilePermissions"
           @delete-context-file="deleteContextFile"
           @commit-rename="handleCommitRename"
           @cancel-rename="handleCancelRename"
@@ -698,8 +848,14 @@ onUnmounted(() => {
         :input-text="aiInputText"
         :is-sending="isAiSending"
         :error="aiError"
+        :attachments="aiAttachments"
+        :attachment-model-name="aiAttachmentModelName"
         :messages="aiMessages"
         :command-cards="aiCommandCards"
+        :conversations="aiConversations"
+        :active-conversation-id="aiActiveConversationId"
+        :conversation-server-name="aiConversationServerName"
+        :conversation-context-ready="aiConversationContextReady"
         :should-suggest-new-conversation="shouldSuggestNewConversation"
         :context="aiContext"
         :configs="appSettings.ai.configs"
@@ -709,10 +865,16 @@ onUnmounted(() => {
         @update-input-text="aiInputText = $event"
         @send="sendAiMessage(aiContext)"
         @stop="cancelAiMessage(aiContext)"
+        @attach-files="addAiAttachments"
+        @remove-attachment="removeAiAttachment"
         @start-new-conversation="startNewAiConversation(activeTabId)"
+        @select-conversation="selectAiConversation"
+        @rename-conversation="renameAiConversationById"
+        @delete-conversation="deleteAiConversation"
         @run-approved="runAiApprovedCommand"
         @reject-approval="rejectAiApproval"
-        @select-model="updateAiSetting('activeConfigId', $event)" />
+        @select-model="updateAiSetting('activeConfigId', $event)"
+        @update-model-reasoning="updateAiModelReasoning" />
     </div>
 
     <ConnectionDialog
@@ -737,6 +899,11 @@ onUnmounted(() => {
       :image-preview="imagePreview"
       @close="closeImagePreview"
       @download="downloadImagePreviewFile" />
+
+    <FilePermissionDialog
+      :state="filePermissionDialog"
+      @close="closeFilePermissionDialog"
+      @save="saveFilePermissions" />
 
     <RemoteFileEditorDialog
       :is-open="isFileEditorOpen"
@@ -798,8 +965,9 @@ onUnmounted(() => {
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
+      @update-open-local-terminal-on-startup="updateOpenLocalTerminalOnStartup"
       @update-ai-setting="updateAiSetting"
-      @update-ai-settings="updateAiSettings"
+      @update-ai-settings="handleUpdateAiSettings"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
 

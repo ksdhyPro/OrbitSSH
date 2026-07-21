@@ -40,6 +40,114 @@ test("AI 输入拒绝无效模式、过长消息和 system 历史", () => {
   );
 });
 
+test("AI 输入接受附件并允许省略文本消息", () => {
+  const attachment = {
+    name: "screen.png",
+    mimeType: "image/png",
+    size: 3,
+    dataUrl: "data:image/png;base64,YWJj",
+  };
+  const normalized = normalizeAiChatInput({
+    ...validInput,
+    message: "",
+    attachments: [attachment],
+  });
+
+  assert.equal(normalized.message, "请分析这些附件");
+  assert.deepEqual(normalized.attachments, [{
+    ...attachment,
+    id: "attachment-1",
+    delivery: "inline",
+  }]);
+});
+
+test("AI 附件大小上限可配置为 1 到 64 MB", () => {
+  const attachment = {
+    name: "large.log",
+    mimeType: "text/plain",
+    size: 12 * 1024 * 1024,
+    dataUrl: "data:text/plain;base64,YWJj",
+    delivery: "chunked",
+  };
+
+  assert.throws(
+    () => normalizeAiChatInput({ ...validInput, attachments: [attachment] }),
+    /附件大小不能超过 8 MB/,
+  );
+  const normalized = normalizeAiChatInput(
+    { ...validInput, attachments: [attachment] },
+    16,
+  );
+  assert.equal(normalized.attachments[0].delivery, "chunked");
+  assert.equal(normalized.attachments[0].size, attachment.size);
+});
+
+test("只有文本类附件可以使用分段读取", () => {
+  assert.throws(
+    () => normalizeAiChatInput({
+      ...validInput,
+      attachments: [{
+        name: "large.png",
+        mimeType: "image/png",
+        size: 3,
+        dataUrl: "data:image/png;base64,YWJj",
+        delivery: "chunked",
+      }],
+    }),
+    /只有文本、代码、配置和日志附件可以分段读取/,
+  );
+});
+
+test("AI 输入接受有覆盖边界的模型语义摘要", () => {
+  const compaction = {
+    content: "目标与状态：继续排查服务。",
+    coveredThroughMessageId: "message-8",
+    coveredThroughCreatedAt: 8,
+    updatedAt: 9,
+  };
+  const normalized = normalizeAiChatInput({
+    ...validInput,
+    compaction,
+  });
+
+  assert.deepEqual(normalized.compaction, compaction);
+  assert.throws(
+    () => normalizeAiChatInput({
+      ...validInput,
+      compaction: { ...compaction, coveredThroughCreatedAt: "invalid" },
+    }),
+    /摘要时间无效/,
+  );
+});
+
+test("AI 输入拒绝过多、过大或格式不匹配的附件", () => {
+  const attachment = {
+    name: "screen.png",
+    mimeType: "image/png",
+    size: 3,
+    dataUrl: "data:image/png;base64,YWJj",
+  };
+
+  assert.throws(
+    () => normalizeAiChatInput({ ...validInput, attachments: Array(5).fill(attachment) }),
+    /最多允许 4 个/,
+  );
+  assert.throws(
+    () => normalizeAiChatInput({
+      ...validInput,
+      attachments: [{ ...attachment, size: 8 * 1024 * 1024 + 1 }],
+    }),
+    /附件大小/,
+  );
+  assert.throws(
+    () => normalizeAiChatInput({
+      ...validInput,
+      attachments: [{ ...attachment, dataUrl: "data:text/plain;base64,YWJj" }],
+    }),
+    /数据格式无效/,
+  );
+});
+
 test("批准和拒绝输入必须携带 tabId", () => {
   assert.deepEqual(
     normalizeApprovedCommandInput({ tabId: "tab-1", command: "pwd", approvalId: "a" }),

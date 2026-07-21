@@ -1,6 +1,7 @@
 // SFTP 对外门面：保持既有导出路径稳定，具体实现按职责拆分到深模块中。
 export {
   assertSftpSessionAccess,
+  changeRemoteNodeMode,
   closeAllSftpSessions,
   closeSftpSession,
   createRemoteDirectory,
@@ -12,6 +13,7 @@ export {
   probeRemoteTextFile,
   readRemoteTextFile,
   renameRemoteNode,
+  statRemoteNode,
   writeRemoteTextFile
 } from './sftp-session.js'
 

@@ -1,9 +1,10 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import type { LogPayload } from "../shared/logger.js";
 import type {
   LocalDirectoryInput,
   LocalDirectoryResult,
+  LocalRootsResult,
 } from "../shared/local-files.js";
 import type {
   ServerConfig,
@@ -15,6 +16,7 @@ import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
 import type {
   RemoteFileNode,
+  SftpChmodInput,
   SftpCreateNodeInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
@@ -29,6 +31,8 @@ import type {
   SftpProbeTextResult,
   SftpReadTextInput,
   SftpRenameInput,
+  SftpStatInput,
+  SftpStatResult,
   SftpReadTextResult,
   SftpRemoteTransferControlInput,
   SftpRemoteTransferInput,
@@ -43,6 +47,7 @@ import type {
 import type { SystemStats } from "../main/ipc/system-ipc.js";
 import type {
   TerminalDataEvent,
+  TerminalInputLockEvent,
   TerminalOpenResult,
   TerminalResizeInput,
   TerminalStatusEvent,
@@ -57,6 +62,7 @@ import type {
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai.js";
+import type { AiModelCatalog } from "../shared/ai-catalog.js";
 
 const orbitSSHApi = {
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
@@ -78,14 +84,19 @@ const orbitSSHApi = {
   clipboard: {
     readText: () =>
       ipcRenderer.invoke("clipboard:read-text") as Promise<string>,
+    readImageDataUrl: () =>
+      ipcRenderer.invoke("clipboard:read-image-data-url") as Promise<string | null>,
     writeText: (text: string) =>
       ipcRenderer.invoke("clipboard:write-text", text) as Promise<boolean>,
   },
   localFiles: {
+    listRoots: () =>
+      ipcRenderer.invoke("local-files:list-roots") as Promise<LocalRootsResult>,
     openDefault: () =>
       ipcRenderer.invoke("local-files:open-default") as Promise<LocalDirectoryResult>,
     list: (input: LocalDirectoryInput) =>
       ipcRenderer.invoke("local-files:list", input) as Promise<LocalDirectoryResult>,
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
   },
   servers: {
     list: () => ipcRenderer.invoke("server:list") as Promise<ServerConfig[]>,
@@ -104,6 +115,7 @@ const orbitSSHApi = {
       ipcRenderer.invoke("settings:save", settings) as Promise<AppSettings>,
   },
   ai: {
+    getCatalog: () => ipcRenderer.invoke("ai:get-catalog") as Promise<AiModelCatalog>,
     chat: (input: AiChatInput) =>
       ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
     runApprovedCommand: (input: AiApprovedCommandInput) =>
@@ -188,6 +200,10 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:delete", input) as Promise<boolean>,
     rename: (input: SftpRenameInput) =>
       ipcRenderer.invoke("sftp:rename", input) as Promise<boolean>,
+    stat: (input: SftpStatInput) =>
+      ipcRenderer.invoke("sftp:stat", input) as Promise<SftpStatResult>,
+    chmod: (input: SftpChmodInput) =>
+      ipcRenderer.invoke("sftp:chmod", input) as Promise<boolean>,
     createFile: (input: SftpCreateNodeInput) =>
       ipcRenderer.invoke("sftp:create-file", input) as Promise<boolean>,
     createDirectory: (input: SftpCreateNodeInput) =>
@@ -263,6 +279,14 @@ const orbitSSHApi = {
       ) => callback(payload);
       ipcRenderer.on("terminal:status", listener);
       return () => ipcRenderer.removeListener("terminal:status", listener);
+    },
+    onInputLock: (callback: (event: TerminalInputLockEvent) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: TerminalInputLockEvent,
+      ) => callback(payload);
+      ipcRenderer.on("terminal:input-lock", listener);
+      return () => ipcRenderer.removeListener("terminal:input-lock", listener);
     },
   },
   system: {

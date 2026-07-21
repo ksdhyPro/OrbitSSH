@@ -13,6 +13,7 @@ import editIcon from "../assets/icons/edit.svg";
 import fileIcon from "../assets/icons/file.svg";
 import folderIcon from "../assets/icons/folder.svg";
 import trashIcon from "../assets/icons/trash.svg";
+import type { LocalRootEntry } from "../../shared/local-files";
 import type { ServerConfig } from "../../shared/server";
 import type {
   RemoteFileNode,
@@ -60,7 +61,9 @@ interface TransferPaneState {
   deletingPaths: Set<string>;
   lastClickedIndex: number;
   loading: boolean;
+  loadingPath: string;
   error: string;
+  localRootPath: string;
 }
 interface TransferContextMenuState extends ContextMenuState {
   paneKey: TransferPaneKey | null;
@@ -101,7 +104,9 @@ const leftPane = reactive<TransferPaneState>({
   deletingPaths: new Set<string>(),
   lastClickedIndex: -1,
   loading: false,
+  loadingPath: "",
   error: "",
+  localRootPath: "",
 });
 const rightPane = reactive<TransferPaneState>({
   tabId: `data-transfer-right-${crypto.randomUUID()}`,
@@ -114,8 +119,12 @@ const rightPane = reactive<TransferPaneState>({
   deletingPaths: new Set<string>(),
   lastClickedIndex: -1,
   loading: false,
+  loadingPath: "",
   error: "",
+  localRootPath: "",
 });
+const localRoots = ref<LocalRootEntry[]>([]);
+const localRootsError = ref("");
 const focusedPane = ref<TransferPaneKey>("left");
 const renaming = ref<TransferRenamingState | null>(null);
 const transferContextMenu = reactive<TransferContextMenuState>({
@@ -150,6 +159,7 @@ const transferDrag = reactive<{
   sourcePaths: new Set<string>(),
   targetPath: "",
 });
+const transferDropTargetPane = ref<TransferPaneKey | null>(null);
 const leftSelectedNodes = computed(() => getSelectedNodes(leftPane));
 const rightSelectedNodes = computed(() => getSelectedNodes(rightPane));
 const leftServerOptions = computed<AppSelectOption[]>(() =>
@@ -169,6 +179,12 @@ const rightServerOptions = computed<AppSelectOption[]>(() =>
       label: server.name,
     })),
   ],
+);
+const localRootOptions = computed<AppSelectOption[]>(() =>
+  localRoots.value.map((root) => ({
+    value: root.path,
+    label: root.label,
+  })),
 );
 const transferMenuItems = computed<ContextMenuItem[]>(() => {
   const paneKey = transferContextMenu.paneKey ?? focusedPane.value;
@@ -308,6 +324,49 @@ function getPaneByKey(paneKey: TransferPaneKey): TransferPaneState {
 }
 function isLocalPane(pane: TransferPaneState): boolean {
   return pane.serverId === LOCAL_ENDPOINT_ID;
+}
+function normalizeLocalPathForCompare(path: string): string {
+  return path.replace(/[\\/]+$/, "").toLowerCase();
+}
+function isPathInsideLocalRoot(path: string, rootPath: string): boolean {
+  const normalizedPath = normalizeLocalPathForCompare(path);
+  const normalizedRoot = normalizeLocalPathForCompare(rootPath);
+  return normalizedPath === normalizedRoot ||
+    normalizedPath.startsWith(`${normalizedRoot}\\`) ||
+    normalizedPath.startsWith(`${normalizedRoot}/`);
+}
+function syncLocalRootSelection(
+  pane: TransferPaneState,
+  currentPath: string,
+): void {
+  const matchingRoot = [...localRoots.value]
+    .filter((root) => isPathInsideLocalRoot(currentPath, root.path))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+
+  if (matchingRoot) {
+    pane.localRootPath = matchingRoot.path;
+  }
+}
+async function loadLocalRoots(): Promise<void> {
+  localRootsError.value = "";
+
+  try {
+    const result = await window.orbitSSH.localFiles.listRoots();
+    localRoots.value = result.roots;
+    syncLocalRootSelection(leftPane, leftPane.currentPath || result.homePath);
+    syncLocalRootSelection(rightPane, rightPane.currentPath || result.homePath);
+  } catch (error) {
+    localRootsError.value =
+      error instanceof Error ? error.message : "读取本地盘符失败";
+  }
+}
+async function selectLocalRoot(
+  paneKey: TransferPaneKey,
+  rootPath: string,
+): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+  pane.localRootPath = rootPath;
+  await openPaneDirectory(pane, rootPath);
 }
 function getOppositePaneKey(paneKey: TransferPaneKey): TransferPaneKey {
   return paneKey === "left" ? "right" : "left";
@@ -477,6 +536,10 @@ function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
   return parentNode ? [parentNode, ...pane.nodes] : pane.nodes;
 }
 
+function getPaneLoadingPaths(pane: TransferPaneState): Set<string> {
+  return pane.loadingPath ? new Set([pane.loadingPath]) : new Set<string>();
+}
+
 async function closePaneSession(pane: TransferPaneState): Promise<void> {
   if (!window.orbitSSH?.sftp || !pane.tabId) {
     return;
@@ -504,6 +567,7 @@ async function loadPaneHome(
   }
 
   pane.loading = true;
+  pane.loadingPath = "";
 
   try {
     await closePaneSession(pane);
@@ -516,6 +580,7 @@ async function loadPaneHome(
       pane.parentPath = result.parentPath ?? "";
       pane.pathInput = result.currentPath;
       pane.nodes = result.nodes;
+      syncLocalRootSelection(pane, result.currentPath);
       return;
     }
 
@@ -539,6 +604,7 @@ async function loadPaneHome(
     pane.error = error instanceof Error ? error.message : "目录加载失败";
   } finally {
     pane.loading = false;
+    pane.loadingPath = "";
   }
 }
 
@@ -556,6 +622,7 @@ async function refreshPaneDirectory(
     pane.currentPath = result.currentPath;
     pane.parentPath = result.parentPath ?? "";
     pane.pathInput = result.currentPath;
+    syncLocalRootSelection(pane, result.currentPath);
     return;
   }
 
@@ -582,6 +649,7 @@ async function openPaneDirectory(
   }
 
   pane.loading = true;
+  pane.loadingPath = targetPath;
   pane.error = "";
   pane.selectedPaths = new Set<string>();
   pane.lastClickedIndex = -1;
@@ -595,6 +663,7 @@ async function openPaneDirectory(
     pane.error = error instanceof Error ? error.message : "目录读取失败";
   } finally {
     pane.loading = false;
+    pane.loadingPath = "";
   }
 }
 
@@ -685,6 +754,33 @@ function clearTransferDrag(clearSource = true): void {
     transferDrag.sourcePaths = new Set<string>();
   }
   transferDrag.targetPath = "";
+  transferDropTargetPane.value = null;
+}
+
+function hasExternalFileDrag(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+}
+
+function canTransferNodesToPane(
+  sourcePaneKey: TransferPaneKey,
+  targetPaneKey: TransferPaneKey,
+  targetDirectoryPath: string,
+): boolean {
+  if (sourcePaneKey === targetPaneKey || !targetDirectoryPath) {
+    return false;
+  }
+
+  const sourcePane = getPaneByKey(sourcePaneKey);
+  const targetPane = getPaneByKey(targetPaneKey);
+  const sourceNodes = getNodesByPaths(sourcePane, transferDrag.sourcePaths);
+
+  return Boolean(
+    sourceNodes.length > 0 &&
+    !sourcePane.loading &&
+    !targetPane.loading &&
+    !(isLocalPane(sourcePane) && isLocalPane(targetPane)) &&
+    (!isLocalPane(targetPane) || sourceNodes.every((node) => node.type === "file")),
+  );
 }
 
 function startTransferDrag(
@@ -693,12 +789,6 @@ function startTransferDrag(
   node: RemoteFileListNode,
 ): void {
   const pane = getPaneByKey(paneKey);
-
-  if (isLocalPane(pane)) {
-    event.preventDefault();
-    return;
-  }
-
   const nodes = getDragMoveNodes(pane, node);
 
   if (nodes.length === 0) {
@@ -709,9 +799,10 @@ function startTransferDrag(
   transferDrag.paneKey = paneKey;
   transferDrag.sourcePaths = new Set(nodes.map((item) => item.path));
   transferDrag.targetPath = "";
+  pane.selectedPaths = new Set(nodes.map((item) => item.path));
   event.dataTransfer?.setData("text/plain", node.path);
   if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.effectAllowed = "copyMove";
   }
 }
 
@@ -719,12 +810,29 @@ function updateTransferDragTarget(
   paneKey: TransferPaneKey,
   targetNode: RemoteFileNode,
 ): boolean {
-  if (transferDrag.paneKey !== paneKey) {
+  const sourcePaneKey = transferDrag.paneKey;
+
+  if (!sourcePaneKey) {
     transferDrag.targetPath = "";
     return false;
   }
 
+  if (sourcePaneKey !== paneKey) {
+    const canTransfer = canTransferNodesToPane(
+      sourcePaneKey,
+      paneKey,
+      targetNode.path,
+    );
+    transferDrag.targetPath = canTransfer ? targetNode.path : "";
+    transferDropTargetPane.value = canTransfer ? paneKey : null;
+    return canTransfer;
+  }
+
   const pane = getPaneByKey(paneKey);
+  if (isLocalPane(pane)) {
+    transferDrag.targetPath = "";
+    return false;
+  }
   const sourceNodes = getNodesByPaths(pane, transferDrag.sourcePaths);
   const canMove = canMoveRemoteNodesToDirectory(sourceNodes, targetNode);
 
@@ -737,6 +845,18 @@ function dragOverTransferNode(
   paneKey: TransferPaneKey,
   node: RemoteFileNode,
 ): void {
+  if (hasExternalFileDrag(event)) {
+    const pane = getPaneByKey(paneKey);
+    if (node.type === "directory" && !isLocalPane(pane) && !pane.loading) {
+      event.preventDefault();
+      event.stopPropagation();
+      transferDrag.targetPath = node.path;
+      transferDropTargetPane.value = paneKey;
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    }
+    return;
+  }
+
   if (node.type !== "directory") {
     clearTransferDrag(false);
     return;
@@ -748,8 +868,11 @@ function dragOverTransferNode(
   }
 
   event.preventDefault();
+  event.stopPropagation();
   if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = "move";
+    event.dataTransfer.dropEffect = transferDrag.paneKey === paneKey
+      ? "move"
+      : "copy";
   }
 }
 
@@ -776,9 +899,35 @@ async function dropTransferNode(
   targetNode: RemoteFileNode,
 ): Promise<void> {
   event.preventDefault();
+  event.stopPropagation();
 
-  if (targetNode.type !== "directory" || transferDrag.paneKey !== paneKey) {
+  if (targetNode.type !== "directory") {
     clearTransferDrag();
+    return;
+  }
+
+  if (hasExternalFileDrag(event)) {
+    const localPaths = Array.from(event.dataTransfer?.files ?? [])
+      .map((file) => window.orbitSSH.localFiles.getPathForFile(file))
+      .filter(Boolean);
+    clearTransferDrag();
+    await uploadLocalPathsToTransferPane(paneKey, localPaths, targetNode.path);
+    return;
+  }
+
+  const sourcePaneKey = transferDrag.paneKey;
+  if (!sourcePaneKey) {
+    clearTransferDrag();
+    return;
+  }
+
+  if (sourcePaneKey !== paneKey) {
+    if (!canTransferNodesToPane(sourcePaneKey, paneKey, targetNode.path)) {
+      clearTransferDrag();
+      return;
+    }
+    clearTransferDrag();
+    await submitTransferFromPane(sourcePaneKey, targetNode.path);
     return;
   }
 
@@ -825,6 +974,74 @@ async function dropTransferNode(
   } finally {
     clearTransferDrag();
   }
+}
+
+function dragOverTransferPane(event: DragEvent, paneKey: TransferPaneKey): void {
+  const pane = getPaneByKey(paneKey);
+  const acceptsExternalFiles =
+    hasExternalFileDrag(event) &&
+    !isLocalPane(pane) &&
+    Boolean(pane.currentPath) &&
+    !pane.loading;
+  const acceptsInternalTransfer = Boolean(
+    transferDrag.paneKey &&
+    canTransferNodesToPane(transferDrag.paneKey, paneKey, pane.currentPath),
+  );
+
+  if (!acceptsExternalFiles && !acceptsInternalTransfer) {
+    return;
+  }
+
+  event.preventDefault();
+  transferDropTargetPane.value = paneKey;
+  transferDrag.targetPath = pane.currentPath;
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function dragLeaveTransferPane(event: DragEvent, paneKey: TransferPaneKey): void {
+  const currentTarget = event.currentTarget;
+  const nextTarget = event.relatedTarget;
+  if (
+    currentTarget instanceof HTMLElement &&
+    nextTarget instanceof Node &&
+    currentTarget.contains(nextTarget)
+  ) {
+    return;
+  }
+
+  if (transferDropTargetPane.value === paneKey) {
+    transferDropTargetPane.value = null;
+    transferDrag.targetPath = "";
+  }
+}
+
+async function dropOnTransferPane(
+  event: DragEvent,
+  paneKey: TransferPaneKey,
+): Promise<void> {
+  event.preventDefault();
+  const pane = getPaneByKey(paneKey);
+
+  if (hasExternalFileDrag(event)) {
+    const localPaths = Array.from(event.dataTransfer?.files ?? [])
+      .map((file) => window.orbitSSH.localFiles.getPathForFile(file))
+      .filter(Boolean);
+    clearTransferDrag();
+    await uploadLocalPathsToTransferPane(paneKey, localPaths, pane.currentPath);
+    return;
+  }
+
+  const sourcePaneKey = transferDrag.paneKey;
+  if (
+    sourcePaneKey &&
+    canTransferNodesToPane(sourcePaneKey, paneKey, pane.currentPath)
+  ) {
+    clearTransferDrag();
+    await submitTransferFromPane(sourcePaneKey, pane.currentPath);
+    return;
+  }
+
+  clearTransferDrag();
 }
 
 function resolveTransferMenuPlacement(
@@ -952,7 +1169,10 @@ async function selectTransferMenuItem(item: ContextMenuItem): Promise<void> {
   }
 }
 
-async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
+async function submitTransferFromPane(
+  paneKey: TransferPaneKey,
+  targetDirectoryPath?: string,
+): Promise<void> {
   if (!canTransferFromPane(paneKey)) {
     return;
   }
@@ -960,6 +1180,8 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
   const sourcePane = getPaneByKey(paneKey);
   const targetPaneKey = getOppositePaneKey(paneKey);
   const targetPane = getPaneByKey(targetPaneKey);
+  const resolvedTargetDirectoryPath =
+    targetDirectoryPath?.trim() || targetPane.currentPath;
   const selectedNodes = getSelectedNodes(sourcePane);
   const sources: SftpRemoteTransferSource[] = selectedNodes.map(
     (node) => ({
@@ -974,14 +1196,14 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
     if (isLocalPane(sourcePane)) {
       const result = await window.orbitSSH.sftp.upload({
         tabId: targetPane.tabId,
-        remoteDirectoryPath: targetPane.currentPath,
+        remoteDirectoryPath: resolvedTargetDirectoryPath,
         localPaths: selectedNodes.map((node) => node.path),
       });
 
       if (result.taskId) {
         pendingUploadRefreshes.set(result.taskId, {
           targetPaneKey,
-          targetDirectoryPath: targetPane.currentPath,
+          targetDirectoryPath: resolvedTargetDirectoryPath,
         });
       }
       sourcePane.selectedPaths = new Set<string>();
@@ -995,7 +1217,7 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
           path: node.path,
           name: node.name,
           size: node.size,
-          localDirectoryPath: targetPane.currentPath,
+          localDirectoryPath: resolvedTargetDirectoryPath,
         })
       ));
 
@@ -1003,7 +1225,7 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
         if (result.taskId) {
           pendingLocalDownloadRefreshes.set(result.taskId, {
             targetPaneKey,
-            targetDirectoryPath: targetPane.currentPath,
+            targetDirectoryPath: resolvedTargetDirectoryPath,
           });
         }
       }
@@ -1019,12 +1241,12 @@ async function submitTransferFromPane(paneKey: TransferPaneKey): Promise<void> {
       sourceServerId: sourcePane.serverId,
       targetServerId: targetPane.serverId,
       sources,
-      targetDirectoryPath: targetPane.currentPath,
+      targetDirectoryPath: resolvedTargetDirectoryPath,
     });
     if (result.taskId) {
       pendingTransferRefreshes.set(result.taskId, {
         targetPaneKey,
-        targetDirectoryPath: targetPane.currentPath,
+        targetDirectoryPath: resolvedTargetDirectoryPath,
       });
     }
     leftPane.selectedPaths = new Set<string>();
@@ -1165,15 +1387,44 @@ async function uploadToTransferContext(
 
   closeTransferContextMenu();
 
+  await uploadLocalPathsToTransferPane(
+    paneKey,
+    undefined,
+    targetPath,
+    sourceType,
+  );
+}
+
+async function uploadLocalPathsToTransferPane(
+  paneKey: TransferPaneKey,
+  localPaths: string[] | undefined,
+  targetPath: string,
+  sourceType: "file" | "directory" = "file",
+): Promise<void> {
+  const pane = getPaneByKey(paneKey);
+
+  if (
+    isLocalPane(pane) ||
+    !targetPath ||
+    pane.loading ||
+    (localPaths && localPaths.length === 0)
+  ) {
+    return;
+  }
+
   try {
     const result = await window.orbitSSH.sftp.upload({
       tabId: pane.tabId,
       remoteDirectoryPath: targetPath,
       sourceType,
+      localPaths,
     });
 
-    if (result.uploaded) {
-      await refreshPaneDirectory(pane, pane.currentPath);
+    if (result.taskId) {
+      pendingUploadRefreshes.set(result.taskId, {
+        targetPaneKey: paneKey,
+        targetDirectoryPath: targetPath,
+      });
     }
   } catch (error) {
     pane.error = error instanceof Error ? error.message : "上传失败";
@@ -1370,20 +1621,6 @@ function getServerLabel(serverId: string): string {
   return `${server.name} · ${server.username}@${server.host}`;
 }
 
-async function resetPaneSelection(pane: TransferPaneState): Promise<void> {
-  await closePaneSession(pane);
-  pane.serverId = "";
-  pane.currentPath = "";
-  pane.parentPath = "";
-  pane.pathInput = "";
-  pane.nodes = [];
-  pane.selectedPaths = new Set<string>();
-  pane.deletingPaths = new Set<string>();
-  pane.lastClickedIndex = -1;
-  pane.loading = false;
-  pane.error = "";
-}
-
 let rightInitialPath = "";
 
 watch(
@@ -1425,6 +1662,7 @@ watch(
 );
 
 onMounted(() => {
+  void loadLocalRoots();
   removeRemoteTransferProgressListener =
     window.orbitSSH?.sftp.onRemoteTransferProgress?.((event) => {
       void handleRemoteTransferProgress(event);
@@ -1459,13 +1697,25 @@ onUnmounted(() => {
       <section class="transfer-pane" @click="focusedPane = 'left'">
         <header class="transfer-pane-header">
           <strong>左侧</strong>
-          <AppSelect
-            v-model="leftPane.serverId"
-            title="左侧位置"
-            ariaLabel="左侧位置"
-            placeholder="请选择位置"
-            :options="leftServerOptions"
-          />
+          <div class="transfer-pane-location-selects">
+            <AppSelect
+              v-model="leftPane.serverId"
+              title="左侧位置"
+              ariaLabel="左侧位置"
+              placeholder="请选择位置"
+              :options="leftServerOptions"
+            />
+            <AppSelect
+              v-if="isLocalPane(leftPane)"
+              :model-value="leftPane.localRootPath"
+              title="左侧本地盘符"
+              ariaLabel="左侧本地盘符"
+              placeholder="选择主目录或盘符"
+              :disabled="leftPane.loading || localRootOptions.length === 0"
+              :options="localRootOptions"
+              @update:model-value="selectLocalRoot('left', $event)"
+            />
+          </div>
         </header>
         <input
           v-model="leftPane.pathInput"
@@ -1479,11 +1729,42 @@ onUnmounted(() => {
           @keydown.enter.prevent="submitPanePathInput(leftPane)"
           @blur="leftPane.pathInput = leftPane.currentPath"
         />
+        <div class="transfer-pane-toolbar">
+          <button
+            type="button"
+            :disabled="!canTransferFromPane('left')"
+            @click.stop="submitTransferFromPane('left')">
+            传到右侧
+          </button>
+          <template v-if="!isLocalPane(leftPane)">
+            <button
+              type="button"
+              :disabled="!leftPane.currentPath || leftPane.loading"
+              @click.stop="uploadToTransferContext('left', 'file')">
+              选择文件
+            </button>
+            <button
+              type="button"
+              :disabled="!leftPane.currentPath || leftPane.loading"
+              @click.stop="uploadToTransferContext('left', 'directory')">
+              选择文件夹
+            </button>
+          </template>
+          <span v-else>{{ localRootsError || "可从上方切换本地盘符" }}</span>
+        </div>
         <div
-          class="transfer-file-list"
+          :class="[
+            'transfer-file-list',
+            { 'is-pane-drop-target': transferDropTargetPane === 'left' },
+          ]"
+          @dragover="dragOverTransferPane($event, 'left')"
+          @dragleave="dragLeaveTransferPane($event, 'left')"
+          @drop="dropOnTransferPane($event, 'left')"
           @contextmenu="openBlankTransferContextMenu($event, 'left')"
         >
-          <div v-if="leftPane.loading" class="transfer-state">加载中...</div>
+          <div v-if="leftPane.loading && !leftPane.loadingPath" class="transfer-state">
+            加载中...
+          </div>
           <div v-else-if="leftPane.error" class="transfer-state error">
             {{ leftPane.error }}
           </div>
@@ -1494,6 +1775,7 @@ onUnmounted(() => {
             list-class="transfer-file-list-inner"
             row-class="transfer-file-row"
             :selected-paths="leftPane.selectedPaths"
+            :loading-paths="getPaneLoadingPaths(leftPane)"
             :deleting-paths="leftPane.deletingPaths"
             :drop-target-path="transferDrag.targetPath"
             :renaming-path="getPaneRenamingPath('left')"
@@ -1526,13 +1808,25 @@ onUnmounted(() => {
       <section class="transfer-pane" @click="focusedPane = 'right'">
         <header class="transfer-pane-header">
           <strong>右侧</strong>
-          <AppSelect
-            v-model="rightPane.serverId"
-            title="右侧服务器"
-            ariaLabel="右侧服务器"
-            placeholder="请选择连接"
-            :options="rightServerOptions"
-          />
+          <div class="transfer-pane-location-selects">
+            <AppSelect
+              v-model="rightPane.serverId"
+              title="右侧位置"
+              ariaLabel="右侧位置"
+              placeholder="请选择位置"
+              :options="rightServerOptions"
+            />
+            <AppSelect
+              v-if="isLocalPane(rightPane)"
+              :model-value="rightPane.localRootPath"
+              title="右侧本地盘符"
+              ariaLabel="右侧本地盘符"
+              placeholder="选择主目录或盘符"
+              :disabled="rightPane.loading || localRootOptions.length === 0"
+              :options="localRootOptions"
+              @update:model-value="selectLocalRoot('right', $event)"
+            />
+          </div>
         </header>
         <input
           v-model="rightPane.pathInput"
@@ -1546,11 +1840,42 @@ onUnmounted(() => {
           @keydown.enter.prevent="submitPanePathInput(rightPane)"
           @blur="rightPane.pathInput = rightPane.currentPath"
         />
+        <div class="transfer-pane-toolbar">
+          <button
+            type="button"
+            :disabled="!canTransferFromPane('right')"
+            @click.stop="submitTransferFromPane('right')">
+            传到左侧
+          </button>
+          <template v-if="!isLocalPane(rightPane)">
+            <button
+              type="button"
+              :disabled="!rightPane.currentPath || rightPane.loading"
+              @click.stop="uploadToTransferContext('right', 'file')">
+              选择文件
+            </button>
+            <button
+              type="button"
+              :disabled="!rightPane.currentPath || rightPane.loading"
+              @click.stop="uploadToTransferContext('right', 'directory')">
+              选择文件夹
+            </button>
+          </template>
+          <span v-else>{{ localRootsError || "可从上方切换本地盘符" }}</span>
+        </div>
         <div
-          class="transfer-file-list"
+          :class="[
+            'transfer-file-list',
+            { 'is-pane-drop-target': transferDropTargetPane === 'right' },
+          ]"
+          @dragover="dragOverTransferPane($event, 'right')"
+          @dragleave="dragLeaveTransferPane($event, 'right')"
+          @drop="dropOnTransferPane($event, 'right')"
           @contextmenu="openBlankTransferContextMenu($event, 'right')"
         >
-          <div v-if="rightPane.loading" class="transfer-state">加载中...</div>
+          <div v-if="rightPane.loading && !rightPane.loadingPath" class="transfer-state">
+            加载中...
+          </div>
           <div v-else-if="rightPane.error" class="transfer-state error">
             {{ rightPane.error }}
           </div>
@@ -1560,6 +1885,7 @@ onUnmounted(() => {
             list-class="transfer-file-list-inner"
             row-class="transfer-file-row"
             :selected-paths="rightPane.selectedPaths"
+            :loading-paths="getPaneLoadingPaths(rightPane)"
             :deleting-paths="rightPane.deletingPaths"
             :drop-target-path="transferDrag.targetPath"
             :renaming-path="getPaneRenamingPath('right')"

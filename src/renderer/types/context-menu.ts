@@ -1,7 +1,10 @@
+import type { Component } from "vue";
+
 export interface ContextMenuItem {
   key: string
   label: string
   icon?: string
+  iconComponent?: Component
   desc?: string
   disabled?: boolean
   danger?: boolean

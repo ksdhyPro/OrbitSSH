@@ -408,8 +408,7 @@ input[type="number"] {
 }
 
 .icon-button img,
-.window-actions img,
-.file-icon {
+.window-actions img {
   display: block;
   width: 18px;
   height: 18px;
@@ -471,7 +470,6 @@ input[type="number"] {
 
 .server-item span,
 .server-item small,
-.empty-hint,
 .file-node {
   color: var(--text-tertiary);
   font-size: 12px;
@@ -559,27 +557,4 @@ input[type="number"] {
   display: block;
   width: 18px;
   height: 18px;
-}
-
-.empty-hint {
-  flex: 0 0 auto;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.empty-hint span,
-.empty-hint small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.empty-hint small {
-  margin-top: 3px;
-  color: var(--text-faint);
-  font-size: 11px;
 }

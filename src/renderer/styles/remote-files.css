@@ -1,8 +1,4 @@
 ﻿
-.empty-hint.error {
-  color: var(--danger);
-}
-
 .file-path-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 30px 30px;
@@ -49,21 +45,6 @@
   display: block;
   width: 18px;
   height: 18px;
-}
-
-.file-debug-hint {
-  flex: 0 0 auto;
-  padding: 0 14px 8px;
-  overflow: hidden;
-  color: var(--brand-soft);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-debug-hint span {
-  margin-left: 8px;
-  color: var(--text-disabled);
 }
 
 .file-tree {
@@ -147,7 +128,7 @@
 }
 
 .file-node.is-loading {
-  opacity: 0.66;
+  cursor: progress;
 }
 
 .file-node.is-deleting {
@@ -159,14 +140,15 @@
   background: transparent;
 }
 
-.remote-file-icon,
-.file-icon {
+.remote-file-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
   color: var(--accent-bright);
 }
 
-.remote-file-name,
-.file-name {
+.remote-file-name {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
@@ -181,40 +163,35 @@
   font-size: 11px;
 }
 
-.file-node small:last-child {
-  min-width: 82px;
+.file-node .remote-file-time {
+  width: 58px;
+  min-width: 58px;
   text-align: right;
 }
 
-/* 原地重命名输入框：贴合文件名行高，聚焦时蓝色边框提示编辑态。 */
-.rename-inline-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 20px;
-  margin: 0;
-  padding: 0 4px;
-  border: 1px solid var(--accent);
-  border-radius: 3px;
-  background: var(--bg-input);
-  color: var(--text-secondary);
-  font: inherit;
-  line-height: 20px;
-  outline: none;
-}
-
-.file-meta {
-  flex: 0 0 auto;
-  max-width: 96px;
+.file-node .remote-file-kind {
+  width: 46px;
+  min-width: 46px;
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-faint);
-  font-size: 11px;
+}
+
+.file-node .remote-file-permissions {
+  width: 60px;
+  min-width: 60px;
+  color: var(--text-tertiary);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .file-node-spinner {
-  width: 12px;
-  height: 12px;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
   flex: 0 0 auto;
   border: 2px solid var(--spinner-track);
   border-top-color: var(--accent-bright);
@@ -314,6 +291,13 @@
 .context-menu img {
   width: 14px;
   height: 14px;
+  opacity: 0.82;
+}
+
+.context-menu .menu-item-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
   opacity: 0.82;
 }
 

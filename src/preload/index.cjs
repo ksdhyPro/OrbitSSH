@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 console.log("[OrbitSSH preload] preload 已执行");
 
@@ -14,11 +14,14 @@ const orbitSSHApi = {
   },
   clipboard: {
     readText: () => ipcRenderer.invoke("clipboard:read-text"),
+    readImageDataUrl: () => ipcRenderer.invoke("clipboard:read-image-data-url"),
     writeText: text => ipcRenderer.invoke("clipboard:write-text", text),
   },
   localFiles: {
+    listRoots: () => ipcRenderer.invoke("local-files:list-roots"),
     openDefault: () => ipcRenderer.invoke("local-files:open-default"),
     list: input => ipcRenderer.invoke("local-files:list", input),
+    getPathForFile: file => webUtils.getPathForFile(file),
   },
   servers: {
     list: () => ipcRenderer.invoke("server:list"),
@@ -32,6 +35,7 @@ const orbitSSHApi = {
     save: settings => ipcRenderer.invoke("settings:save", settings),
   },
   ai: {
+    getCatalog: () => ipcRenderer.invoke("ai:get-catalog"),
     chat: input => ipcRenderer.invoke("ai:chat", input),
     runApprovedCommand: input =>
       ipcRenderer.invoke("ai:run-approved-command", input),
@@ -72,6 +76,8 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:download-control", input),
     delete: input => ipcRenderer.invoke("sftp:delete", input),
     rename: input => ipcRenderer.invoke("sftp:rename", input),
+    stat: input => ipcRenderer.invoke("sftp:stat", input),
+    chmod: input => ipcRenderer.invoke("sftp:chmod", input),
     createFile: input => ipcRenderer.invoke("sftp:create-file", input),
     createDirectory: input => ipcRenderer.invoke("sftp:create-directory", input),
     onDownloadProgress: callback => {
@@ -111,6 +117,11 @@ const orbitSSHApi = {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("terminal:status", listener);
       return () => ipcRenderer.removeListener("terminal:status", listener);
+    },
+    onInputLock: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("terminal:input-lock", listener);
+      return () => ipcRenderer.removeListener("terminal:input-lock", listener);
     },
   },
   windowControls: {

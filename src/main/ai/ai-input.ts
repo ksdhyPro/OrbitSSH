@@ -1,13 +1,23 @@
 import type {
   AiApprovedCommandInput,
+  AiAttachment,
   AiChatInput,
+  AiConversationCompaction,
   AiMessage,
   AiRejectedCommandInput,
 } from "../../shared/ai.js";
+import {
+  DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB,
+  MAX_AI_ATTACHMENT_COUNT,
+  MAX_AI_ATTACHMENT_SIZE_MB,
+  isAiTextAttachment,
+  type AiAttachmentDelivery,
+} from "../../shared/ai.js";
 
 const maxMessageChars = 8_000;
-const maxHistoryCount = 24;
-const maxHistoryChars = 64_000;
+const maxHistoryCount = 200;
+const maxHistoryChars = 1_200_000;
+const maxCompactionChars = 32_000;
 const maxCommandChars = 4_096;
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
@@ -33,6 +43,56 @@ function normalizeOptionalBoundedString(
 ): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   return requireBoundedString(value, label, maxChars);
+}
+
+function normalizeAttachments(
+  value: unknown,
+  maxAttachmentSizeMb: number,
+): AiAttachment[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_AI_ATTACHMENT_COUNT) {
+    throw new Error(`AI 附件最多允许 ${MAX_AI_ATTACHMENT_COUNT} 个`);
+  }
+
+  const normalizedMaxMb = Number.isFinite(maxAttachmentSizeMb)
+    ? Math.min(
+        MAX_AI_ATTACHMENT_SIZE_MB,
+        Math.max(1, Math.floor(maxAttachmentSizeMb)),
+      )
+    : DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB;
+  const maxAttachmentBytes = normalizedMaxMb * 1024 * 1024;
+  const maxAttachmentDataUrlChars = Math.ceil(maxAttachmentBytes * 4 / 3) + 1024;
+
+  return value.map((item, index) => {
+    const record = requireRecord(item, `AI 附件第 ${index + 1} 个`);
+    const name = requireBoundedString(record.name, "AI 附件名称", 256);
+    const mimeType = requireBoundedString(record.mimeType, "AI 附件类型", 128);
+    if (
+      typeof record.dataUrl !== "string" ||
+      !record.dataUrl ||
+      record.dataUrl.length > maxAttachmentDataUrlChars
+    ) {
+      throw new Error(`AI 附件数据不能超过 ${maxAttachmentDataUrlChars} 个字符`);
+    }
+    const dataUrl = record.dataUrl;
+    const size = Number(record.size);
+    if (!Number.isInteger(size) || size < 1 || size > maxAttachmentBytes) {
+      throw new Error(`AI 附件大小不能超过 ${normalizedMaxMb} MB`);
+    }
+    if (!dataUrl.startsWith(`data:${mimeType};base64,`)) {
+      throw new Error("AI 附件数据格式无效");
+    }
+    const delivery: AiAttachmentDelivery =
+      record.delivery === "chunked" ? "chunked" : "inline";
+    if (delivery === "chunked" && !isAiTextAttachment({ name, mimeType })) {
+      throw new Error("只有文本、代码、配置和日志附件可以分段读取");
+    }
+    const id =
+      typeof record.id === "string" && record.id.trim()
+        ? requireBoundedString(record.id, "AI 附件 ID", 128)
+        : `attachment-${index + 1}`;
+    return { id, name, mimeType, size, dataUrl, delivery };
+  });
 }
 
 function requireEnum<T extends string>(
@@ -80,24 +140,58 @@ function normalizeHistory(value: unknown): AiMessage[] {
   });
 }
 
-export function normalizeAiChatInput(input: unknown): AiChatInput {
+function normalizeCompaction(value: unknown): AiConversationCompaction | undefined {
+  if (value === undefined || value === null) return undefined;
+  const record = requireRecord(value, "AI 对话摘要");
+  const coveredThroughCreatedAt = Number(record.coveredThroughCreatedAt);
+  const updatedAt = Number(record.updatedAt);
+  if (!Number.isFinite(coveredThroughCreatedAt) || !Number.isFinite(updatedAt)) {
+    throw new Error("AI 对话摘要时间无效");
+  }
+  return {
+    content: requireBoundedString(record.content, "AI 对话摘要内容", maxCompactionChars),
+    coveredThroughMessageId: requireBoundedString(
+      record.coveredThroughMessageId,
+      "AI 对话摘要消息 ID",
+      128,
+    ),
+    coveredThroughCreatedAt,
+    updatedAt,
+  };
+}
+
+export function normalizeAiChatInput(
+  input: unknown,
+  maxAttachmentSizeMb = DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB,
+): AiChatInput {
   const record = requireRecord(input, "AI 对话参数");
   const tabId = requireBoundedString(record.tabId, "终端标签页 ID", 128);
   const context = requireRecord(record.context, "AI 上下文");
   const contextTabId = requireBoundedString(context.tabId, "AI 上下文标签页 ID", 128);
   if (contextTabId !== tabId) throw new Error("AI 上下文标签页与当前标签页不匹配");
+  const attachments = normalizeAttachments(record.attachments, maxAttachmentSizeMb);
+  const rawMessage = typeof record.message === "string" ? record.message.trim() : "";
+  if (rawMessage.length > maxMessageChars) {
+    throw new Error(`AI 消息不能超过 ${maxMessageChars} 个字符`);
+  }
+  if (!rawMessage && attachments.length === 0) {
+    throw new Error("AI 消息或附件不能为空");
+  }
   return {
     tabId,
     mode: requireEnum(record.mode, "AI 模式", ["ask", "full"] as const),
-    message: requireBoundedString(record.message, "AI 消息", maxMessageChars),
+    message: rawMessage || "请分析这些附件",
     context: {
       tabId: contextTabId,
+      serverId: normalizeOptionalBoundedString(context.serverId, "服务器 ID", 128),
       serverName: normalizeOptionalBoundedString(context.serverName, "服务器名称", 512),
       currentPath: normalizeOptionalBoundedString(context.currentPath, "当前路径", 4_096),
       status: normalizeOptionalBoundedString(context.status, "连接状态", 128),
       sftpPath: normalizeOptionalBoundedString(context.sftpPath, "SFTP 路径", 4_096),
     },
     history: normalizeHistory(record.history),
+    compaction: normalizeCompaction(record.compaction),
+    attachments,
   };
 }
 

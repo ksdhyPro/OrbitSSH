@@ -1,10 +1,14 @@
 import { app, ipcMain } from 'electron'
 
-import { readLocalDirectory } from '../local-files/local-file-browser.js'
+import {
+  listLocalRoots,
+  readLocalDirectory
+} from '../local-files/local-file-browser.js'
 import { requireNonEmptyString, requireRecord } from './validation.js'
 
 // 本地目录只提供只读浏览能力，文件变更仍通过已有传输流程完成。
 export function registerLocalFilesIpc(): void {
+  ipcMain.handle('local-files:list-roots', () => listLocalRoots(app.getPath('home')))
   ipcMain.handle('local-files:open-default', () => readLocalDirectory(app.getPath('home')))
   ipcMain.handle('local-files:list', (_event, input: unknown) => {
     const record = requireRecord(input, '本地目录读取参数')

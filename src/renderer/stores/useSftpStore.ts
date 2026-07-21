@@ -5,6 +5,7 @@ import type { TerminalTab } from "../types/terminal";
 import type {
   BlankContextMenuState,
   FileContextMenuState,
+  FilePermissionDialogState,
   FileTextProbeState,
   ImagePreviewState,
   RenamingState,
@@ -81,6 +82,14 @@ export const useSftpStore = defineStore("sftp", () => {
     dataUrl: "",
     mimeType: "",
     loading: false,
+    error: "",
+  });
+  const filePermissionDialog = reactive<FilePermissionDialogState>({
+    open: false,
+    tabId: "",
+    node: null,
+    loading: false,
+    saving: false,
     error: "",
   });
 
@@ -333,18 +342,29 @@ export const useSftpStore = defineStore("sftp", () => {
     fallbackError: string,
   ): Promise<boolean> {
     const targetPath = path.trim();
+    const currentTree = getSftpTree(tab.id);
 
     if (!targetPath) {
-      const tree = getSftpTree(tab.id);
-
-      if (tree) {
+      if (currentTree) {
         setSftpTree(tab.id, {
-          ...tree,
+          ...currentTree,
           error: "请输入远程路径",
         });
       }
 
       return false;
+    }
+
+    if (currentTree?.loadingPaths.size) {
+      return false;
+    }
+
+    if (currentTree) {
+      setSftpTree(tab.id, {
+        ...currentTree,
+        loadingPaths: new Set<string>([targetPath]),
+        error: "",
+      });
     }
 
     try {
@@ -381,8 +401,11 @@ export const useSftpStore = defineStore("sftp", () => {
       const tree = getSftpTree(tab.id);
 
       if (tree) {
+        const loadingPaths = new Set(tree.loadingPaths);
+        loadingPaths.delete(targetPath);
         setSftpTree(tab.id, {
           ...tree,
+          loadingPaths,
           error: "",
         });
       }
@@ -624,6 +647,85 @@ export const useSftpStore = defineStore("sftp", () => {
 
   function closeBlankContextMenu(): void {
     blankContextMenu.open = false;
+  }
+
+  async function openFilePermissionDialog(tabId: string, node: RemoteFileNode): Promise<void> {
+    if (!tabId || !core.orbitSSHApi) return;
+    closeFileContextMenu();
+    filePermissionDialog.open = true;
+    filePermissionDialog.tabId = tabId;
+    filePermissionDialog.node = { ...node };
+    filePermissionDialog.loading = true;
+    filePermissionDialog.saving = false;
+    filePermissionDialog.error = "";
+
+    try {
+      const stat = await core.orbitSSHApi.sftp.stat({ tabId, path: node.path });
+      if (
+        !filePermissionDialog.open ||
+        filePermissionDialog.tabId !== tabId ||
+        filePermissionDialog.node?.path !== node.path
+      ) {
+        return;
+      }
+      filePermissionDialog.node = {
+        ...filePermissionDialog.node,
+        type: stat.type,
+        mode: stat.mode,
+        ownerId: stat.ownerId,
+        groupId: stat.groupId,
+      };
+    } catch (error) {
+      filePermissionDialog.error =
+        error instanceof Error ? error.message : "读取文件权限失败";
+    } finally {
+      if (
+        filePermissionDialog.open &&
+        filePermissionDialog.tabId === tabId &&
+        filePermissionDialog.node?.path === node.path
+      ) {
+        filePermissionDialog.loading = false;
+      }
+    }
+  }
+
+  function closeFilePermissionDialog(): void {
+    if (filePermissionDialog.saving) return;
+    filePermissionDialog.open = false;
+    filePermissionDialog.tabId = "";
+    filePermissionDialog.node = null;
+    filePermissionDialog.loading = false;
+    filePermissionDialog.error = "";
+  }
+
+  async function saveFilePermissions(mode: number, recursive: boolean): Promise<void> {
+    const tabId = filePermissionDialog.tabId;
+    const node = filePermissionDialog.node;
+    if (!tabId || !node || !core.orbitSSHApi || filePermissionDialog.saving) {
+      return;
+    }
+
+    filePermissionDialog.saving = true;
+    filePermissionDialog.error = "";
+
+    try {
+      await core.orbitSSHApi.sftp.chmod({
+        tabId,
+        path: node.path,
+        mode,
+        recursive: node.type === "directory" && recursive,
+      });
+      await refreshRemoteDirectoryPath(tabId, getRemoteParentPath(node.path));
+      filePermissionDialog.open = false;
+      filePermissionDialog.tabId = "";
+      filePermissionDialog.node = null;
+      filePermissionDialog.loading = false;
+    } catch (error) {
+      filePermissionDialog.error =
+        error instanceof Error ? error.message : "修改文件权限失败";
+    } finally {
+      filePermissionDialog.saving = false;
+    }
   }
 
   // 在文件面板空白处右键：不改变选中状态，仅弹出新建菜单。
@@ -1177,8 +1279,6 @@ export const useSftpStore = defineStore("sftp", () => {
       if (!result.uploaded) {
         return;
       }
-
-      await refreshRemoteDirectoryPath(tabId, remoteDirectoryPath);
     } catch (error) {
       showSftpPathPrompt(
         error instanceof Error ? error.message : "文件上传失败",
@@ -1362,6 +1462,7 @@ export const useSftpStore = defineStore("sftp", () => {
     fileTextProbeStates,
     fileDragTargetPath,
     imagePreview,
+    filePermissionDialog,
     getSftpTree,
     setSftpTree,
     removeSftpTree,
@@ -1386,6 +1487,9 @@ export const useSftpStore = defineStore("sftp", () => {
     ensureEditableTextFile,
     closeFileContextMenu,
     closeBlankContextMenu,
+    openFilePermissionDialog,
+    closeFilePermissionDialog,
+    saveFilePermissions,
     openBlankContextMenu,
     startRename,
     commitRename,

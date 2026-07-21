@@ -69,6 +69,7 @@ const emit = defineEmits<{
   uploadToCurrentDirectory: [sourceType: "file" | "directory"];
   deleteContextFile: [];
   renameContextFile: [];
+  permissionsContextFile: [];
   closeFileContextMenu: [];
   closeBlankContextMenu: [];
   commitRename: [];
@@ -151,6 +152,7 @@ const isSftpDisconnected = computed(() =>
       aria-label="远程文件列表"
       :empty-text="isSftpDisconnected ? 'SFTP 已断开' : '当前目录为空'"
       :selected-paths="activeSftpTree?.selectedPaths ?? new Set<string>()"
+      :loading-paths="activeSftpTree?.loadingPaths ?? new Set<string>()"
       :deleting-paths="activeSftpTree?.deletingPaths ?? new Set<string>()"
       :drop-target-path="fileDragTargetPath"
       :renaming-path="renaming?.path"
@@ -188,6 +190,7 @@ const isSftpDisconnected = computed(() =>
       @upload="emit('uploadContextFile', $event)"
       @create="emit('createBlankNode', $event)"
       @rename="emit('renameContextFile')"
+      @permissions="emit('permissionsContextFile')"
       @delete="emit('deleteContextFile')"
       @close="emit('closeFileContextMenu')" />
 

@@ -1,7 +1,7 @@
 interface StoredApproval<T> {
   value: T;
   expiresAt: number;
-  timer: ReturnType<typeof setTimeout>;
+  timer?: ReturnType<typeof setTimeout>;
   onExpire?: (id: string, value: T) => void;
 }
 
@@ -21,6 +21,15 @@ export class ExpiringApprovalStore<T extends { tabId: string }> {
     onExpire?: (id: string, value: T) => void,
   ): void {
     this.delete(id);
+    if (ttlMs <= 0) {
+      this.approvals.set(id, {
+        value,
+        expiresAt: Number.POSITIVE_INFINITY,
+        onExpire,
+      });
+      return;
+    }
+
     const expiresAt = Date.now() + ttlMs;
     const timer = setTimeout(() => {
       const stored = this.approvals.get(id);
@@ -36,7 +45,7 @@ export class ExpiringApprovalStore<T extends { tabId: string }> {
     const stored = this.approvals.get(id);
     if (!stored) return null;
     if (Date.now() >= stored.expiresAt) {
-      clearTimeout(stored.timer);
+      if (stored.timer) clearTimeout(stored.timer);
       this.approvals.delete(id);
       stored.onExpire?.(id, stored.value);
       return null;
@@ -54,7 +63,7 @@ export class ExpiringApprovalStore<T extends { tabId: string }> {
   delete(id: string): boolean {
     const stored = this.approvals.get(id);
     if (!stored) return false;
-    clearTimeout(stored.timer);
+    if (stored.timer) clearTimeout(stored.timer);
     return this.approvals.delete(id);
   }
 
@@ -62,7 +71,7 @@ export class ExpiringApprovalStore<T extends { tabId: string }> {
     const removed: RemovedApproval<T>[] = [];
     for (const [id, stored] of this.approvals) {
       if (stored.value.tabId !== tabId) continue;
-      clearTimeout(stored.timer);
+      if (stored.timer) clearTimeout(stored.timer);
       this.approvals.delete(id);
       removed.push({ id, value: stored.value });
     }

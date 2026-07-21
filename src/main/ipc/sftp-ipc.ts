@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 
 import {
   closeSftpSession,
+  changeRemoteNodeMode,
   controlRemoteDownloadTask,
   controlRemoteTransferTask,
   controlRemoteUploadTask,
@@ -20,12 +21,14 @@ import {
   probeRemoteTextFile,
   readRemoteTextFile,
   renameRemoteNode,
+  statRemoteNode,
   transferRemoteSourcesBetweenServers,
   uploadLocalPathsToRemoteDirectory,
   writeRemoteTextFile
 } from '../sftp/sftp-manager.js'
 import type {
   SftpCreateNodeInput,
+  SftpChmodInput,
   SftpDeleteInput,
   SftpDownloadControlInput,
   SftpDownloadInput,
@@ -36,12 +39,14 @@ import type {
   SftpRemoteTransferControlInput,
   SftpRemoteTransferInput,
   SftpRenameInput,
+  SftpStatInput,
   SftpUploadControlInput,
   SftpUploadInput,
   SftpWriteTextInput
 } from '../../shared/sftp.js'
 import {
   requireEnum,
+  requireFiniteNumber,
   requireNonEmptyString,
   requireOptionalFiniteNumber,
   requireOptionalString,
@@ -103,6 +108,41 @@ function normalizeRenameInput(
     tabId,
     path: requireNonEmptyString(record.path, '原路径'),
     newPath: requireNonEmptyString(record.newPath, '新路径')
+  }
+}
+
+function normalizeChmodInput(
+  event: Electron.IpcMainInvokeEvent,
+  input: unknown
+): SftpChmodInput {
+  const record = requireRecord(input, '修改权限参数')
+  const tabId = requireNonEmptyString(record.tabId, '终端标签页 ID')
+  assertSftpSessionAccess(tabId, event.sender)
+  const mode = requireFiniteNumber(record.mode, '文件权限')
+
+  if (!Number.isInteger(mode) || mode < 0 || mode > 0o7777) {
+    throw new Error('文件权限必须是 0000-7777 之间的八进制值')
+  }
+
+  return {
+    tabId,
+    path: requireNonEmptyString(record.path, '远程路径'),
+    mode,
+    recursive: record.recursive === true
+  }
+}
+
+function normalizeStatInput(
+  event: Electron.IpcMainInvokeEvent,
+  input: unknown
+): SftpStatInput {
+  const record = requireRecord(input, '读取权限参数')
+  const tabId = requireNonEmptyString(record.tabId, '终端标签页 ID')
+  assertSftpSessionAccess(tabId, event.sender)
+
+  return {
+    tabId,
+    path: requireNonEmptyString(record.path, '远程路径')
   }
 }
 
@@ -486,6 +526,16 @@ export function registerSftpIpc(): void {
   ipcMain.handle('sftp:rename', (event, rawInput: unknown) => {
     const input = normalizeRenameInput(event, rawInput)
     return renameRemoteNode(input.tabId, input.path, input.newPath)
+  })
+
+  ipcMain.handle('sftp:chmod', (event, rawInput: unknown) => {
+    const input = normalizeChmodInput(event, rawInput)
+    return changeRemoteNodeMode(input.tabId, input.path, input.mode, input.recursive)
+  })
+
+  ipcMain.handle('sftp:stat', (event, rawInput: unknown) => {
+    const input = normalizeStatInput(event, rawInput)
+    return statRemoteNode(input.tabId, input.path)
   })
 
   ipcMain.handle('sftp:create-file', (event, rawInput: unknown) => {

@@ -457,9 +457,6 @@ async function runLocalRelayRemoteTransfer(
   const targetClient = await createSftpClient(`remote-transfer-target-${taskId}`, targetServer)
   const tempDirectoryPath = task.tempDirectoryPath ?? (await mkdtemp(joinLocalPath(tmpdir(), `orbitssh-transfer-${taskId}-`)))
   let lastProgressAt = 0
-  let lastSpeedAt = Date.now()
-  let lastSpeedBytes = task.transferredBytes
-  let currentSpeedBytesPerSecond = 0
 
   task.sourceClient = sourceClient
   task.targetClient = targetClient
@@ -490,11 +487,6 @@ async function runLocalRelayRemoteTransfer(
     return completedBytes + entryHalfBytes + Math.min(phaseTransferredBytes, entrySize) / 2
   }
   const emitProgress = (): void => {
-    const now = Date.now()
-    const elapsedSeconds = Math.max((now - lastSpeedAt) / 1000, 0.001)
-    currentSpeedBytesPerSecond = Math.max((task.transferredBytes - lastSpeedBytes) / elapsedSeconds, 0)
-    lastSpeedAt = now
-    lastSpeedBytes = task.transferredBytes
     task.emitProgress('progress')
   }
   const resumeUploadTransferBytes = task.phase === 'upload' ? task.transferredBytes : undefined

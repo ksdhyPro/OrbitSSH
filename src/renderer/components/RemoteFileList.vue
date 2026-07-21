@@ -3,6 +3,10 @@ import { nextTick, onUnmounted, reactive, ref, watch } from "vue";
 import fileIcon from "../assets/icons/file.svg";
 import folderIcon from "../assets/icons/folder.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
+import {
+  formatUnixMode,
+  formatUnixPermissions,
+} from "../../shared/file-permissions";
 import { formatFileSize, formatModifyTime } from "../utils/format";
 
 export interface RemoteFileListNode extends RemoteFileNode {
@@ -13,6 +17,7 @@ const props = withDefaults(
   defineProps<{
     nodes: RemoteFileListNode[];
     selectedPaths: Set<string>;
+    loadingPaths?: Set<string>;
     deletingPaths?: Set<string>;
     dropTargetPath?: string;
     renamingPath?: string;
@@ -25,6 +30,7 @@ const props = withDefaults(
     elementRef?: (element: unknown) => void;
   }>(),
   {
+    loadingPaths: () => new Set<string>(),
     deletingPaths: () => new Set<string>(),
     dropTargetPath: "",
     renamingPath: "",
@@ -124,11 +130,19 @@ function isDeleting(node: RemoteFileListNode): boolean {
   return props.deletingPaths.has(node.path);
 }
 
+function isLoading(node: RemoteFileListNode): boolean {
+  return props.loadingPaths.has(node.path);
+}
+
+function isNodeBusy(node: RemoteFileListNode): boolean {
+  return isDeleting(node) || isLoading(node);
+}
+
 function canDrag(node: RemoteFileListNode): boolean {
   return Boolean(
-    !node.isVirtualParent &&
+      !node.isVirtualParent &&
       node.path !== props.nonDraggablePath &&
-      !isDeleting(node),
+      !isNodeBusy(node),
   );
 }
 
@@ -318,25 +332,33 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
         {
           'is-folder': node.type === 'directory',
           'is-deleting': isDeleting(node),
+          'is-loading': isLoading(node),
           'is-drop-target': dropTargetPath === node.path,
           selected: selectedPaths.has(node.path),
         },
       ]"
       :draggable="canDrag(node)"
       :title="node.path"
-      @click="!isDeleting(node) && emit('selectNode', $event, node)"
+      :aria-busy="isLoading(node)"
+      @click="!isNodeBusy(node) && emit('selectNode', $event, node)"
       @contextmenu.stop="
-        node.isVirtualParent || isDeleting(node)
+        node.isVirtualParent || isNodeBusy(node)
           ? $event.preventDefault()
           : emit('openContextMenu', $event, node)
       "
-      @dblclick="!isDeleting(node) && emit('openNode', node)"
+      @dblclick="!isNodeBusy(node) && emit('openNode', node)"
       @dragstart="emit('dragStartNode', $event, node)"
       @dragover="emit('dragOverNode', $event, node)"
       @dragleave="emit('dragLeaveNode', $event, node)"
       @drop="emit('dropNode', $event, node)"
       @dragend="emit('dragEndNode')">
+      <span
+        v-if="isLoading(node)"
+        class="file-node-spinner"
+        role="status"
+        aria-label="正在加载目录"></span>
       <img
+        v-else
         class="remote-file-icon"
         :src="node.type === 'directory' ? folderIcon : fileIcon"
         alt="" />
@@ -359,12 +381,21 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
         @blur="emit('commitRename')"
         @contextmenu.prevent.stop />
       <span v-else class="remote-file-name">{{ node.name }}</span>
-      <small v-if="isDeleting(node)">删除中...</small>
-      <small v-else-if="node.type === 'file'">
+      <small v-if="isLoading(node)" class="remote-file-kind">加载中...</small>
+      <small v-else-if="isDeleting(node)" class="remote-file-kind">删除中...</small>
+      <small v-else-if="node.type === 'file'" class="remote-file-kind">
         {{ formatFileSize(node.size ?? 0) }}
       </small>
-      <small v-else>文件夹</small>
-      <small>{{ node.modifyTime ? formatModifyTime(node.modifyTime) : "" }}</small>
+      <small v-else class="remote-file-kind">文件夹</small>
+      <small
+        v-if="node.mode !== undefined"
+        class="remote-file-permissions"
+        :title="`权限 ${formatUnixMode(node.mode)}`">
+        {{ formatUnixPermissions(node.mode) }}
+      </small>
+      <small class="remote-file-time">
+        {{ node.modifyTime ? formatModifyTime(node.modifyTime) : "" }}
+      </small>
     </li>
   </ul>
 </template>

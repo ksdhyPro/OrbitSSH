@@ -16,6 +16,17 @@ export const selectionBackgroundOptions = [
   "#5A2D35",
 ];
 
+function cloneAiSettings(value: AiSettings): AiSettings {
+  return {
+    ...value,
+    configs: value.configs.map(config => ({
+      ...config,
+      reasoningEffortOptions: [...config.reasoningEffortOptions],
+      inputModalities: [...config.inputModalities],
+    })),
+  };
+}
+
 export const useSettingsStore = defineStore("settings", () => {
   const core = useCoreStore();
   const appSettings = reactive<AppSettings>(
@@ -41,6 +52,8 @@ export const useSettingsStore = defineStore("settings", () => {
         fontSize: appSettings.terminal.fontSize,
         lineHeight: appSettings.terminal.lineHeight,
         selectionBackground: appSettings.terminal.selectionBackground,
+        openLocalTerminalOnStartup:
+          appSettings.terminal.openLocalTerminalOnStartup,
       },
       update: {
         updateFeedUrl: appSettings.update.updateFeedUrl,
@@ -48,8 +61,13 @@ export const useSettingsStore = defineStore("settings", () => {
       ai: {
         enabled: appSettings.ai.enabled,
         shareTerminalContext: appSettings.ai.shareTerminalContext,
+        maxAttachmentSizeMb: appSettings.ai.maxAttachmentSizeMb,
+        maxAgentCommandCount: appSettings.ai.maxAgentCommandCount,
+        commandApprovalTimeoutMinutes:
+          appSettings.ai.commandApprovalTimeoutMinutes,
         activeConfigId: appSettings.ai.activeConfigId,
-        configs: appSettings.ai.configs.map(config => ({ ...config })),
+        multimodalConfigId: appSettings.ai.multimodalConfigId,
+        configs: cloneAiSettings(appSettings.ai).configs,
         defaultMode: appSettings.ai.defaultMode,
       },
     };
@@ -63,21 +81,25 @@ export const useSettingsStore = defineStore("settings", () => {
     Object.assign(appSettings.ai, savedSettings.ai);
   }
 
-  async function saveAppSettings(): Promise<void> {
-    try {
-      const savedSettings = await core.orbitSSHApi?.settings.save(
-        toPlainAppSettings(),
-      );
+  async function saveAppSettings(): Promise<boolean> {
+    const saveSettings = core.orbitSSHApi?.settings.save;
+    if (!saveSettings) {
+      core.writeRendererLog("Settings API is unavailable", undefined, "error");
+      return false;
+    }
 
-      if (savedSettings) {
-        applySavedSettings(savedSettings);
-      }
+    try {
+      const savedSettings = await saveSettings(toPlainAppSettings());
+
+      applySavedSettings(savedSettings);
+      return true;
     } catch (error) {
       core.writeRendererLog(
         "Failed to save settings",
         { error: error instanceof Error ? error.message : String(error) },
         "error",
       );
+      return false;
     }
   }
 
@@ -104,6 +126,10 @@ export const useSettingsStore = defineStore("settings", () => {
     await saveAppSettings();
   }
 
+  async function updateOpenLocalTerminalOnStartup(value: boolean): Promise<void> {
+    await updateTerminalSetting("openLocalTerminalOnStartup", value);
+  }
+
   async function updateAiSetting<K extends keyof AiSettings>(
     key: K,
     value: AiSettings[K],
@@ -113,14 +139,24 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   // 保存完整 AI 配置，供设置页在前端校验通过后一次性写入。
-  async function updateAiSettings(value: AiSettings): Promise<void> {
-    Object.assign(appSettings.ai, {
-      enabled: value.enabled,
-      shareTerminalContext: value.shareTerminalContext,
-      activeConfigId: value.activeConfigId,
-      configs: value.configs.map(config => ({ ...config })),
-      defaultMode: value.defaultMode,
-    });
+  async function updateAiSettings(value: AiSettings): Promise<boolean> {
+    const previousAiSettings = cloneAiSettings(appSettings.ai);
+    Object.assign(appSettings.ai, cloneAiSettings(value));
+    const saved = await saveAppSettings();
+    if (!saved) Object.assign(appSettings.ai, previousAiSettings);
+    return saved;
+  }
+
+  async function updateAiModelReasoning(value: {
+    configId: string;
+    reasoningEnabled: boolean;
+    reasoningEffort: string;
+  }): Promise<void> {
+    const config = appSettings.ai.configs.find(item => item.id === value.configId);
+    if (!config) return;
+
+    config.reasoningEnabled = value.reasoningEnabled;
+    config.reasoningEffort = value.reasoningEffort.trim() || config.reasoningEffort;
     await saveAppSettings();
   }
 
@@ -171,6 +207,9 @@ export const useSettingsStore = defineStore("settings", () => {
         ai: {
           enabled: savedSettings.ai.enabled,
           shareTerminalContext: savedSettings.ai.shareTerminalContext,
+          maxAgentCommandCount: savedSettings.ai.maxAgentCommandCount,
+          commandApprovalTimeoutMinutes:
+            savedSettings.ai.commandApprovalTimeoutMinutes,
           activeConfigId: savedSettings.ai.activeConfigId,
           configCount: savedSettings.ai.configs.length,
           defaultMode: savedSettings.ai.defaultMode,
@@ -201,8 +240,10 @@ export const useSettingsStore = defineStore("settings", () => {
     updateTerminalSetting,
     updateKeepaliveIntervalSeconds,
     updateIdleDisconnectMinutes,
+    updateOpenLocalTerminalOnStartup,
     updateAiSetting,
     updateAiSettings,
+    updateAiModelReasoning,
     updateThemeMode,
     stepTerminalNumberSetting,
     openSettingsDialog,

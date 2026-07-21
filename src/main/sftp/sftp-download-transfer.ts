@@ -4,7 +4,7 @@ import { open as openLocalFile, rm } from 'node:fs/promises'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
-import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
+import { getSshConnectionOptions } from '../ssh/connection-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
 import type { SftpDownloadProgressEvent } from '../../shared/sftp.js'
@@ -167,8 +167,7 @@ export async function downloadRemoteFile(
 
     await downloadClient.connect({
       ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs()
+      ...getSshConnectionOptions()
     })
 
     if (resumeOffset > 0) {

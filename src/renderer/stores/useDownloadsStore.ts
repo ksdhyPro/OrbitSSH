@@ -8,6 +8,7 @@ import type {
 import type { DownloadTask } from "../types/download";
 import { useCoreStore } from "./useCoreStore";
 import { useSftpStore } from "./useSftpStore";
+import { useTerminalsStore } from "./useTerminalsStore";
 
 // 传输任务列表 store：统一管理上传/下载状态、进度事件与暂停/继续/取消控制。
 export const useDownloadsStore = defineStore("downloads", () => {
@@ -62,6 +63,57 @@ export const useDownloadsStore = defineStore("downloads", () => {
     });
   }
 
+  function normalizeRemoteDirectoryPath(path: string): string {
+    const normalized = path.trim().replace(/\/+$/g, "").replace(/\/+/g, "/");
+    return normalized || "/";
+  }
+
+  async function refreshOpenServerDirectories(
+    serverId: string | undefined,
+    preferredTabId: string | undefined,
+    directoryPath: string,
+  ): Promise<void> {
+    const sftpStore = useSftpStore();
+    const terminalsStore = useTerminalsStore();
+    const targetPath = normalizeRemoteDirectoryPath(directoryPath);
+    const candidateTabIds = new Set<string>();
+
+    if (preferredTabId) candidateTabIds.add(preferredTabId);
+    if (serverId) {
+      for (const tab of terminalsStore.tabs) {
+        if (tab.serverId === serverId) candidateTabIds.add(tab.id);
+      }
+    }
+
+    await Promise.all(
+      [...candidateTabIds].map(async tabId => {
+        const tree = sftpStore.getSftpTree(tabId);
+        if (
+          !tree ||
+          tree.disconnected ||
+          normalizeRemoteDirectoryPath(tree.homePath) !== targetPath
+        ) {
+          return;
+        }
+
+        try {
+          await sftpStore.refreshRemoteDirectoryPath(tabId, tree.homePath);
+        } catch (error) {
+          core.writeRendererLog(
+            "传输完成后刷新远程目录失败",
+            {
+              tabId,
+              serverId,
+              path: tree.homePath,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "warn",
+          );
+        }
+      }),
+    );
+  }
+
   function handleSftpUploadProgress(event: SftpUploadProgressEvent): void {
     upsertDownloadTask({
       taskId: event.taskId,
@@ -83,7 +135,8 @@ export const useDownloadsStore = defineStore("downloads", () => {
     });
 
     if (event.status === "completed") {
-      void useSftpStore().refreshRemoteDirectoryPath(
+      void refreshOpenServerDirectories(
+        event.serverId,
         event.tabId,
         event.remoteDirectoryPath,
       );
@@ -109,6 +162,14 @@ export const useDownloadsStore = defineStore("downloads", () => {
       targetDirectoryPath: event.targetDirectoryPath,
       error: event.error,
     });
+
+    if (event.status === "completed") {
+      void refreshOpenServerDirectories(
+        event.targetServerId,
+        undefined,
+        event.targetDirectoryPath,
+      );
+    }
   }
 
   function removeDownloadTask(taskId: string): void {

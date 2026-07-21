@@ -20,6 +20,12 @@ export interface TerminalStatusEvent {
   message?: string
 }
 
+export interface TerminalInputLockEvent {
+  tabId: string
+  locked: boolean
+  owner: 'ai'
+}
+
 export interface TerminalResizeInput {
   tabId: string
   cols: number
