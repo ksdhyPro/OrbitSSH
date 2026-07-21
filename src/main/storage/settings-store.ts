@@ -112,6 +112,13 @@ function normalizeMaxAgentCommandCount(value: unknown): number {
     : defaultAppSettings.ai.maxAgentCommandCount
 }
 
+function normalizeCommandTimeoutMinutes(value: unknown): number {
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue)
+    ? clampNumber(Math.floor(numericValue), 0, 1440)
+    : defaultAppSettings.ai.commandTimeoutMinutes
+}
+
 function normalizeMaxAttachmentSizeMb(value: unknown): number {
   const numericValue = Number(value)
   return Number.isFinite(numericValue)
@@ -292,6 +299,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     shareTerminalContext: value?.shareTerminalContext !== false,
     maxAttachmentSizeMb: normalizeMaxAttachmentSizeMb(value?.maxAttachmentSizeMb),
     maxAgentCommandCount: normalizeMaxAgentCommandCount(value?.maxAgentCommandCount),
+    commandTimeoutMinutes: normalizeCommandTimeoutMinutes(value?.commandTimeoutMinutes),
     commandApprovalTimeoutMinutes: normalizeCommandApprovalTimeoutMinutes(
       value?.commandApprovalTimeoutMinutes
     ),

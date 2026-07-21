@@ -39,6 +39,7 @@ export function executeSshTerminalCommand(
     const stdoutDecoder = new StringDecoder("utf8");
     const stderrDecoder = new StringDecoder("utf8");
     let decodersFlushed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     const onStdout = (data: Buffer): void => {
       const chunk = stdoutDecoder.write(data);
@@ -65,7 +66,7 @@ export function executeSshTerminalCommand(
       }
     };
     const cleanup = (): void => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       stream?.removeListener("data", onStdout);
       stream?.stderr.removeListener("data", onStderr);
@@ -116,15 +117,17 @@ export function executeSshTerminalCommand(
     const onStreamError = (streamError: Error): void => {
       fail(streamError);
     };
-    const timer = setTimeout(() => {
-      finish({
-        stdout,
-        stderr,
-        exitCode: null,
-        timedOut: true,
-      });
-      stopRemoteCommand();
-    }, timeoutMs);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        finish({
+          stdout,
+          stderr,
+          exitCode: null,
+          timedOut: true,
+        });
+        stopRemoteCommand();
+      }, timeoutMs);
+    }
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -186,6 +189,7 @@ export async function executeLocalTerminalCommand(
     let stderr = "";
     const stdoutDecoder = new StringDecoder("utf8");
     const stderrDecoder = new StringDecoder("utf8");
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const child = spawn(command, {
       cwd,
       shell: true,
@@ -220,7 +224,7 @@ export async function executeLocalTerminalCommand(
       }
     };
     const cleanup = (): void => {
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
       child.stdout.removeAllListeners();
       child.stderr.removeAllListeners();
@@ -255,10 +259,12 @@ export async function executeLocalTerminalCommand(
       fail(createCommandAbortError());
       stopChild();
     };
-    const timer = setTimeout(() => {
-      finish(null, true);
-      stopChild();
-    }, timeoutMs);
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        finish(null, true);
+        stopChild();
+      }, timeoutMs);
+    }
 
     signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", data => appendOutput(data as Buffer, "stdout"));

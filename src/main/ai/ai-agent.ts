@@ -36,6 +36,7 @@ import { ExpiringApprovalStore } from "./ai-approval-store.js";
 import { findExecutedAiCommand } from "./ai-command-dedup.js";
 import { prepareAiChatInput } from "./ai-compaction.js";
 import { readAiAttachmentChunk } from "./ai-attachment-reader.js";
+import { describeAiCommandForApproval } from "./command-description.js";
 
 interface PendingApprovalState {
   tabId: string;
@@ -152,6 +153,22 @@ function createCompletedCard(
     ...createRunningCard(input, command, cardId, createdAt, approvalId),
     status: "completed",
     result,
+  };
+}
+
+function createTimedOutCard(
+  input: AiChatInput,
+  command: ParsedAiCommand,
+  result: AiCommandResult,
+  cardId: string,
+  createdAt: number,
+  approvalId?: string,
+): AiCommandCard {
+  return {
+    ...createRunningCard(input, command, cardId, createdAt, approvalId),
+    status: "failed",
+    result,
+    error: "命令执行超时，已停止本轮 AI 自动执行",
   };
 }
 
@@ -313,16 +330,43 @@ function getApprovalReason(
   input: AiChatInput,
   command: EvaluatedAiCommand,
 ): string | null {
-  if (input.mode === "ask") return command.reason;
+  if (input.mode === "ask") {
+    return describeAiCommandForApproval(command.command, {
+      modelReason: command.reason,
+      policy: {
+        ...command.policy,
+        reason: `当前为“每次询问”模式，命令执行前需要用户批准；${command.policy.reason}`,
+      },
+    });
+  }
   if (command.risk === "high" || command.policy.decision === "requires_approval") {
-    return command.policy.reason;
+    return describeAiCommandForApproval(command.command, {
+      modelReason: command.reason,
+      policy: {
+        decision: "requires_approval",
+        reason: command.risk === "high"
+          ? `AI 将该命令标记为高风险；${command.policy.reason}`
+          : command.policy.reason,
+      },
+    });
   }
 
   for (const segment of buildCommandQueue(input, command)) {
     const policy = evaluateAiCommand(segment.command);
-    if (policy.decision === "deny") return policy.reason;
+    if (policy.decision === "deny") {
+      return describeAiCommandForApproval(command.command, {
+        modelReason: command.reason,
+        policy,
+      });
+    }
     if (policy.decision === "requires_approval") {
-      return `需确认子命令：${segment.command}\n${policy.reason}`;
+      return describeAiCommandForApproval(command.command, {
+        modelReason: command.reason,
+        policy: {
+          ...policy,
+          reason: `子命令 ${segment.command} 需要确认；${policy.reason}`,
+        },
+      });
     }
   }
   return null;
@@ -366,6 +410,7 @@ async function executeAgentCommand(
     cardId?: string;
     cardCreatedAt?: number;
     approvalTtlMs?: number;
+    commandTimeoutMs?: number;
   } = {},
 ): Promise<CommandExecutionResult> {
   const cardId = options.cardId ?? createId();
@@ -436,17 +481,26 @@ async function executeAgentCommand(
       },
     });
     const result = await executeTerminalCommand(input.tabId, command.command, {
-      timeoutMs: 20_000,
+      timeoutMs: options.commandTimeoutMs ?? 10 * 60_000,
       signal,
     });
-    const completedCard = createCompletedCard(
-      input,
-      command,
-      result,
-      cardId,
-      cardCreatedAt,
-      options.approvalId,
-    );
+    const completedCard = result.timedOut
+      ? createTimedOutCard(
+          input,
+          command,
+          result,
+          cardId,
+          cardCreatedAt,
+          options.approvalId,
+        )
+      : createCompletedCard(
+          input,
+          command,
+          result,
+          cardId,
+          cardCreatedAt,
+          options.approvalId,
+        );
     emit?.sendCommandCard(completedCard);
     nextCards = mergeCards(nextCards, completedCard);
     writeAppLog({
@@ -460,6 +514,15 @@ async function executeAgentCommand(
         durationMs: result.durationMs,
       },
     });
+    if (result.timedOut) {
+      const timeoutMinutes = (options.commandTimeoutMs ?? 10 * 60_000) / 60_000;
+      messages.push(
+        createAssistantMessage(
+          `命令执行已达到设置的 ${timeoutMinutes} 分钟超时，已向进程发送终止信号。本轮 AI 自动执行已停止，不会再次请求或重复执行该命令；请检查当前结果后再决定是否继续。`,
+        ),
+      );
+      return { status: "return", result: { messages, commandCards: nextCards } };
+    }
     return {
       status: "continue",
       commandCards: nextCards,
@@ -516,6 +579,7 @@ async function runAgentLoop(
   initialAttachmentReads: AiAttachmentReadResult[] = [],
 ): Promise<AiChatResult> {
   const maxAgentCommandCount = settings.ai.maxAgentCommandCount;
+  const commandTimeoutMs = settings.ai.commandTimeoutMinutes * 60_000;
   const approvalTtlMs = settings.ai.commandApprovalTimeoutMinutes * 60_000;
   const messages: AiMessage[] = [];
   let commandCards = [...previousCards];
@@ -640,11 +704,13 @@ async function runAgentLoop(
       }
 
       const approvalId = createId();
-      const approvalReason = [
-        `模型连续 ${maxLocalPolicyRetries} 次修正后仍被本地策略拦截。`,
-        `拦截原因：${nextCommand.policy.reason}`,
-        "请人工确认是否仍要执行该命令；批准后将按原样执行。",
-      ].join("\n");
+      const approvalReason = describeAiCommandForApproval(nextCommand.command, {
+        modelReason: nextCommand.reason,
+        policy: {
+          decision: "requires_approval",
+          reason: `模型连续 ${maxLocalPolicyRetries} 次修正后仍被本地策略拦截（${nextCommand.policy.reason}）。批准后将按原样执行。`,
+        },
+      });
       const approvalCard = createApprovalCard(
         input,
         nextCommand,
@@ -729,7 +795,7 @@ async function runAgentLoop(
       executedCommands,
       attachmentReads,
       messages,
-      { approvalTtlMs },
+      { approvalTtlMs, commandTimeoutMs },
     );
     if (execution.status === "return") return execution.result;
     commandCards = execution.commandCards;
@@ -811,6 +877,7 @@ export async function runApprovedAiCommand(
     const cardCreatedAt = previousCard?.createdAt ?? Date.now();
     const evaluatedCommand: EvaluatedAiCommand = {
       ...approval.command,
+      reason: previousCard?.reason ?? approval.command.reason,
       policy: evaluateAiCommand(approval.command.command),
     };
     const execution = await executeAgentCommand(
@@ -828,6 +895,7 @@ export async function runApprovedAiCommand(
         bypassPolicyDeny: approval.allowPolicyBypass,
         cardId: approval.cardId,
         cardCreatedAt,
+        commandTimeoutMs: settings.ai.commandTimeoutMinutes * 60_000,
       },
     );
     if (execution.status === "return") {

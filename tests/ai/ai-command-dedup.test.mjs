@@ -11,6 +11,14 @@ test('重复命令比较会忽略首尾空白和换行格式', () => {
     normalizeAiCommandForDedup('  systemctl status nginx\r\n'),
     'systemctl status nginx',
   )
+  assert.equal(
+    normalizeAiCommandForDedup('docker compose   up -d  &&  docker compose ps'),
+    'docker compose up -d&&docker compose ps',
+  )
+  assert.equal(
+    normalizeAiCommandForDedup('docker compose up -d&&docker compose ps'),
+    'docker compose up -d&&docker compose ps',
+  )
 })
 
 test('本轮已经执行过的相同命令会被识别', () => {

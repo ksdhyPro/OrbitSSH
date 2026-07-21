@@ -63,6 +63,7 @@ export const useSettingsStore = defineStore("settings", () => {
         shareTerminalContext: appSettings.ai.shareTerminalContext,
         maxAttachmentSizeMb: appSettings.ai.maxAttachmentSizeMb,
         maxAgentCommandCount: appSettings.ai.maxAgentCommandCount,
+        commandTimeoutMinutes: appSettings.ai.commandTimeoutMinutes,
         commandApprovalTimeoutMinutes:
           appSettings.ai.commandApprovalTimeoutMinutes,
         activeConfigId: appSettings.ai.activeConfigId,
@@ -208,6 +209,7 @@ export const useSettingsStore = defineStore("settings", () => {
           enabled: savedSettings.ai.enabled,
           shareTerminalContext: savedSettings.ai.shareTerminalContext,
           maxAgentCommandCount: savedSettings.ai.maxAgentCommandCount,
+          commandTimeoutMinutes: savedSettings.ai.commandTimeoutMinutes,
           commandApprovalTimeoutMinutes:
             savedSettings.ai.commandApprovalTimeoutMinutes,
           activeConfigId: savedSettings.ai.activeConfigId,

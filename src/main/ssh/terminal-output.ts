@@ -3,5 +3,5 @@
  * LF 后不会自动回到第 1 列，因此回写到交互式终端前要统一成 CRLF。
  */
 export function normalizeTerminalOutputForXterm(value: string): string {
-  return value.replace(/\r\n?/g, "\n").replace(/\n/g, "\r\n");
+  return value.replace(/\r?\n/g, "\r\n");
 }

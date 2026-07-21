@@ -65,6 +65,8 @@ export interface AiSettings {
   maxAttachmentSizeMb: number
   /** Maximum number of commands an agent may execute for one user request. */
   maxAgentCommandCount: number
+  /** Maximum runtime of one AI command in minutes. 0 disables automatic timeout. */
+  commandTimeoutMinutes: number
   /** Command approval lifetime in minutes. 0 keeps approvals until explicitly cleared. */
   commandApprovalTimeoutMinutes: number
   activeConfigId: string
@@ -126,6 +128,7 @@ export const defaultAppSettings: AppSettings = {
     shareTerminalContext: true,
     maxAttachmentSizeMb: DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB,
     maxAgentCommandCount: 20,
+    commandTimeoutMinutes: 10,
     commandApprovalTimeoutMinutes: 0,
     activeConfigId: '',
     multimodalConfigId: '',

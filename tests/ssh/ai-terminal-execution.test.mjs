@@ -71,6 +71,21 @@ test("SSH AI 命令超时会发送 INT 并关闭 exec channel", async () => {
   assert.equal(channel.closed, true);
 });
 
+test("SSH AI 命令超时为 0 时允许命令持续到自然结束", async () => {
+  const channel = new FakeChannel();
+  const client = {
+    exec(_command, callback) {
+      callback(null, channel);
+      setTimeout(() => channel.emit("close", 0), 20);
+    },
+  };
+
+  const result = await executeSshTerminalCommand(client, "long-task", 0);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(channel.signals, []);
+});
+
 test("本地 AI 命令按块输出并保留退出码", async () => {
   const chunks = [];
   const result = await executeLocalTerminalCommand(

@@ -1193,6 +1193,22 @@ function removeAiProvider(group: AiProviderGroup): void {
 
         <div class="settings-field">
           <div>
+            <h3>AI 命令超时（分钟）</h3>
+            <p>单条命令默认最多执行 10 分钟；设置为 0 时不自动终止，持续日志命令需手动停止。</p>
+          </div>
+          <NumberStepper
+            :model-value="appSettings.ai.commandTimeoutMinutes"
+            :min="0"
+            :max="1440"
+            :step="5"
+            placeholder="10"
+            @update:model-value="
+              emit('updateAiSetting', 'commandTimeoutMinutes', $event)
+            " />
+        </div>
+
+        <div class="settings-field">
+          <div>
             <h3>单个 AI 附件上限（MB）</h3>
             <p>默认 {{ DEFAULT_AI_MAX_ATTACHMENT_SIZE_MB }} MB，最大 {{ MAX_AI_ATTACHMENT_SIZE_MB }} MB；超过 1 MB 的文本、代码和日志由 AI 按需分段读取。</p>
           </div>
