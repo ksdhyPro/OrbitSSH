@@ -535,7 +535,8 @@ button {
 .ai-message-list > .ai-status-bar,
 .ai-message-list > .ai-empty {
   width: 100%;
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ai-message {
@@ -567,6 +568,9 @@ button {
 }
 
 .ai-message.assistant {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 0;
 }
 

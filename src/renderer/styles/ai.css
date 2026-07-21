@@ -41,6 +41,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 0 2px 8px;
 }
 
@@ -56,6 +59,7 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
+  min-width: 0;
   min-height: 28px;
   border: 1px solid var(--border-default);
   border-radius: 6px;
@@ -190,6 +194,7 @@
 .ai-panel {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
   min-width: 0;
@@ -199,6 +204,14 @@
   border-left: 1px solid var(--border-window);
   background: var(--bg-elevated-1);
   -webkit-app-region: no-drag;
+}
+
+.ai-panel-header,
+.ai-message-list,
+.ai-compose {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ai-panel.collapsed {
@@ -489,6 +502,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  contain: inline-size;
   min-height: 0;
   padding: 12px;
   overflow-y: auto;
@@ -501,6 +515,9 @@
 .ai-message-list > .ai-status-bar,
 .ai-message-list > .ai-empty {
   flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ai-load-older-btn {
@@ -532,6 +549,10 @@
 .ai-message {
   display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   padding: 12px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
@@ -543,6 +564,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 18px;
 }
 
@@ -728,7 +751,10 @@
 }
 
 .ai-markdown {
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.55;
@@ -736,6 +762,7 @@
 }
 
 .ai-markdown > * {
+  max-width: 100%;
   margin: 8px 0 0;
 }
 
@@ -785,6 +812,8 @@
 }
 
 .ai-markdown pre {
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow: auto;
   padding: 10px;
@@ -800,6 +829,8 @@
 
 .ai-markdown table {
   display: block;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow: auto;
   border-collapse: collapse;
@@ -852,6 +883,9 @@
 }
 
 .ai-process-line {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 0;
   color: var(--text-tertiary);
   font-size: 12px;
@@ -905,6 +939,9 @@
 .ai-process-content {
   display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 6px;
   padding: 10px;
   border: 1px solid var(--border-subtle);
@@ -915,7 +952,9 @@
 .ai-process-item {
   display: grid;
   gap: 7px;
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -938,6 +977,8 @@
 .ai-process-item code,
 .ai-approval-popover code {
   display: block;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   overflow: auto;
   border-radius: 7px;
@@ -948,6 +989,7 @@
   line-height: 1.45;
   padding: 8px;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .ai-process-item p,
@@ -961,7 +1003,10 @@
 }
 
 .ai-process-markdown {
+  width: 100%;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.55;
@@ -969,6 +1014,7 @@
 }
 
 .ai-process-markdown > * {
+  max-width: 100%;
   margin: 6px 0 0;
 }
 
@@ -1046,6 +1092,10 @@
 .ai-command-output {
   display: grid;
   gap: 6px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .ai-command-output summary {
@@ -1060,6 +1110,9 @@
 }
 
 .ai-command-output pre {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   padding: 8px;
   border-radius: 6px;
@@ -1099,6 +1152,7 @@
 .ai-compose {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px;
   border-top: 1px solid var(--border-subtle);
@@ -1107,6 +1161,9 @@
 .ai-approval-popover {
   display: grid;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 12px;
   border: 1px solid var(--accent);
   border-radius: 8px;
