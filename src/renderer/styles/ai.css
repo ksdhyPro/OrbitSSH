@@ -191,9 +191,9 @@
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: var(--ai-panel-width, 360px);
-  min-width: 320px;
-  max-width: min(680px, calc(100vw - var(--sidebar-width, 320px) - 260px));
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   min-height: 0;
   overflow: hidden;
   border-left: 1px solid var(--border-window);
@@ -204,8 +204,8 @@
 .ai-panel.collapsed {
   display: grid;
   place-items: start center;
-  width: 42px;
-  min-width: 42px;
+  width: 100%;
+  min-width: 0;
   padding-top: 14px;
 }
 
@@ -1123,7 +1123,9 @@
   display: flex;
   gap: 6px;
   align-items: center;
+  width: 100%;
   min-width: 0;
+  overflow: hidden;
 }
 
 .ai-mode-trigger {
@@ -1163,7 +1165,7 @@
 
 .ai-model-selection-trigger {
   display: flex;
-  flex: 0 1 auto;
+  flex: 0 1 220px;
   align-items: center;
   gap: 7px;
   min-width: 76px;

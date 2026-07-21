@@ -8,7 +8,7 @@
 }
 
 body {
-  min-width: 1040px;
+  min-width: 0;
   min-height: 680px;
   margin: 0;
   overflow: hidden;
@@ -157,11 +157,11 @@ input[type="number"] {
 .content-shell {
   display: grid;
   grid-template-columns:
-    var(--sidebar-width, 320px)
+    minmax(0, var(--sidebar-width, 320px))
     6px
     minmax(0, 1fr)
     var(--ai-panel-resizer-width, 6px)
-    auto;
+    minmax(0, var(--ai-panel-track-width, 360px));
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;

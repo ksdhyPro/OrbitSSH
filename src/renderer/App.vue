@@ -745,7 +745,7 @@ onUnmounted(() => {
       class="content-shell"
       :style="{
         '--sidebar-width': `${sidebarWidth}px`,
-        '--ai-panel-width': `${aiPanelWidth}px`,
+        '--ai-panel-track-width': isAiPanelOpen ? `${aiPanelWidth}px` : '42px',
         '--ai-panel-resizer-width': isAiPanelOpen ? '6px' : '0px',
       }">
       <aside class="sidebar">

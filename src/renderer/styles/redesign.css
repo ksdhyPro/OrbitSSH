@@ -213,11 +213,11 @@ button {
 
 .content-shell {
   grid-template-columns:
-    var(--sidebar-width, 360px)
+    minmax(0, var(--sidebar-width, 360px))
     6px
     minmax(0, 1fr)
     var(--ai-panel-resizer-width, 6px)
-    auto;
+    minmax(0, var(--ai-panel-track-width, 360px));
   background: var(--bg-base);
 }
 
@@ -1219,15 +1219,6 @@ button {
 }
 
 @media (max-width: 1180px) {
-  .content-shell {
-    grid-template-columns:
-      minmax(300px, var(--sidebar-width, 320px))
-      6px
-      minmax(420px, 1fr)
-      var(--ai-panel-resizer-width, 6px)
-      auto;
-  }
-
   .settings-layout {
     grid-template-columns: 150px minmax(0, 1fr);
   }
