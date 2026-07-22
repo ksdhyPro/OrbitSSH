@@ -30,6 +30,23 @@ test("审批到期后主动清理并触发通知", async () => {
   assert.equal(expiredId, "expired");
 });
 
+test("可按会话筛选清理审批且不影响同一标签页的其他会话", () => {
+  const store = new ExpiringApprovalStore();
+  store.set("a", { tabId: "tab-1", conversationId: "conversation-1" }, 1_000);
+  store.set("b", { tabId: "tab-1", conversationId: "conversation-2" }, 1_000);
+
+  assert.deepEqual(
+    store.clearMatching(value => value.conversationId === "conversation-1")
+      .map(item => item.id),
+    ["a"],
+  );
+  assert.equal(store.get("a"), null);
+  assert.deepEqual(store.get("b"), {
+    tabId: "tab-1",
+    conversationId: "conversation-2",
+  });
+});
+
 test("审批有效期为 0 时不会自动过期", async () => {
   const store = new ExpiringApprovalStore();
   let expired = false;

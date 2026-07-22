@@ -1156,9 +1156,6 @@ function formatConversationTime(timestamp: number): string {
             class="ai-new-conversation-btn"
             title="新对话"
             :disabled="
-              isSending ||
-              hasPendingApproval ||
-              hasRunningCommand ||
               !context.tabId ||
               !conversationContextReady
             "

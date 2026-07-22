@@ -41,6 +41,7 @@ import { shouldFinalizeAfterAiCommand } from "./ai-execution-guard.js";
 
 interface PendingApprovalState {
   tabId: string;
+  conversationId: string;
   input: AiChatInput;
   command: ParsedAiCommand;
   cardId: string;
@@ -66,7 +67,10 @@ interface AgentEmitter {
 const maxLocalPolicyRetries = 3;
 const maxAttachmentReadCount = 64;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
-const activeRequests = new Map<string, AbortController>();
+const activeRequests = new Map<
+  string,
+  { tabId: string; controller: AbortController }
+>();
 
 function createId(): string {
   return crypto.randomUUID();
@@ -233,6 +237,7 @@ function mergeCards(
 
 function makeEmitter(
   tabId: string,
+  conversationId: string,
   webContents?: WebContents,
 ): AgentEmitter | undefined {
   if (!webContents) return undefined;
@@ -241,6 +246,7 @@ function makeEmitter(
       if (webContents.isDestroyed()) return;
       webContents.send("ai:stream-message-start", {
         tabId,
+        conversationId,
         messageId,
         createdAt,
       } satisfies AiStreamMessageStartEvent);
@@ -249,6 +255,7 @@ function makeEmitter(
       if (webContents.isDestroyed()) return;
       webContents.send("ai:stream-chunk", {
         tabId,
+        conversationId,
         messageId,
         chunk: text,
       } satisfies AiStreamChunkEvent);
@@ -257,6 +264,7 @@ function makeEmitter(
       if (webContents.isDestroyed()) return;
       webContents.send("ai:command-card", {
         tabId,
+        conversationId,
         card,
       } satisfies AiCommandCardEvent);
     },
@@ -437,6 +445,27 @@ async function appendFinalExecutionSummary(
   }
 }
 
+function clearPendingApprovalsForConversation(
+  conversationId: string,
+  reason: string,
+): void {
+  for (const { id: approvalId, value: approval } of pendingApprovals.clearMatching(
+    value => value.conversationId === conversationId,
+  )) {
+    const previousCard = approval.previousCards.find(card => card.id === approval.cardId);
+    approval.emit?.sendCommandCard(
+      createCancelledCard(
+        approval.input,
+        approval.command,
+        approval.cardId,
+        previousCard?.createdAt ?? approval.createdAt,
+        approvalId,
+        reason,
+      ),
+    );
+  }
+}
+
 async function executeAgentCommand(
   input: AiChatInput,
   signal: AbortSignal,
@@ -484,6 +513,7 @@ async function executeAgentCommand(
       approvalId,
       {
         tabId: input.tabId,
+        conversationId: input.conversationId,
         input,
         command,
         cardId,
@@ -768,6 +798,7 @@ async function runAgentLoop(
         approvalId,
         {
           tabId: input.tabId,
+          conversationId: input.conversationId,
           input,
           command: nextCommand,
           cardId: approvalCard.id,
@@ -871,16 +902,19 @@ async function runAgentLoop(
 }
 
 async function runTrackedRequest<T>(
+  conversationId: string,
   tabId: string,
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  activeRequests.get(tabId)?.abort();
+  activeRequests.get(conversationId)?.controller.abort();
   const controller = new AbortController();
-  activeRequests.set(tabId, controller);
+  activeRequests.set(conversationId, { tabId, controller });
   try {
     return await operation(controller.signal);
   } finally {
-    if (activeRequests.get(tabId) === controller) activeRequests.delete(tabId);
+    if (activeRequests.get(conversationId)?.controller === controller) {
+      activeRequests.delete(conversationId);
+    }
   }
 }
 
@@ -889,9 +923,12 @@ export async function runAiChat(
   settings: AppSettings,
   webContents?: WebContents,
 ): Promise<AiChatResult> {
-  const emit = makeEmitter(input.tabId, webContents);
-  clearPendingApprovalsForTab(input.tabId, "已开始新的 AI 请求", emit);
-  return runTrackedRequest(input.tabId, async signal => {
+  const emit = makeEmitter(input.tabId, input.conversationId, webContents);
+  clearPendingApprovalsForConversation(
+    input.conversationId,
+    "已在当前 AI 会话中开始新的请求",
+  );
+  return runTrackedRequest(input.conversationId, input.tabId, async signal => {
     const prepared = await prepareAiChatInput(input, settings, signal);
     const result = await runAgentLoop(prepared.input, settings, signal, emit);
     return { ...result, compaction: prepared.compaction };
@@ -899,13 +936,13 @@ export async function runAiChat(
 }
 
 export function cancelAiRequest(input: AiCancelInput): boolean {
-  const controller = activeRequests.get(input.tabId);
-  if (!controller) return false;
-  controller.abort();
+  const request = activeRequests.get(input.conversationId);
+  if (!request || request.tabId !== input.tabId) return false;
+  request.controller.abort();
   writeAppLog({
     scope: "main.ai",
     message: "AI 请求已被用户终止",
-    data: { tabId: input.tabId },
+    data: { tabId: input.tabId, conversationId: input.conversationId },
   });
   return true;
 }
@@ -919,6 +956,7 @@ export async function runApprovedAiCommand(
   if (!approval) throw new Error("命令授权不存在或已过期");
   if (
     approval.input.tabId !== input.tabId ||
+    approval.input.conversationId !== input.conversationId ||
     approval.command.command !== input.command.trim()
   ) {
     throw new Error("命令授权与当前命令不匹配");
@@ -926,9 +964,9 @@ export async function runApprovedAiCommand(
   if (!pendingApprovals.take(input.approvalId)) {
     throw new Error("命令授权不存在或已过期");
   }
-  const emit = makeEmitter(input.tabId, webContents);
+  const emit = makeEmitter(input.tabId, input.conversationId, webContents);
 
-  return runTrackedRequest(input.tabId, async signal => {
+  return runTrackedRequest(input.conversationId, input.tabId, async signal => {
     let commandCards = approval.previousCards;
     let executedCommands = [...approval.executedCommands];
     const attachmentReads = [...approval.attachmentReads];
@@ -1008,18 +1046,31 @@ export function rejectAiCommandApproval(
   input: AiRejectedCommandInput,
 ): boolean {
   const approval = pendingApprovals.get(input.approvalId);
-  if (!approval || approval.input.tabId !== input.tabId) return false;
+  if (
+    !approval ||
+    approval.input.tabId !== input.tabId ||
+    approval.input.conversationId !== input.conversationId
+  ) {
+    return false;
+  }
   if (!pendingApprovals.take(input.approvalId)) return false;
   writeAppLog({
     scope: "main.ai",
     message: "AI 命令授权已拒绝",
-    data: { tabId: input.tabId, command: approval.command.command },
+    data: {
+      tabId: input.tabId,
+      conversationId: input.conversationId,
+      command: approval.command.command,
+    },
   });
   return true;
 }
 
 export function disposeAiTabState(tabId: string): void {
-  activeRequests.get(tabId)?.abort();
-  activeRequests.delete(tabId);
+  for (const [conversationId, request] of activeRequests) {
+    if (request.tabId !== tabId) continue;
+    request.controller.abort();
+    activeRequests.delete(conversationId);
+  }
   clearPendingApprovalsForTab(tabId, "终端标签页已关闭");
 }

@@ -35,7 +35,7 @@ test('AI conversation is created on first send and then persisted', async () => 
   assert.match(store, /compaction\?: AiConversationCompaction/)
   assert.match(store, /compaction: normalizeStoredCompaction\(value\.compaction\)/)
   assert.match(store, /getUncompactedHistory\(conversation\)\.slice\(-HISTORY_LIMIT\)/)
-  assert.match(store, /updateCompaction\(context\.tabId, result\.compaction\)/)
+  assert.match(store, /updateCompaction\(conversation\.id, result\.compaction\)/)
 })
 
 test('关闭终端 Tab 后会话记录保留，但清除 Tab 绑定', async () => {
@@ -75,16 +75,20 @@ test('opening or switching terminal tabs keeps an empty draft without creating a
 })
 
 test('opening history and starting a new draft do not create extra empty conversations', async () => {
-  const { store } = await readSources()
+  const { store, panel } = await readSources()
   const activateSource =
     store.match(/function activateConversation[\s\S]*?function renameConversation/)?.[0] ?? ''
   const startNewSource =
     store.match(/function startNewConversation[\s\S]*?function removeTabSession/)?.[0] ?? ''
+  const newConversationButton =
+    panel.match(/class="ai-new-conversation-btn"[\s\S]*?@click="emit\('startNewConversation'\)"/)?.[0] ?? ''
 
   assert.doesNotMatch(activateSource, /createConversation\(/)
   assert.doesNotMatch(startNewSource, /createConversation\(/)
   assert.match(startNewSource, /activeConversationId: ""/)
   assert.match(startNewSource, /activeConversationId\.value = ""/)
+  assert.doesNotMatch(startNewSource, /isConversationSending|hasBlockingCommandProcess/)
+  assert.doesNotMatch(newConversationButton, /isSending|hasPendingApproval|hasRunningCommand/)
 })
 
 test('empty draft can accept the first message or attachment on a connected tab', async () => {
@@ -94,7 +98,7 @@ test('empty draft can accept the first message or attachment on a connected tab'
 
   assert.match(readinessSource, /if \(!conversation\) return true/)
   assert.match(readinessSource, /activeTabStatus\.value !== "connected"/)
-  assert.match(store, /if \(\(!content && attachments\.length === 0\)/)
+  assert.match(store, /if \(!content && attachments\.length === 0\)/)
 })
 
 test('legacy empty conversations are filtered from history, hydration and persistence', async () => {
@@ -173,27 +177,46 @@ test('历史会话列表点击外部时关闭并在卸载时清理监听', async
   )
 })
 
-test('AI sending state is isolated by terminal tab and stale requests cannot clear a newer request', async () => {
+test('AI sending state is isolated by conversation and stale requests cannot clear a newer request', async () => {
   const { store } = await readSources()
 
   assert.doesNotMatch(store, /const isSending = ref\(false\)/)
-  assert.match(store, /const sendingTabIds = ref<Set<string>>\(new Set\(\)\)/)
+  assert.doesNotMatch(store, /sendingTabIds/)
+  assert.match(store, /const sendingConversationIds = ref<Set<string>>\(new Set\(\)\)/)
   assert.match(
     store,
-    /const isSending = computed\(\(\) => isTabSending\(activeTabId\.value\)\)/,
+    /isConversationSending\(activeConversationId\.value\)/,
   )
   assert.match(
     store,
-    /if \(requestTokensByTabId\.get\(tabId\) !== requestToken\) return/,
+    /requestTokensByConversationId\.get\(conversationId\) !== requestToken/,
   )
   assert.match(
     store,
-    /if \(!tabId \|\| isTabSending\(tabId\) \|\| hasBlockingCommandProcess\(tabId\)\)/,
+    /finishConversationRequest\(conversation\.id, requestToken\)/,
   )
-  assert.match(store, /finishTabRequest\(context\.tabId, requestToken\)/)
   assert.match(
     store,
-    /if \(!context\.tabId \|\| !isTabSending\(context\.tabId\)\) return/,
+    /cancelConversationRequest\(conversationId\)/,
   )
-  assert.match(store, /cancelTabRequest\(context\.tabId\)/)
+  assert.match(store, /isConversationSending\(conversation\.id\)/)
+})
+
+test('同一终端 Tab 的后台流式结果只写回发起请求的 AI 会话', async () => {
+  const { store } = await readSources()
+
+  assert.match(store, /function updateConversation\(\s*conversationId: string/)
+  assert.match(store, /item\.id === conversationId/)
+  assert.match(store, /conversationId: conversation\.id/)
+  assert.match(
+    store,
+    /event\.tabId !== tabId \|\|\s*event\.conversationId !== conversationId/,
+  )
+  assert.match(store, /appendStreamChunk\(conversationId, event\.messageId, event\.chunk\)/)
+  assert.match(store, /reconcileStreamMessages\(conversation\.id, activeStreamIds, result\.messages\)/)
+  assert.match(store, /mergeCommandCards\(conversation\.id, result\.commandCards\)/)
+  assert.doesNotMatch(
+    store,
+    /session\.activeConversationId[\s\S]{0,160}messageId/,
+  )
 })

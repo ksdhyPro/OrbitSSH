@@ -176,6 +176,10 @@ export async function executeTerminalCommand(
     throw new Error("终端会话未连接");
   }
 
+  if (session.aiInputLocked) {
+    throw new Error("当前终端已有另一个 AI 会话正在执行命令，请等待完成后重试");
+  }
+
   const terminalCommand = command.replace(/[\r\n]/g, " ").trim();
   const outputForwarder = createAiTerminalOutputForwarder(session);
   setAiTerminalInputLocked(session, true);

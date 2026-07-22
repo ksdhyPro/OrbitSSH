@@ -68,9 +68,13 @@ export class ExpiringApprovalStore<T extends { tabId: string }> {
   }
 
   clearForTab(tabId: string): RemovedApproval<T>[] {
+    return this.clearMatching(value => value.tabId === tabId);
+  }
+
+  clearMatching(predicate: (value: T) => boolean): RemovedApproval<T>[] {
     const removed: RemovedApproval<T>[] = [];
     for (const [id, stored] of this.approvals) {
-      if (stored.value.tabId !== tabId) continue;
+      if (!predicate(stored.value)) continue;
       if (stored.timer) clearTimeout(stored.timer);
       this.approvals.delete(id);
       removed.push({ id, value: stored.value });

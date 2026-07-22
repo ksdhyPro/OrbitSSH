@@ -213,6 +213,7 @@ const {
   activateConversation: activateAiConversation,
   renameConversation: renameAiConversation,
   deleteConversation: deleteAiConversationFromStore,
+  isConversationSending: isAiConversationSending,
   startNewConversation: startNewAiConversation,
   removeTabSession: removeAiTabSession,
   sendMessage: sendAiMessage,
@@ -414,7 +415,7 @@ async function deleteAiConversation(conversationId: string): Promise<void> {
   );
   if (
     hasBlockingTask ||
-    (conversationId === aiActiveConversationId.value && isAiSending.value)
+    isAiConversationSending(conversationId)
   ) {
     aiError.value = "该会话仍有正在执行或等待确认的任务，暂时无法删除。";
     return;

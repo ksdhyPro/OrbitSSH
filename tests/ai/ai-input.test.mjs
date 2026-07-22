@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   normalizeAiChatInput,
+  normalizeAiCancelInput,
   normalizeApprovedCommandInput,
   normalizeRejectedApprovalInput,
 } from "../../dist-electron/main/ai/ai-input.js";
 
 const validInput = {
   tabId: "tab-1",
+  conversationId: "conversation-1",
   mode: "full",
   message: "检查磁盘",
   context: { tabId: "tab-1", serverName: "demo" },
@@ -18,6 +20,7 @@ const validInput = {
 test("AI 输入会归一化并拒绝标签页不匹配", () => {
   const normalized = normalizeAiChatInput(validInput);
   assert.equal(normalized.tabId, validInput.tabId);
+  assert.equal(normalized.conversationId, validInput.conversationId);
   assert.equal(normalized.context.serverName, "demo");
   assert.throws(
     () => normalizeAiChatInput({ ...validInput, context: { tabId: "tab-2" } }),
@@ -148,10 +151,31 @@ test("AI 输入拒绝过多、过大或格式不匹配的附件", () => {
   );
 });
 
-test("批准和拒绝输入必须携带 tabId", () => {
+test("批准、拒绝和取消输入必须同时携带 tabId 与 conversationId", () => {
   assert.deepEqual(
-    normalizeApprovedCommandInput({ tabId: "tab-1", command: "pwd", approvalId: "a" }),
-    { tabId: "tab-1", command: "pwd", approvalId: "a" },
+    normalizeApprovedCommandInput({
+      tabId: "tab-1",
+      conversationId: "conversation-1",
+      command: "pwd",
+      approvalId: "a",
+    }),
+    {
+      tabId: "tab-1",
+      conversationId: "conversation-1",
+      command: "pwd",
+      approvalId: "a",
+    },
   );
   assert.throws(() => normalizeRejectedApprovalInput({ approvalId: "a" }), /标签页/);
+  assert.throws(
+    () => normalizeRejectedApprovalInput({ tabId: "tab-1", approvalId: "a" }),
+    /会话 ID/,
+  );
+  assert.deepEqual(
+    normalizeAiCancelInput({
+      tabId: "tab-1",
+      conversationId: "conversation-1",
+    }),
+    { tabId: "tab-1", conversationId: "conversation-1" },
+  );
 });

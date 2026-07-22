@@ -1,6 +1,7 @@
 import type {
   AiApprovedCommandInput,
   AiAttachment,
+  AiCancelInput,
   AiChatInput,
   AiConversationCompaction,
   AiMessage,
@@ -166,6 +167,11 @@ export function normalizeAiChatInput(
 ): AiChatInput {
   const record = requireRecord(input, "AI 对话参数");
   const tabId = requireBoundedString(record.tabId, "终端标签页 ID", 128);
+  const conversationId = requireBoundedString(
+    record.conversationId,
+    "AI 会话 ID",
+    128,
+  );
   const context = requireRecord(record.context, "AI 上下文");
   const contextTabId = requireBoundedString(context.tabId, "AI 上下文标签页 ID", 128);
   if (contextTabId !== tabId) throw new Error("AI 上下文标签页与当前标签页不匹配");
@@ -179,6 +185,7 @@ export function normalizeAiChatInput(
   }
   return {
     tabId,
+    conversationId,
     mode: requireEnum(record.mode, "AI 模式", ["ask", "full"] as const),
     message: rawMessage || "请分析这些附件",
     context: {
@@ -199,6 +206,7 @@ export function normalizeApprovedCommandInput(input: unknown): AiApprovedCommand
   const record = requireRecord(input, "AI 授权命令参数");
   return {
     tabId: requireBoundedString(record.tabId, "终端标签页 ID", 128),
+    conversationId: requireBoundedString(record.conversationId, "AI 会话 ID", 128),
     command: requireBoundedString(record.command, "授权命令", maxCommandChars),
     approvalId: requireBoundedString(record.approvalId, "授权 ID", 128),
   };
@@ -208,6 +216,15 @@ export function normalizeRejectedApprovalInput(input: unknown): AiRejectedComman
   const record = requireRecord(input, "拒绝授权参数");
   return {
     tabId: requireBoundedString(record.tabId, "终端标签页 ID", 128),
+    conversationId: requireBoundedString(record.conversationId, "AI 会话 ID", 128),
     approvalId: requireBoundedString(record.approvalId, "授权 ID", 128),
+  };
+}
+
+export function normalizeAiCancelInput(input: unknown): AiCancelInput {
+  const record = requireRecord(input, "AI 取消参数");
+  return {
+    tabId: requireBoundedString(record.tabId, "终端标签页 ID", 128),
+    conversationId: requireBoundedString(record.conversationId, "AI 会话 ID", 128),
   };
 }
