@@ -109,7 +109,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
           void closeFileEditorSearch();
         },
         onDocChanged: view => {
-          fileEditor.content = view.state.doc.toString();
+          fileEditor.content = view.state.sliceDoc();
           if (fileEditorSearchKeyword.value) {
             updateFileEditorSearchResultFromView(view);
           }
@@ -196,7 +196,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     try {
       // 保存前优先同步 CodeMirror 文档，避免最后一次输入未进入响应式状态。
       fileEditor.content =
-        fileEditorView?.state.doc.toString() ?? fileEditor.content;
+        fileEditorView?.state.sliceDoc() ?? fileEditor.content;
       await core.orbitSSHApi?.sftp.writeText({
         tabId: fileEditor.tabId,
         path: fileEditor.path,
@@ -374,7 +374,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
 
     applyFileEditorSearchQuery();
     replaceNext(view);
-    fileEditor.content = view.state.doc.toString();
+    fileEditor.content = view.state.sliceDoc();
     updateFileEditorSearchResultFromView(view);
   }
 
@@ -388,7 +388,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
 
     applyFileEditorSearchQuery();
     replaceAll(view);
-    fileEditor.content = view.state.doc.toString();
+    fileEditor.content = view.state.sliceDoc();
     updateFileEditorSearchResultFromView(view);
   }
 

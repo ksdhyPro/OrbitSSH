@@ -10,7 +10,7 @@ import {
   search,
   searchKeymap,
 } from "@codemirror/search";
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, Text, type Extension } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -36,6 +36,18 @@ export interface CreateFileEditorStateOptions {
   onDocChanged: (view: EditorView) => void;
 }
 
+function getFileEditorLineSeparator(content: string): "\r\n" | "\r" | "\n" {
+  if (content.includes("\r\n")) {
+    return "\r\n";
+  }
+
+  if (content.includes("\r")) {
+    return "\r";
+  }
+
+  return "\n";
+}
+
 export function createFileEditorState(
   options: CreateFileEditorStateOptions,
 ): EditorState {
@@ -50,11 +62,15 @@ export function createFileEditorState(
     onDocChanged,
   } = options;
 
+  const lineSeparator = getFileEditorLineSeparator(content);
+  const document = Text.of(content.split(/\r\n|\r|\n/));
+
   return EditorState.create({
-    doc: content,
+    doc: document,
     // 文件首次打开时从内容末尾继续编辑，空文件仍自然落在位置 0。
-    selection: { anchor: content.length },
+    selection: { anchor: document.length },
     extensions: [
+      EditorState.lineSeparator.of(lineSeparator),
       lineNumbers(),
       highlightActiveLineGutter(),
       history(),

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { EditorState, Text } from '@codemirror/state'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
@@ -22,11 +23,30 @@ test('远程文件编辑器绑定保存快捷键并阻止浏览器默认行为',
   assert.match(storeSource, /onSaveShortcut:[\s\S]{0,120}saveFileEditor\(\)/)
 })
 
-test('远程文件编辑器首次加载内容时把光标放到末尾', async () => {
-  const source = await readFile(editorStateSourceUrl, 'utf8')
+test('远程文件编辑器按 CodeMirror 文档长度定位光标并保留换行符', async () => {
+  const [stateSource, storeSource] = await Promise.all([
+    readFile(editorStateSourceUrl, 'utf8'),
+    readFile(editorStoreSourceUrl, 'utf8'),
+  ])
 
   assert.match(
-    source,
-    /selection:[\s\S]{0,80}anchor:\s*content\.length/,
+    stateSource,
+    /const document = Text\.of\(content\.split\(\/\\r\\n\|\\r\|\\n\/\)\)/,
   )
+  assert.match(stateSource, /selection:\s*\{\s*anchor:\s*document\.length/)
+  assert.match(stateSource, /EditorState\.lineSeparator\.of\(lineSeparator\)/)
+  assert.match(storeSource, /state\.sliceDoc\(\)/)
+})
+
+test('CRLF 文本的末尾光标不会超出 CodeMirror 文档', () => {
+  const content = 'services:\r\n  app:\r\n    image: orbitssh'
+  const document = Text.of(content.split(/\r\n|\r|\n/))
+  const state = EditorState.create({
+    doc: document,
+    selection: { anchor: document.length },
+    extensions: [EditorState.lineSeparator.of('\r\n')],
+  })
+
+  assert.equal(state.selection.main.anchor, state.doc.length)
+  assert.equal(state.sliceDoc(), content)
 })
