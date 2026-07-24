@@ -3,6 +3,14 @@ import os from "node:os";
 import { promisify } from "node:util";
 import { type Client } from "ssh2";
 
+import {
+  normalizeSystemDiskStats,
+  parsePosixDfSystemDiskStats,
+  parseTaggedSystemDiskStats,
+  summarizeSystemDisks,
+  systemDiskLinePrefix,
+  type SystemDiskStats,
+} from "../../shared/system-stats.js";
 import { writeAppLog } from "../logger.js";
 
 export interface RemoteSystemStats {
@@ -12,6 +20,7 @@ export interface RemoteSystemStats {
   memoryTotal: number;
   diskFree: number;
   diskTotal: number;
+  disks: SystemDiskStats[];
   osType: "linux" | "darwin" | "windows" | "";
   osName: string;
 }
@@ -36,6 +45,9 @@ let localCpuSample: CpuSample | undefined;
 
 // 远端统计脚本只读取系统资源，不修改服务器状态。
 const UNIX_STATS_SCRIPT = [
+  "emit_disk_stats() {",
+  `  df -Pk 2>/dev/null | awk 'NR > 1 && $2 ~ /^[0-9]+$/ && $2 > 0 && $1 !~ /^(tmpfs|devtmpfs|udev|shm|none|proc|sysfs)$/ && !seen[$1]++ { printf "${systemDiskLinePrefix}\\t%s\\t%s\\t%.0f\\t%.0f\\n", $1, $NF, $4*1024, $2*1024 }'`,
+  "}",
   "os=$(uname -s 2>/dev/null)",
   "os_name=\"$os\"",
   'if [ "$os" = "Linux" ]; then',
@@ -62,6 +74,7 @@ const UNIX_STATS_SCRIPT = [
   "fi",
   'printf \'{"cpu":%s,"mem_pct":%s,"mem_used":%s,"mem_total":%s,"disk_free":%s,"disk_total":%s,"os_type":"%s","os_name":"%s"}\\n\' \\',
   '  "$cpu" "$mem_pct" "$mem_used" "$mem_total" "$disk_free" "$disk_total" "$os" "$os_name"',
+  "emit_disk_stats",
 ].join("\n");
 
 const UNIX_STATS_COMMAND = [
@@ -78,10 +91,12 @@ const WINDOWS_STATS_SCRIPT = [
   "$memPct=[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/$os.TotalVisibleMemorySize*100)",
   "$memUsed=($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)*1024",
   "$memTotal=$os.TotalVisibleMemorySize*1024",
-  "$drive=(Get-Location).Drive.Name",
-  "$disk=Get-PSDrive $drive -ErrorAction SilentlyContinue",
-  "if ($disk) { $diskFree=$disk.Free; $diskTotal=$disk.Used+$disk.Free } else { $diskFree=0; $diskTotal=0 }",
-  'Write-Output "{`"cpu`":$cpu,`"mem_pct`":$memPct,`"mem_used`":$memUsed,`"mem_total`":$memTotal,`"disk_free`":$diskFree,`"disk_total`":$diskTotal,`"os_type`":`"Windows`",`"os_name`":`"Windows $osName`"}"',
+  "$drives=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.TotalSize -gt 0 })",
+  "$disks=@($drives | ForEach-Object { [ordered]@{name=[string]$_.Name;mount_point=[string]$_.Name;free=[double]$_.AvailableFreeSpace;total=[double]$_.TotalSize} })",
+  "$diskFree=[double](($disks | Measure-Object -Property free -Sum).Sum)",
+  "$diskTotal=[double](($disks | Measure-Object -Property total -Sum).Sum)",
+  "$payload=[ordered]@{cpu=[double]$cpu;mem_pct=[double]$memPct;mem_used=[double]$memUsed;mem_total=[double]$memTotal;disk_free=$diskFree;disk_total=$diskTotal;os_type='Windows';os_name=('Windows '+$osName);disks=$disks}",
+  "$payload | ConvertTo-Json -Compress -Depth 4",
 ].join("; ");
 
 function execSshCommand(
@@ -146,6 +161,23 @@ function parseStatsOutput(raw: string): RemoteSystemStats | null {
       sanitized.slice(jsonStart, jsonEnd + 1),
     ) as Record<string, unknown>;
 
+    const jsonDisks = normalizeSystemDiskStats(parsed.disks);
+    const taggedDisks = parseTaggedSystemDiskStats(sanitized);
+    const disks = jsonDisks.length > 0 ? jsonDisks : taggedDisks;
+    const diskSummary =
+      disks.length > 0
+        ? summarizeSystemDisks(disks)
+        : {
+            diskFree:
+              typeof parsed.disk_free === "number"
+                ? Math.max(0, parsed.disk_free)
+                : 0,
+            diskTotal:
+              typeof parsed.disk_total === "number"
+                ? Math.max(0, parsed.disk_total)
+                : 0,
+          };
+
     return {
       cpuUsage:
         typeof parsed.cpu === "number" ? Math.max(0, Math.min(100, parsed.cpu)) : 0,
@@ -157,10 +189,9 @@ function parseStatsOutput(raw: string): RemoteSystemStats | null {
         typeof parsed.mem_used === "number" ? Math.max(0, parsed.mem_used) : 0,
       memoryTotal:
         typeof parsed.mem_total === "number" ? Math.max(0, parsed.mem_total) : 0,
-      diskFree:
-        typeof parsed.disk_free === "number" ? Math.max(0, parsed.disk_free) : 0,
-      diskTotal:
-        typeof parsed.disk_total === "number" ? Math.max(0, parsed.disk_total) : 0,
+      diskFree: diskSummary.diskFree,
+      diskTotal: diskSummary.diskTotal,
+      disks,
       osType: normalizeOsType(parsed.os_type),
       osName: typeof parsed.os_name === "string" ? parsed.os_name : "",
     };
@@ -206,13 +237,14 @@ function getLocalCpuUsage(): number {
 
 async function getLocalDiskStats(
   cwd: string,
-): Promise<Pick<RemoteSystemStats, "diskFree" | "diskTotal">> {
+): Promise<Pick<RemoteSystemStats, "diskFree" | "diskTotal" | "disks">> {
   try {
     if (process.platform === "win32") {
-      const driveName = cwd.match(/^([a-zA-Z]):\\/)?.[1] ?? "C";
       const command = [
-        `$disk=Get-PSDrive -Name '${driveName}' -ErrorAction Stop`,
-        'Write-Output "{`"free`":$($disk.Free),`"total`":$($disk.Free+$disk.Used)}"',
+        "$drives=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.TotalSize -gt 0 })",
+        "$disks=@($drives | ForEach-Object { [ordered]@{name=[string]$_.Name;mount_point=[string]$_.Name;free=[double]$_.AvailableFreeSpace;total=[double]$_.TotalSize} })",
+        "$payload=[ordered]@{disks=$disks}",
+        "$payload | ConvertTo-Json -Compress -Depth 4",
       ].join("; ");
       const { stdout } = await execFileAsync(
         "powershell.exe",
@@ -220,20 +252,13 @@ async function getLocalDiskStats(
         { windowsHide: true, timeout: 5000 },
       );
       const parsed = JSON.parse(stdout.trim()) as Record<string, unknown>;
-      return {
-        diskFree: typeof parsed.free === "number" ? parsed.free : 0,
-        diskTotal: typeof parsed.total === "number" ? parsed.total : 0,
-      };
+      const disks = normalizeSystemDiskStats(parsed.disks);
+      return { ...summarizeSystemDisks(disks), disks };
     }
 
-    const { stdout } = await execFileAsync("df", ["-k", cwd], { timeout: 5000 });
-    const parts = stdout.trim().split(/\r?\n/).at(-1)?.trim().split(/\s+/) ?? [];
-    const totalKb = Number(parts[1]);
-    const freeKb = Number(parts[3]);
-    return {
-      diskFree: Number.isFinite(freeKb) ? freeKb * 1024 : 0,
-      diskTotal: Number.isFinite(totalKb) ? totalKb * 1024 : 0,
-    };
+    const { stdout } = await execFileAsync("df", ["-Pk"], { timeout: 5000 });
+    const disks = parsePosixDfSystemDiskStats(stdout);
+    return { ...summarizeSystemDisks(disks), disks };
   } catch (error) {
     writeAppLog({
       scope: "main.ssh",
@@ -241,7 +266,7 @@ async function getLocalDiskStats(
       message: "本地磁盘统计失败",
       data: { cwd, error: error instanceof Error ? error.message : String(error) },
     });
-    return { diskFree: 0, diskTotal: 0 };
+    return { diskFree: 0, diskTotal: 0, disks: [] };
   }
 }
 
@@ -264,6 +289,7 @@ async function getLocalSystemStats(cwd: string): Promise<RemoteSystemStats> {
     memoryTotal,
     diskFree: disk.diskFree,
     diskTotal: disk.diskTotal,
+    disks: disk.disks,
     osType,
     osName:
       osType === "windows"

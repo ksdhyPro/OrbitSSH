@@ -1011,6 +1011,102 @@
   font-size: 10px;
 }
 
+.status-bar-disk {
+  position: relative;
+  outline: none;
+}
+
+.status-bar-disk-label {
+  display: inline-block;
+  max-width: 88px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.status-bar-disk-details {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 12px;
+  z-index: 30;
+  display: none;
+  width: min(390px, calc(100vw - 48px));
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border-float);
+  border-radius: 7px;
+  background: var(--surface-floating);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.35;
+}
+
+.status-bar-disk:hover .status-bar-disk-details,
+.status-bar-disk:focus-within .status-bar-disk-details {
+  display: block;
+}
+
+.status-bar-disk-details-header,
+.status-bar-disk-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.status-bar-disk-details-header {
+  min-height: 30px;
+  padding: 0 8px 7px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.status-bar-disk-details-header strong {
+  font-size: 12px;
+}
+
+.status-bar-disk-details-header span,
+.status-bar-disk-detail-name span,
+.status-bar-disk-detail-capacity span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.status-bar-disk-detail-row {
+  min-height: 42px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.status-bar-disk-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.status-bar-disk-detail-name,
+.status-bar-disk-detail-capacity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.status-bar-disk-detail-name strong,
+.status-bar-disk-detail-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-bar-disk-detail-capacity {
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bar-disk-detail-capacity strong {
+  font-size: 11px;
+}
+
 .status-dot {
   display: inline-block;
   width: 7px;

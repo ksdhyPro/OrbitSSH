@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, watch } from "vue";
+import type { SystemDiskStats } from "../../shared/system-stats";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useTerminalsStore } from "../stores/useTerminalsStore";
 
 interface StatsEntry {
@@ -9,7 +10,16 @@ interface StatsEntry {
   memoryTotal: number;
   diskFree: number;
   diskTotal: number;
+  disks: SystemDiskStats[];
   osName: string;
+}
+
+interface DiskDisplayEntry {
+  key: string;
+  label: string;
+  name: string;
+  free: number;
+  total: number;
 }
 
 const props = defineProps<{
@@ -40,15 +50,39 @@ const currentStats = computed<StatsEntry | null>(() => {
   return null;
 });
 
-const diskUsage = computed(() => {
+const diskDisplayIndex = ref(0);
+
+const diskDisplayEntries = computed<DiskDisplayEntry[]>(() => {
   const s = currentStats.value;
-  if (!s || s.diskTotal <= 0) return 0;
-  const used = s.diskTotal - s.diskFree;
-  return Math.round((used / s.diskTotal) * 100);
+  if (!s || s.diskTotal <= 0) return [];
+
+  return [
+    {
+      key: "total",
+      label: "总量",
+      name: "全部磁盘",
+      free: s.diskFree,
+      total: s.diskTotal,
+    },
+    ...s.disks.map(disk => ({
+      key: `${disk.name}:${disk.mountPoint}`,
+      label: disk.mountPoint || disk.name,
+      name: disk.name,
+      free: disk.free,
+      total: disk.total,
+    })),
+  ];
+});
+
+const currentDiskDisplay = computed(() => {
+  const entries = diskDisplayEntries.value;
+  if (entries.length === 0) return null;
+  return entries[diskDisplayIndex.value % entries.length];
 });
 
 let cpuMemoryTimer: ReturnType<typeof setInterval> | undefined;
 let diskTimer: ReturnType<typeof setInterval> | undefined;
+let diskDisplayTimer: ReturnType<typeof setInterval> | undefined;
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "--";
@@ -62,6 +96,11 @@ function dotClass(pct: number): string {
   if (pct <= 80) return "dot-safe";
   if (pct <= 95) return "dot-warn";
   return "dot-danger";
+}
+
+function getUsagePercent(entry: Pick<DiskDisplayEntry, "free" | "total">): number {
+  if (entry.total <= 0) return 0;
+  return Math.round(((entry.total - entry.free) / entry.total) * 100);
 }
 
 async function fetchCpuMemory(): Promise<void> {
@@ -78,6 +117,7 @@ async function fetchCpuMemory(): Promise<void> {
         memoryTotal: result.memoryTotal,
         diskFree: statsCache[tabId]?.diskFree ?? 0,
         diskTotal: statsCache[tabId]?.diskTotal ?? 0,
+        disks: statsCache[tabId]?.disks ?? [],
         osName: result.osName || statsCache[tabId]?.osName || "",
       };
     }
@@ -100,6 +140,7 @@ async function fetchDisk(): Promise<void> {
         memoryTotal: statsCache[tabId]?.memoryTotal ?? result.memoryTotal,
         diskFree: result.diskFree,
         diskTotal: result.diskTotal,
+        disks: result.disks ?? [],
         osName: result.osName || statsCache[tabId]?.osName || "",
       };
     }
@@ -135,6 +176,13 @@ function startPolling(): void {
     }
     void fetchDisk();
   }, 5000);
+
+  diskDisplayTimer = setInterval(() => {
+    const count = diskDisplayEntries.value.length;
+    if (count > 1) {
+      diskDisplayIndex.value = (diskDisplayIndex.value + 1) % count;
+    }
+  }, 3500);
 }
 
 function stopPolling(): void {
@@ -145,6 +193,10 @@ function stopPolling(): void {
   if (diskTimer !== undefined) {
     window.clearInterval(diskTimer);
     diskTimer = undefined;
+  }
+  if (diskDisplayTimer !== undefined) {
+    window.clearInterval(diskDisplayTimer);
+    diskDisplayTimer = undefined;
   }
 }
 
@@ -170,6 +222,7 @@ watch(isDisconnected, disconnected => {
 watch(
   () => props.activeTabId,
   newTabId => {
+    diskDisplayIndex.value = 0;
     if (newTabId && !isWindowHidden()) {
       startPolling();
     } else {
@@ -225,19 +278,52 @@ onUnmounted(() => {
           <template v-else>--</template>
         </span>
       </div>
-      <div class="status-bar-item">
+      <div
+        class="status-bar-item status-bar-disk"
+        tabindex="0"
+        aria-label="磁盘容量详情">
         <span class="status-bar-label">磁盘</span>
         <span class="status-bar-value">
-          <template v-if="currentStats && currentStats.diskTotal > 0">
-            <span :class="['status-dot', dotClass(diskUsage)]"></span>
-            {{ diskUsage }}%
+          <template v-if="currentDiskDisplay">
+            <span
+              :class="[
+                'status-dot',
+                dotClass(getUsagePercent(currentDiskDisplay)),
+              ]"></span>
+            <span class="status-bar-disk-label">{{ currentDiskDisplay.label }}</span>
+            {{ getUsagePercent(currentDiskDisplay) }}%
             <small>
-              {{ formatBytes(currentStats.diskTotal - currentStats.diskFree) }} /
-              {{ formatBytes(currentStats.diskTotal) }}
+              {{ formatBytes(currentDiskDisplay.total - currentDiskDisplay.free) }} /
+              {{ formatBytes(currentDiskDisplay.total) }}
             </small>
           </template>
           <template v-else>--</template>
         </span>
+        <div
+          v-if="diskDisplayEntries.length > 0"
+          class="status-bar-disk-details"
+          role="tooltip">
+          <div class="status-bar-disk-details-header">
+            <strong>磁盘容量</strong>
+            <span>{{ currentStats?.disks.length ?? 0 }} 个挂载点</span>
+          </div>
+          <div
+            v-for="entry in diskDisplayEntries"
+            :key="entry.key"
+            class="status-bar-disk-detail-row">
+            <div class="status-bar-disk-detail-name">
+              <strong>{{ entry.label }}</strong>
+              <span>{{ entry.name }}</span>
+            </div>
+            <div class="status-bar-disk-detail-capacity">
+              <strong>{{ getUsagePercent(entry) }}%</strong>
+              <span>
+                {{ formatBytes(entry.total - entry.free) }} /
+                {{ formatBytes(entry.total) }}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="status-bar-os">
         <template v-if="currentStats?.osName">{{ currentStats.osName }}</template>
