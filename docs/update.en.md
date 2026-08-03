@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.14
+
+1. Fixed internal commands for real-time path synchronization being echoed in SSH terminals, while preserving SFTP sync after directory changes.
+2. Improved selected states in the Settings sidebar for both light and dark themes with stronger fills, a left indicator, and clearer text contrast.
+
 ## v1.1.13
 
 1. Released a maintenance version.

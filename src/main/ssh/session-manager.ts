@@ -48,6 +48,9 @@ interface SshTerminalSession extends BaseTerminalSession {
   sshClient: Client;
   shellStream?: ClientChannel;
   outputDecoder: StringDecoder;
+  /** 仅用于屏蔽本应用写入交互 Shell 的一次性初始化命令回显。 */
+  pendingShellCommandEcho?: string;
+  pendingShellCommandEchoPrefix?: string;
 }
 
 interface LocalTerminalSession extends BaseTerminalSession {
@@ -329,11 +332,59 @@ function createSshShellEnv(): NodeJS.ProcessEnv {
   };
 }
 
+/**
+ * 交互 Shell 会原样回显 SSH 客户端写入的字符。路径同步钩子属于内部命令，
+ * 不应污染用户终端，因此只移除与本次注入完全匹配的一段回显。
+ */
+function stripInjectedShellCommandEcho(
+  session: SshTerminalSession,
+  data: string,
+): string {
+  const pendingCommand = session.pendingShellCommandEcho;
+
+  if (!pendingCommand) {
+    return data;
+  }
+
+  // 发送时以 CR 提交命令，终端回显通常会转换为 CRLF，因此仅匹配命令正文。
+  const commandText = pendingCommand.replace(/\r$/, "");
+  const bufferedPrefix = session.pendingShellCommandEchoPrefix ?? "";
+  const candidate = `${bufferedPrefix}${data}`;
+  const echoIndex = candidate.indexOf(commandText);
+
+  if (echoIndex < 0) {
+    // SSH 数据可能拆分在命令正文中间；暂存最长可匹配前缀，下一包继续判断。
+    const maxPrefixLength = Math.min(commandText.length - 1, candidate.length);
+
+    for (let length = maxPrefixLength; length > 0; length -= 1) {
+      const suffix = candidate.slice(-length);
+
+      if (commandText.startsWith(suffix)) {
+        session.pendingShellCommandEchoPrefix = suffix;
+        return candidate.slice(0, -length);
+      }
+    }
+
+    session.pendingShellCommandEchoPrefix = undefined;
+    return candidate;
+  }
+
+  session.pendingShellCommandEcho = undefined;
+  session.pendingShellCommandEchoPrefix = undefined;
+  const beforeEcho = candidate.slice(0, echoIndex);
+  const afterEcho = candidate.slice(echoIndex + commandText.length);
+
+  // 同时移除命令提交产生的换行，避免在首次提示符前留下空白行。
+  return `${beforeEcho}${afterEcho.replace(/^\r?\n/, "")}`;
+}
+
 function forwardSshShellData(
   session: SshTerminalSession,
   data: string,
 ): void {
   touchTerminalSession(session);
+
+  data = stripInjectedShellCommandEcho(session, data);
 
   if (!data) {
     return;
@@ -405,6 +456,9 @@ function installShellPathIntegration(session: SshTerminalSession): void {
         }
 
         // 写入交互 Shell 后，每次提示符出现都会上报当前目录。
+        // 同时记录命令正文，防止远端 TTY 的本地回显展示给用户。
+        session.pendingShellCommandEcho = command;
+        session.pendingShellCommandEchoPrefix = undefined;
         session.shellStream.write(Buffer.from(command, "utf8"));
         writeAppLog({
           scope: "main.ssh",

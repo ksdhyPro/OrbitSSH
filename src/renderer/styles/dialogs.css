@@ -122,10 +122,28 @@
   text-align: left;
 }
 
-.settings-nav-item.active,
 .settings-nav-item:hover {
-  background: var(--bg-elevated-3);
+  background: var(--bg-hover-cool);
   color: var(--text-primary);
+}
+
+/* 浅色主题中用填充、强调条和字重共同表达当前设置页，避免仅靠近白色底纹区分。 */
+.settings-nav-item.active {
+  padding-left: 15px;
+  background: var(--selected-bg);
+  color: var(--accent-bright);
+  font-weight: 650;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.settings-nav-item.active:hover {
+  background: var(--selected-bg);
+  color: var(--accent-bright);
+}
+
+:root[data-theme="light"] .settings-nav-item.active,
+:root[data-theme="light"] .settings-nav-item.active:hover {
+  color: var(--accent);
 }
 
 .settings-content {
