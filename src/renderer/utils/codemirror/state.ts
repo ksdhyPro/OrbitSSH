@@ -50,10 +50,13 @@ export function createFileEditorState(
     onDocChanged,
   } = options;
 
+  // CodeMirror 会将 CRLF 和独立 CR 规范化为 LF，不能直接使用原始字符串长度作为选区位置。
+  const selectionAnchor = content.replace(/\r\n?/g, "\n").length;
+
   return EditorState.create({
     doc: content,
     // 文件首次打开时从内容末尾继续编辑，空文件仍自然落在位置 0。
-    selection: { anchor: content.length },
+    selection: { anchor: selectionAnchor },
     extensions: [
       lineNumbers(),
       highlightActiveLineGutter(),

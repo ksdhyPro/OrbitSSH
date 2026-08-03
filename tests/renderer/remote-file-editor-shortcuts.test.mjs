@@ -22,11 +22,15 @@ test('远程文件编辑器绑定保存快捷键并阻止浏览器默认行为',
   assert.match(storeSource, /onSaveShortcut:[\s\S]{0,120}saveFileEditor\(\)/)
 })
 
-test('远程文件编辑器首次加载内容时把光标放到末尾', async () => {
+test('远程文件编辑器首次加载 CRLF 内容时使用 CodeMirror 规范化后的文档长度定位光标', async () => {
   const source = await readFile(editorStateSourceUrl, 'utf8')
 
   assert.match(
     source,
-    /selection:[\s\S]{0,80}anchor:\s*content\.length/,
+    /selectionAnchor\s*=\s*content\.replace\(\/\\r\\n\?\/g,\s*"\\n"\)\.length/,
+  )
+  assert.match(
+    source,
+    /selection:[\s\S]{0,80}anchor:\s*selectionAnchor/,
   )
 })

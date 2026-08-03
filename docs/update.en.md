@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.15
+
+1. Fixed an error when opening remote text files with Windows CRLF line endings: the initial cursor position used the raw string length and could exceed the CodeMirror document range.
+
 ## v1.1.14
 
 1. Fixed internal commands for real-time path synchronization being echoed in SSH terminals, while preserving SFTP sync after directory changes.
