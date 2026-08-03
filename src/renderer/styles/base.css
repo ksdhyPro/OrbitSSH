@@ -413,6 +413,8 @@ input[type="number"] {
   display: block;
   width: 18px;
   height: 18px;
+  /* 兼容以 img 引入且内嵌固定浅色填充的 SVG 图标。 */
+  filter: var(--icon-filter);
 }
 
 .server-list {

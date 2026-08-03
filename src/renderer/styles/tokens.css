@@ -93,6 +93,7 @@
   --shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.36);
   --shadow-tasklist: 0 18px 52px rgba(0, 0, 0, 0.44);
   --swatch-border: rgba(255, 255, 255, 0.16);
+  --icon-filter: none; /* 静态 SVG 图标的主题适配 */
 
   color-scheme: dark;
   color: var(--text-primary);
@@ -116,56 +117,57 @@
 }
 
 :root[data-theme="light"] {
-  --bg-base: #eef2f7;
-  --bg-deep: #f7f9fc;
-  --bg-elevated-1: #f5f7fb;
-  --bg-elevated-2: #ffffff;
-  --bg-elevated-3: #f8fafc;
-  --bg-elevated-4: #f2f6fb;
-  --bg-input: #ffffff;
-  --bg-panel: #ffffff;
-  --bg-hover: #edf3fa;
-  --bg-hover-item: #e9f0f8;
-  --bg-hover-cool: #f0f5fb;
-  --bg-badge: #e5edf6;
-  --bg-tab: #e8eef6;
-  --bg-tab-active: #e3f3eb;
-  --bg-replace: #eef3f8;
+  /* 雾蓝灰基底：保留浅色通透感，同时避免大面积纯白失去层级。 */
+  --bg-base: #e8eef5;
+  --bg-deep: #f4f7fb;
+  --bg-elevated-1: #f0f4f8;
+  --bg-elevated-2: #f7f9fc;
+  --bg-elevated-3: #f3f7fb;
+  --bg-elevated-4: #edf3f8;
+  --bg-input: #fbfcfe;
+  --bg-panel: #f7f9fc;
+  --bg-hover: #e1ebf5;
+  --bg-hover-item: #dce8f4;
+  --bg-hover-cool: #e8f0f7;
+  --bg-badge: #dce7f1;
+  --bg-tab: #dfe8f2;
+  --bg-tab-active: #dbeee4;
+  --bg-replace: #e5edf5;
 
-  --border-subtle: #dfe6ef;
-  --border-default: #d7dee8;
-  --border-input: #cbd5e1;
-  --border-strong: #aeb9c8;
-  --border-strong-hover: #8f9bad;
-  --border-window: #d7dee8;
-  --border-dashed: #c8d2df;
-  --border-menu: #d0d9e5;
-  --border-tab: #cfd8e4;
-  --border-float: #c8d4e2;
-  --border-hover-strong: #9facbc;
+  --border-subtle: #d2dde8;
+  --border-default: #c8d4e1;
+  --border-input: #becbd9;
+  --border-strong: #9eafc1;
+  --border-strong-hover: #8195aa;
+  --border-window: #c8d4e1;
+  --border-dashed: #b9c8d7;
+  --border-menu: #c2cfdd;
+  --border-tab: #bfccda;
+  --border-float: #b7c7d7;
+  --border-hover-strong: #91a5b9;
 
-  --text-primary: #17202b;
-  --text-heading: #1d2733;
-  --text-secondary: #334155;
-  --text-muted: #4b5b70;
-  --text-tertiary: #66768a;
-  --text-disabled: #8491a3;
-  --text-faint: #96a1b0;
-  --text-placeholder: #98a4b4;
-  --text-dim: #56677d;
-  --text-disabled-strong: #8a96a7;
-  --text-disabled-button: #7d8a9b;
-  --text-stepper: #334155;
-  --text-badge: #526277;
-  --text-tab: #243143;
+  --text-primary: #1f2a37;
+  --text-heading: #172433;
+  --text-secondary: #3d4e63;
+  --text-muted: #465a70;
+  --text-tertiary: #687b90;
+  --text-disabled: #8c9aad;
+  --text-faint: #9aa8b8;
+  --text-placeholder: #8d9caf;
+  --text-dim: #566b82;
+  --text-disabled-strong: #8a9aab;
+  --text-disabled-button: #7c8ea2;
+  --text-stepper: #3d4e63;
+  --text-badge: #4f6378;
+  --text-tab: #283a4e;
 
-  --brand: #1f8a5f;
+  --brand: #187a53;
   --brand-ink: #ffffff;
-  --brand-soft: #2f946b;
-  --accent: #2568b8;
-  --accent-bright: #347dd1;
-  --accent-hover: #e5edf6;
-  --accent-soft: #e7f0fa;
+  --brand-soft: #267f5a;
+  --accent: #2368af;
+  --accent-bright: #3178c4;
+  --accent-hover: #dce8f4;
+  --accent-soft: #dceaf7;
 
   --danger: #c43c32;
   --danger-strong: #a62e26;
@@ -175,34 +177,36 @@
   --danger-overlay: rgba(196, 60, 50, 0.1);
   --danger-border: rgba(196, 60, 50, 0.32);
 
-  --hover-file: rgba(37, 104, 184, 0.08);
-  --hover-overlay: rgba(23, 32, 43, 0.06);
-  --selected-bg: rgba(37, 104, 184, 0.16);
-  --selected-ring: rgba(37, 104, 184, 0.24);
-  --accent-fill: rgba(37, 104, 184, 0.1);
-  --focus-ring: rgba(37, 104, 184, 0.18);
-  --focus-ring-soft: rgba(37, 104, 184, 0.14);
+  --hover-file: rgba(35, 104, 175, 0.1);
+  --hover-overlay: rgba(31, 42, 55, 0.07);
+  --selected-bg: rgba(35, 104, 175, 0.16);
+  --selected-ring: rgba(35, 104, 175, 0.26);
+  --accent-fill: rgba(35, 104, 175, 0.11);
+  --focus-ring: rgba(35, 104, 175, 0.2);
+  --focus-ring-soft: rgba(35, 104, 175, 0.15);
   --surface-gloss: rgba(255, 255, 255, 0.72);
   --surface-gloss-hover: rgba(255, 255, 255, 0.9);
-  --shell-gradient-start: rgba(203, 213, 225, 0.34);
-  --shell-gradient-end: rgba(238, 242, 247, 0);
-  --surface-subtle: rgba(215, 222, 232, 0.28);
-  --surface-subtle-strong: rgba(215, 222, 232, 0.36);
+  --shell-gradient-start: rgba(190, 207, 225, 0.38);
+  --shell-gradient-end: rgba(232, 238, 245, 0);
+  --surface-subtle: rgba(187, 202, 218, 0.24);
+  --surface-subtle-strong: rgba(187, 202, 218, 0.34);
   --surface-floating: rgba(255, 255, 255, 0.96);
   --surface-floating-strong: rgba(255, 255, 255, 0.98);
   --surface-topbar: rgba(255, 255, 255, 0.92);
   --surface-backdrop: rgba(15, 23, 42, 0.28);
-  --line-translucent: rgba(203, 213, 225, 0.82);
-  --line-translucent-strong: rgba(203, 213, 225, 0.9);
-  --spinner-track: rgba(37, 104, 184, 0.2);
-  --brand-border-soft: rgba(31, 138, 95, 0.44);
-  --brand-fill-soft: rgba(31, 138, 95, 0.08);
+  --line-translucent: rgba(190, 203, 217, 0.84);
+  --line-translucent-strong: rgba(190, 203, 217, 0.92);
+  --spinner-track: rgba(35, 104, 175, 0.22);
+  --brand-border-soft: rgba(24, 122, 83, 0.44);
+  --brand-fill-soft: rgba(24, 122, 83, 0.09);
   --shadow-menu: 0 18px 42px rgba(15, 23, 42, 0.16);
   --shadow-popover: 0 16px 42px rgba(15, 23, 42, 0.14);
   --shadow-popover-soft: 0 16px 42px rgba(15, 23, 42, 0.12);
   --shadow-dialog: 0 24px 80px rgba(15, 23, 42, 0.2);
   --shadow-tasklist: 0 18px 52px rgba(15, 23, 42, 0.18);
   --swatch-border: rgba(23, 32, 43, 0.16);
+  /* 静态 SVG 使用深蓝灰滤镜，避免浅色主题中仍呈现泛白图标。 */
+  --icon-filter: brightness(0) saturate(100%) invert(31%) sepia(15%) saturate(1252%) hue-rotate(174deg) brightness(90%) contrast(88%);
 
   color-scheme: light;
 }
