@@ -117,3 +117,17 @@ test("会话管理器锁定当前 Tab、排除镜像上下文并最终 Ctrl+C �
     /当前终端已有另一个 AI 会话正在执行命令，请等待完成后重试/,
   );
 });
+
+test("SSH 交互 Shell 会在提示符阶段上报实时目录", async () => {
+  const source = await readFile(
+    new URL("../../src/main/ssh/session-manager.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /function getShellPathIntegrationCommand/);
+  assert.match(source, /case "bash"/);
+  assert.match(source, /case "zsh"/);
+  assert.match(source, /PROMPT_COMMAND=/);
+  assert.match(source, /precmd_functions\+=\(__orbitssh_emit_cwd\)/);
+  assert.match(source, /实时终端路径同步已启用/);
+});
