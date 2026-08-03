@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.13
+
+1. Released a maintenance version.
+
 ## v1.1.12
 
 1. Fixed SFTP “Sync to Current Terminal Path” using only the initial SSH directory. Bash, zsh, and fish now report the current path whenever a prompt appears, so the file tree correctly follows directory changes.
