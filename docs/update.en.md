@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.12
+
+1. Fixed SFTP “Sync to Current Terminal Path” using only the initial SSH directory. Bash, zsh, and fish now report the current path whenever a prompt appears, so the file tree correctly follows directory changes.
+2. Added Windows startup diagnostics. Main-process module-load failures, uncaught exceptions, page-load failures, renderer-process exits, and child-process exits are recorded in the user directory to diagnose cases where the app opens with no visible window.
+
 ## v1.1.11
 
 1. Added local endpoints to File Transfer. The left side now opens the system user directory by default, while the right side selects the active server and its current SFTP path. Both sides can switch between Local and server endpoints, with local file/folder uploads and remote file downloads to the current local directory.

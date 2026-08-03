@@ -16,6 +16,7 @@ import { registerUpdateIpc } from "./ipc/update-ipc.js";
 import { registerAiIpc } from "./ipc/ai-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
+import { writeStartupDiagnostic } from "./startup-diagnostics.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
@@ -207,6 +208,7 @@ function registerMacApplicationMenu(mainWindow: BrowserWindow): void {
 // 创建主窗口，并统一约束 Renderer 的系统访问能力。
 function createMainWindow(): BrowserWindow {
   const preloadPath = path.join(__dirname, "../preload/index.cjs");
+  writeStartupDiagnostic("开始创建主窗口", { isDev, preloadPath });
   writeAppLog({
     scope: "main.window",
     message: "创建主窗口",
@@ -231,6 +233,29 @@ function createMainWindow(): BrowserWindow {
       sandbox: true,
     },
   });
+  writeStartupDiagnostic("主窗口创建成功");
+
+  mainWindow.webContents.on(
+    "render-process-gone",
+    (_event, details) => {
+      writeStartupDiagnostic("渲染进程退出", {
+        reason: details.reason,
+        exitCode: details.exitCode,
+      });
+    },
+  );
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) return;
+      writeStartupDiagnostic("主窗口页面加载失败", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+      });
+    },
+  );
 
   mainWindow.on("enter-full-screen", () => {
     mainWindow.webContents.send("window:fullscreen-changed", true);
@@ -293,6 +318,7 @@ if (!hasSingleInstanceLock) {
   app.on("second-instance", showMainWindow);
 
   app.whenReady().then(() => {
+    writeStartupDiagnostic("Electron 应用 ready");
     writeAppLog({
       scope: "main.app",
       message: "应用 ready",
@@ -313,8 +339,22 @@ if (!hasSingleInstanceLock) {
         showMainWindow();
       }
     });
+  }).catch(error => {
+    writeStartupDiagnostic("应用初始化失败", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
   });
 }
+
+app.on("child-process-gone", (_event, details) => {
+  writeStartupDiagnostic("子进程退出", {
+    type: details.type,
+    reason: details.reason,
+    exitCode: details.exitCode,
+    serviceName: details.serviceName,
+  });
+});
 
 app.on("before-quit", () => {
   isQuitting = true;

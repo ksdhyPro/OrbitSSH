@@ -63,6 +63,25 @@ const pathIntegrationInstallDelayMs = 120;
 const idleDisconnectCheckIntervalMs = 30_000;
 const maxTerminalOutputBufferChars = 12_000;
 
+/**
+ * 为支持的交互 Shell 注入临时提示符钩子，使用户 cd 后主动发送 OSC 7 路径。
+ * 钩子仅存在于当前 SSH Shell，不会修改远端的 Shell 配置文件。
+ */
+function getShellPathIntegrationCommand(shellPath: string): string | null {
+  const shellName = shellPath.trim().split("/").at(-1)?.toLowerCase();
+
+  switch (shellName) {
+    case "bash":
+      return "__orbitssh_emit_cwd() { printf '\\033]7;file://%s\\007' \"$PWD\"; }; PROMPT_COMMAND=\"__orbitssh_emit_cwd${PROMPT_COMMAND:+;${PROMPT_COMMAND}}\"\r";
+    case "zsh":
+      return "function __orbitssh_emit_cwd() { printf '\\033]7;file://%s\\007' \"$PWD\"; }; precmd_functions+=(__orbitssh_emit_cwd)\r";
+    case "fish":
+      return "function __orbitssh_emit_cwd --on-variable PWD; printf '\\033]7;file://%s\\007' \"$PWD\"; end\r";
+    default:
+      return null;
+  }
+}
+
 function appendTerminalOutput(session: TerminalSession, chunk: string): void {
   session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(
     -maxTerminalOutputBufferChars,
@@ -358,6 +377,46 @@ function installShellPathIntegration(session: SshTerminalSession): void {
           scope: "main.ssh",
           level: "warn",
           message: "初始化终端路径同步失败",
+          data: {
+            tabId: session.tabId,
+            serverId: session.serverId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
+
+    // 通过登录 Shell 判断钩子语法，避免向不兼容的交互终端写入命令。
+    void executeSshTextCommand(session.sshClient, 'printf "%s" "$SHELL"', 3000)
+      .then(shellPath => {
+        if (!isCurrentTerminalSession(session) || !session.shellStream) {
+          return;
+        }
+
+        const command = getShellPathIntegrationCommand(shellPath);
+
+        if (!command) {
+          writeAppLog({
+            scope: "main.ssh",
+            level: "warn",
+            message: "当前 Shell 不支持实时终端路径同步",
+            data: { tabId: session.tabId, serverId: session.serverId, shellPath },
+          });
+          return;
+        }
+
+        // 写入交互 Shell 后，每次提示符出现都会上报当前目录。
+        session.shellStream.write(Buffer.from(command, "utf8"));
+        writeAppLog({
+          scope: "main.ssh",
+          message: "实时终端路径同步已启用",
+          data: { tabId: session.tabId, serverId: session.serverId, shellPath },
+        });
+      })
+      .catch(error => {
+        writeAppLog({
+          scope: "main.ssh",
+          level: "warn",
+          message: "实时终端路径同步初始化失败",
           data: {
             tabId: session.tabId,
             serverId: session.serverId,
