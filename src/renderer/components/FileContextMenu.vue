@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import arrowDownIcon from "../assets/icons/arrow-down.svg";
-import arrowUpIcon from "../assets/icons/arrow-up.svg";
-import editIcon from "../assets/icons/edit.svg";
-import fileIcon from "../assets/icons/file.svg";
-import folderIcon from "../assets/icons/folder.svg";
+import downloadIcon from "../assets/icons/download.svg";
+import fileAddIcon from "../assets/icons/file-add.svg";
+import fileEditIcon from "../assets/icons/file-edit.svg";
+import fileUploadIcon from "../assets/icons/file-upload.svg";
+import folderAddIcon from "../assets/icons/folder-add.svg";
+import folderUploadIcon from "../assets/icons/folder-upload.svg";
+import previewIcon from "../assets/icons/preview.svg";
+import renameIcon from "../assets/icons/rename.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
 import type { ContextMenuItem } from "../types/context-menu";
@@ -38,12 +41,14 @@ const menuItems = computed<ContextMenuItem[]>(() => {
   const uploadFileItem = {
     key: "upload-file",
     label: "上传文件",
-    icon: arrowUpIcon,
+    icon: fileUploadIcon,
+    group: "upload",
   };
   const uploadDirectoryItem = {
     key: "upload-directory",
     label: "上传文件夹",
-    icon: arrowUpIcon,
+    icon: folderUploadIcon,
+    group: "upload",
   };
 
   // 右键目标属于多选选区时，菜单执行批量操作；右键未选中项时不影响既有选区。
@@ -55,6 +60,7 @@ const menuItems = computed<ContextMenuItem[]>(() => {
         key: "delete",
         label: `删除 ${count} 项`,
         icon: trashIcon,
+        group: "manage",
         danger: true,
       },
     ];
@@ -66,12 +72,14 @@ const menuItems = computed<ContextMenuItem[]>(() => {
           {
             key: "new-file",
             label: "新建文件",
-            icon: fileIcon,
+            icon: fileAddIcon,
+            group: "create",
           },
           {
             key: "new-directory",
             label: "新建文件夹",
-            icon: folderIcon,
+            icon: folderAddIcon,
+            group: "create",
           },
         ]
       : [];
@@ -84,13 +92,15 @@ const menuItems = computed<ContextMenuItem[]>(() => {
       {
         key: "rename",
         label: "重命名",
-        icon: editIcon,
+        icon: renameIcon,
+        group: "manage",
         disabled: !props.canDeleteRemoteNode(node),
       },
       {
         key: "delete",
         label: "删除",
         icon: trashIcon,
+        group: "manage",
         disabled: !props.canDeleteRemoteNode(node),
         danger: true,
       },
@@ -101,12 +111,14 @@ const menuItems = computed<ContextMenuItem[]>(() => {
     ? {
         key: "preview",
         label: "预览",
-        icon: fileIcon,
+        icon: previewIcon,
+        group: "open",
       }
     : {
         key: "edit",
         label: props.getFileEditMenuLabel(node),
-        icon: editIcon,
+        icon: fileEditIcon,
+        group: "open",
         disabled: !props.isEditableTextFile(node),
       };
 
@@ -118,19 +130,22 @@ const menuItems = computed<ContextMenuItem[]>(() => {
     {
       key: "download",
       label: "下载",
-      icon: arrowDownIcon,
+      icon: downloadIcon,
+      group: "open",
       disabled: !props.canDownloadRemoteFile(node),
     },
     {
       key: "rename",
       label: "重命名",
-      icon: editIcon,
+      icon: renameIcon,
+      group: "manage",
       disabled: !props.canDeleteRemoteNode(node),
     },
     {
       key: "delete",
       label: "删除",
       icon: trashIcon,
+      group: "manage",
       disabled: !props.canDeleteRemoteNode(node),
       danger: true,
     },

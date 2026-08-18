@@ -34,10 +34,10 @@ interface ThemePalette {
 const themePalettes: Record<AppThemeMode, ThemePalette> = {
   dark: {
     terminal: {
-      background: "#0b0f14",
+      background: "#101112",
       foreground: "#d8e2f0",
       cursor: "#ffffff",
-      black: "#0b0f14",
+      black: "#101112",
       red: "#ff6b6b",
       green: "#89dcae",
       yellow: "#f0b44c",
@@ -69,7 +69,7 @@ const themePalettes: Record<AppThemeMode, ThemePalette> = {
       gutterBackground: "#0b0f14",
       gutterBorder: "#202633",
       gutterForeground: "#59677b",
-      activeLineBackground: "rgba(111, 182, 255, 0.08)",
+      activeLineBackground: "rgba(255, 255, 255, 0.055)",
       activeLineForeground: "#9fb3cc",
       searchMatchBackground: "#324152",
       searchMatchBorder: "#52637a",
@@ -79,50 +79,70 @@ const themePalettes: Record<AppThemeMode, ThemePalette> = {
   },
   light: {
     terminal: {
-      background: "#f4f7fb",
-      foreground: "#1f2a37",
-      cursor: "#1f2a37",
-      black: "#1f2a37",
-      red: "#c43c32",
-      green: "#16794f",
-      yellow: "#a66a00",
-      blue: "#2568b8",
-      magenta: "#8a4ca3",
-      cyan: "#197d78",
-      white: "#e8eef5",
-      brightBlack: "#687b90",
-      brightRed: "#e05248",
-      brightGreen: "#219464",
-      brightYellow: "#c98500",
-      brightBlue: "#347dd1",
-      brightMagenta: "#a45fbd",
-      brightCyan: "#229b93",
+      background: "#faf9f6",
+      foreground: "#242426",
+      cursor: "#1c1c1e",
+      black: "#1c1c1e",
+      red: "#c9342f",
+      green: "#248a3d",
+      yellow: "#946200",
+      blue: "#2968b0",
+      magenta: "#8944ab",
+      cyan: "#087e8b",
+      white: "#e5e5ea",
+      brightBlack: "#6e6e73",
+      brightRed: "#dc4c45",
+      brightGreen: "#2f9b49",
+      brightYellow: "#ad7400",
+      brightBlue: "#3478c5",
+      brightMagenta: "#9c55ba",
+      brightCyan: "#15909e",
       brightWhite: "#ffffff",
     },
     terminalSearchDecorations: {
-      matchBackground: "#d8e7f8",
-      matchBorder: "#93b7e0",
-      matchOverviewRuler: "#93b7e0",
-      activeMatchBackground: "#ffe3a3",
-      activeMatchBorder: "#c98500",
-      activeMatchColorOverviewRuler: "#c98500",
+      matchBackground: "rgba(255, 214, 10, 0.28)",
+      matchBorder: "rgba(148, 98, 0, 0.48)",
+      matchOverviewRuler: "#ad7400",
+      activeMatchBackground: "rgba(255, 159, 10, 0.38)",
+      activeMatchBorder: "#ad6400",
+      activeMatchColorOverviewRuler: "#ad6400",
     },
     editor: {
-      background: "#f4f7fb",
-      foreground: "#1f2a37",
-      cursor: "#1f2a37",
-      gutterBackground: "#f4f7fb",
-      gutterBorder: "#c8d4e1",
-      gutterForeground: "#687b90",
-      activeLineBackground: "rgba(35, 104, 175, 0.09)",
-      activeLineForeground: "#36516d",
-      searchMatchBackground: "#d8e7f8",
-      searchMatchBorder: "#93b7e0",
-      activeSearchMatchBackground: "#ffe3a3",
-      activeSearchMatchBorder: "#c98500",
+      background: "#ffffff",
+      foreground: "#242426",
+      cursor: "#1c1c1e",
+      gutterBackground: "#f7f7f8",
+      gutterBorder: "#d9d9de",
+      gutterForeground: "#8e8e93",
+      activeLineBackground: "rgba(60, 60, 67, 0.055)",
+      activeLineForeground: "#48484a",
+      searchMatchBackground: "rgba(255, 214, 10, 0.28)",
+      searchMatchBorder: "rgba(148, 98, 0, 0.48)",
+      activeSearchMatchBackground: "rgba(255, 159, 10, 0.38)",
+      activeSearchMatchBorder: "#ad6400",
     },
   },
 };
+
+// 深色设置中的高饱和选区色在白底上过重，浅色模式统一降低为半透明覆盖层。
+export function getThemeSelectionBackground(
+  themeMode: AppThemeMode,
+  selectionBackground: string,
+): string {
+  if (themeMode === "dark") {
+    return selectionBackground;
+  }
+
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(
+    selectionBackground,
+  );
+  if (!match) {
+    return "rgba(99, 99, 102, 0.2)";
+  }
+
+  const [, red, green, blue] = match;
+  return `rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt(blue, 16)}, 0.2)`;
+}
 
 export function getTerminalTheme(
   themeMode: AppThemeMode,
@@ -131,7 +151,7 @@ export function getTerminalTheme(
   // xterm 的 Canvas 渲染器需要显式 ANSI 16 色，否则部分远端输出会丢失颜色。
   return {
     ...themePalettes[themeMode].terminal,
-    selectionBackground,
+    selectionBackground: getThemeSelectionBackground(themeMode, selectionBackground),
   };
 }
 

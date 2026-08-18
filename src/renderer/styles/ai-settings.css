@@ -1,0 +1,92 @@
+.ai-config-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.ai-config-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ai-config-form-tip {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ai-config-form-tip.is-error {
+  color: var(--danger);
+}
+
+.ai-config-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.settings-toggle input {
+  position: relative;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 22px;
+  appearance: none;
+  border: 1px solid var(--border-input);
+  border-radius: 999px;
+  padding: 0;
+  background: var(--bg-elevated-3);
+  box-shadow: none;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.settings-toggle input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  content: "";
+  transition:
+    background-color 140ms ease,
+    transform 140ms ease;
+}
+
+.settings-toggle input:checked {
+  border-color: var(--brand);
+  background: var(--brand);
+}
+
+.settings-toggle input:checked::after {
+  background: var(--brand-ink);
+  transform: translateX(16px);
+}
+
+.settings-toggle input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring-soft);
+}
+
+.ai-mode-setting {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 200px;
+}

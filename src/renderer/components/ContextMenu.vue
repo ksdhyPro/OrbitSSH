@@ -3,7 +3,7 @@ import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import type { FloatingMenuCloseReason } from "../utils/floating-menu";
 import FloatingMenu from "./FloatingMenu.vue";
 
-defineProps<{
+const props = defineProps<{
   menu: ContextMenuState;
   items: ContextMenuItem[];
 }>();
@@ -21,6 +21,17 @@ function selectMenuItem(item: ContextMenuItem): void {
 
   emit("select", item);
 }
+
+// 相邻操作属于不同语义组时自动绘制分隔线，调用方无需维护额外占位项。
+function shouldSeparateItem(index: number): boolean {
+  if (index <= 0) {
+    return false;
+  }
+
+  const currentGroup = props.items[index]?.group;
+  const previousGroup = props.items[index - 1]?.group;
+  return Boolean(currentGroup && previousGroup && currentGroup !== previousGroup);
+}
 </script>
 
 <template>
@@ -33,15 +44,22 @@ function selectMenuItem(item: ContextMenuItem): void {
     prevent-context-menu
     @close="emit('close', $event)">
     <button
-      v-for="item in items"
+      v-for="(item, index) in items"
       :key="item.key"
       type="button"
       tabindex="-1"
       role="menuitem"
       :disabled="item.disabled"
-      :class="{ disabled: item.disabled, danger: item.danger, 'has-desc': item.desc }"
+      :class="{
+        disabled: item.disabled,
+        danger: item.danger,
+        'has-desc': item.desc,
+        'separator-before': shouldSeparateItem(index),
+      }"
       @click="selectMenuItem(item)">
-      <img v-if="item.icon" :src="item.icon" alt="" />
+      <span v-if="item.icon" class="menu-item-icon" aria-hidden="true">
+        <img :src="item.icon" alt="" />
+      </span>
       <span class="menu-item-text">
         <span class="menu-item-label">{{ item.label }}</span>
         <small v-if="item.desc">{{ item.desc }}</small>

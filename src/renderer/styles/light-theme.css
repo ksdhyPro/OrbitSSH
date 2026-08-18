@@ -1,0 +1,182 @@
+/* ===== 浅色主题精修 =====
+ * 浅色界面依靠细边界和灰阶明度建立层级，避免沿用暗色主题的高光渐变与重阴影。
+ */
+:root[data-theme="light"] .sidebar,
+:root[data-theme="light"] .sidebar-resizer,
+:root[data-theme="light"] .ai-panel-resizer,
+:root[data-theme="light"] .ai-panel {
+  background: #f3f3f0;
+}
+
+:root[data-theme="light"] .sidebar-resizer::before,
+:root[data-theme="light"] .ai-panel-resizer::before,
+:root[data-theme="light"] .ai-panel,
+:root[data-theme="light"] .ai-panel-header,
+:root[data-theme="light"] .session-tabs,
+:root[data-theme="light"] .status-bar {
+  border-color: rgba(42, 42, 38, 0.12);
+}
+
+/* 服务器与文件选中态保持扁平，避免出现凸起按钮的视觉错觉。 */
+:root[data-theme="light"] .server-item.active,
+:root[data-theme="light"] .server-item.active:hover,
+:root[data-theme="light"] .file-node.selected,
+:root[data-theme="light"] .file-node.selected:hover {
+  background: #e9e9e6;
+  box-shadow: inset 0 0 0 1px rgba(42, 42, 38, 0.07);
+}
+
+:root[data-theme="light"] .server-item.active .server-meta > span {
+  color: rgba(61, 61, 56, 0.66);
+}
+
+/* 活动标签使用同一灰阶填充，不再表现为悬浮白色胶囊。 */
+:root[data-theme="light"] .session-tab.active {
+  border-color: rgba(42, 42, 38, 0.08);
+  background: #e9e9e6;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .session-tab:hover:not(.active) {
+  background: rgba(42, 42, 38, 0.045);
+}
+
+/* 文件名与元信息在浅色背景上适度加深，保留主次层级但不发虚。 */
+:root[data-theme="light"] .remote-file-name,
+:root[data-theme="light"] .file-name {
+  color: rgba(38, 38, 35, 0.74);
+}
+
+:root[data-theme="light"] .file-node small,
+:root[data-theme="light"] .file-meta,
+:root[data-theme="light"] .file-list-header {
+  color: rgba(61, 61, 56, 0.5);
+}
+
+:root[data-theme="light"] .file-list-header {
+  border-top-color: rgba(42, 42, 38, 0.12);
+  border-bottom-color: rgba(42, 42, 38, 0.09);
+}
+
+/* AI 空状态采用更明确的正文和卡片边界，避免大面积灰白区域失去焦点。 */
+:root[data-theme="light"] .ai-message-list > .ai-empty:only-child {
+  color: rgba(61, 61, 56, 0.62);
+}
+
+:root[data-theme="light"] .ai-message-list > .ai-empty:only-child::before {
+  background: rgba(42, 42, 38, 0.09);
+  color: rgba(38, 38, 35, 0.74);
+}
+
+:root[data-theme="light"] .ai-prompt-suggestions button {
+  border-color: rgba(42, 42, 38, 0.12);
+  background: rgba(255, 254, 253, 0.72);
+  color: rgba(38, 38, 35, 0.7);
+}
+
+:root[data-theme="light"] .ai-prompt-suggestions button::after {
+  color: rgba(61, 61, 56, 0.46);
+}
+
+:root[data-theme="light"] .ai-prompt-suggestions button:hover:not(:disabled) {
+  border-color: rgba(42, 42, 38, 0.18);
+  background: rgba(42, 42, 38, 0.07);
+}
+
+:root[data-theme="light"] .ai-compose {
+  border-color: rgba(42, 42, 38, 0.15);
+  background: #fffefd;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="light"] .ai-compose:focus-within {
+  border-color: rgba(42, 42, 38, 0.32);
+  box-shadow: 0 0 0 3px rgba(116, 116, 111, 0.12);
+}
+
+/* 状态栏从终端中清晰分层，并确保资源数据在浅色模式下可读。 */
+:root[data-theme="light"] .status-bar {
+  background: #f8f8f6;
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .status-bar-item {
+  color: rgba(61, 61, 56, 0.52);
+}
+
+:root[data-theme="light"] .status-bar-label,
+:root[data-theme="light"] .status-bar-os,
+:root[data-theme="light"] .status-bar-value small {
+  color: rgba(61, 61, 56, 0.58);
+}
+
+:root[data-theme="light"] .status-bar-value {
+  color: rgba(38, 38, 35, 0.8);
+}
+
+/* 设置弹窗使用独立的浅色层级，避免标题栏、侧栏和内容区融成一片。 */
+:root[data-theme="light"] .app-dialog-backdrop {
+  background: rgba(38, 38, 35, 0.1);
+  backdrop-filter: blur(8px) saturate(104%);
+}
+
+:root[data-theme="light"] .app-dialog {
+  border-color: rgba(42, 42, 38, 0.16);
+  background: #f7f7f5;
+  box-shadow: 0 22px 64px rgba(0, 0, 0, 0.16);
+}
+
+:root[data-theme="light"] .app-dialog-header {
+  border-bottom-color: rgba(42, 42, 38, 0.11);
+  background: rgba(255, 254, 253, 0.78);
+}
+
+:root[data-theme="light"] .settings-nav {
+  border-right-color: rgba(42, 42, 38, 0.11);
+  background: #f1f1ee;
+}
+
+:root[data-theme="light"] .settings-nav-item {
+  color: rgba(61, 61, 56, 0.66);
+}
+
+:root[data-theme="light"] .settings-nav-item.active,
+:root[data-theme="light"] .settings-nav-item.active:hover {
+  background: #e9e9e6;
+  color: rgba(38, 38, 35, 0.88);
+  box-shadow: none;
+}
+
+/* 仅主操作与已启用状态使用 Codex 式陶土橙，导航选中仍维持暖灰。 */
+:root[data-theme="light"] .theme-mode-option.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .settings-primary-button:hover:not(:disabled) {
+  border-color: var(--brand);
+}
+
+:root[data-theme="light"] .settings-content {
+  background: #fbfbf9;
+}
+
+:root[data-theme="light"] .settings-field {
+  border-bottom-color: rgba(42, 42, 38, 0.1);
+  background: #fffefd;
+}
+
+:root[data-theme="light"] .app-dialog-header p,
+:root[data-theme="light"] .settings-field p,
+:root[data-theme="light"] .shortcut-section-header p {
+  color: rgba(61, 61, 56, 0.56);
+}
+
+:root[data-theme="light"] .shortcut-key {
+  border-color: rgba(42, 42, 38, 0.16);
+  background: #f5f5f2;
+  color: rgba(38, 38, 35, 0.86);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.025);
+}

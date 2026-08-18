@@ -89,6 +89,15 @@ const isSftpDisconnected = computed(() =>
       props.activeTab?.status === "error",
   ),
 );
+
+const hasSftpError = computed(() => Boolean(props.activeSftpTree?.error));
+
+// 原始错误保留在悬浮提示中，界面正文使用简洁、可理解的状态文案。
+const remoteFileEmptyText = computed(() => {
+  if (isSftpDisconnected.value) return "SFTP 已断开";
+  if (hasSftpError.value) return "SFTP 文件会话不可用";
+  return "当前目录为空";
+});
 </script>
 
 <template>
@@ -113,11 +122,12 @@ const isSftpDisconnected = computed(() =>
     <div class="file-path-row">
       <input
         :value="filePathInput"
-        class="file-path-input"
+        :class="['file-path-input', { error: hasSftpError }]"
         type="text"
         spellcheck="false"
         :disabled="!activeTab || !activeSftpTree || isSftpDisconnected"
-        :placeholder="filePanelHint"
+        :placeholder="hasSftpError ? 'SFTP 文件会话不可用' : filePanelHint"
+        :title="activeSftpTree?.error || filePathInput"
         aria-label="远程路径"
         @input="
           emit('update:filePathInput', ($event.target as HTMLInputElement).value)
@@ -143,13 +153,22 @@ const isSftpDisconnected = computed(() =>
       </button>
     </div>
 
+    <div
+      v-if="visibleFileTree.length > 0"
+      class="file-list-header"
+      aria-hidden="true">
+      <span>名称</span>
+      <span>大小/类型</span>
+      <span>修改时间</span>
+    </div>
+
     <RemoteFileList
       :element-ref="fileTreeElementRef"
       :nodes="visibleFileTree as RemoteFileListNode[]"
       list-class="file-tree"
       row-class="file-node"
       aria-label="远程文件列表"
-      :empty-text="isSftpDisconnected ? 'SFTP 已断开' : '当前目录为空'"
+      :empty-text="remoteFileEmptyText"
       :selected-paths="activeSftpTree?.selectedPaths ?? new Set<string>()"
       :deleting-paths="activeSftpTree?.deletingPaths ?? new Set<string>()"
       :drop-target-path="fileDragTargetPath"

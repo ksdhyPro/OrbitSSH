@@ -91,6 +91,12 @@ const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
   { value: "full", label: "完全访问", icon: aiFullIcon },
 ];
 
+const promptSuggestions = [
+  "检查当前服务器运行状态",
+  "分析磁盘空间使用情况",
+  "查看最近的系统错误日志",
+];
+
 const modeMenu = reactive({
   open: false,
   x: 0,
@@ -472,6 +478,12 @@ let scrollFrameId = 0;
 let focusFrameId = 0;
 let compositionFrameId = 0;
 
+async function applyPromptSuggestion(prompt: string): Promise<void> {
+  // 快捷提问仅填入输入框，保留用户确认和修改内容的机会。
+  emit("updateInputText", prompt);
+  await scheduleFocusComposeInput();
+}
+
 function isNearMessageBottom(): boolean {
   const el = messageListEl.value;
   if (!el) return true;
@@ -748,8 +760,21 @@ function formatDuration(durationMs: number): string {
         <div v-if="!enabled" class="ai-empty">
           请先在设置中启用 AI 后再使用所选 AI 服务。常见诊断仍会提供本地建议。
         </div>
-        <div v-else-if="messages.length === 0" class="ai-empty">
-          可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。请注意AI回复具有不确定性，请谨慎执行命令。
+        <div v-else-if="messages.length === 0" class="ai-empty ai-welcome">
+          <p>
+            可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。
+            请谨慎核对 AI 给出的操作建议。
+          </p>
+          <div class="ai-prompt-suggestions">
+            <button
+              v-for="prompt in promptSuggestions"
+              :key="prompt"
+              type="button"
+              :disabled="isSending"
+              @click="applyPromptSuggestion(prompt)">
+              {{ prompt }}
+            </button>
+          </div>
         </div>
         <div
           v-else-if="shouldSuggestNewConversation"

@@ -1456,7 +1456,9 @@ onUnmounted(() => {
 <template>
   <AppDialog title="文件传输" width="large" @close="emit('close')">
     <div class="data-transfer-dialog">
-      <section class="transfer-pane" @click="focusedPane = 'left'">
+      <section
+        :class="['transfer-pane', { focused: focusedPane === 'left' }]"
+        @click="focusedPane = 'left'">
         <header class="transfer-pane-header">
           <strong>左侧</strong>
           <AppSelect
@@ -1483,7 +1485,9 @@ onUnmounted(() => {
           class="transfer-file-list"
           @contextmenu="openBlankTransferContextMenu($event, 'left')"
         >
-          <div v-if="leftPane.loading" class="transfer-state">加载中...</div>
+          <div v-if="leftPane.loading" class="transfer-state loading">
+            加载中...
+          </div>
           <div v-else-if="leftPane.error" class="transfer-state error">
             {{ leftPane.error }}
           </div>
@@ -1523,7 +1527,9 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <section class="transfer-pane" @click="focusedPane = 'right'">
+      <section
+        :class="['transfer-pane', { focused: focusedPane === 'right' }]"
+        @click="focusedPane = 'right'">
         <header class="transfer-pane-header">
           <strong>右侧</strong>
           <AppSelect
@@ -1550,7 +1556,9 @@ onUnmounted(() => {
           class="transfer-file-list"
           @contextmenu="openBlankTransferContextMenu($event, 'right')"
         >
-          <div v-if="rightPane.loading" class="transfer-state">加载中...</div>
+          <div v-if="rightPane.loading" class="transfer-state loading">
+            加载中...
+          </div>
           <div v-else-if="rightPane.error" class="transfer-state error">
             {{ rightPane.error }}
           </div>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import arrowUpIcon from "../assets/icons/arrow-up.svg";
-import fileIcon from "../assets/icons/file.svg";
-import folderIcon from "../assets/icons/folder.svg";
+import fileAddIcon from "../assets/icons/file-add.svg";
+import fileUploadIcon from "../assets/icons/file-upload.svg";
+import folderAddIcon from "../assets/icons/folder-add.svg";
+import folderUploadIcon from "../assets/icons/folder-upload.svg";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { BlankContextMenuState } from "../types/sftp";
 import ContextMenu from "./ContextMenu.vue";
@@ -21,22 +22,26 @@ const menuItems = computed<ContextMenuItem[]>(() => [
   {
     key: "new-file",
     label: "新建文件",
-    icon: fileIcon,
+    icon: fileAddIcon,
+    group: "create",
   },
   {
     key: "new-directory",
     label: "新建文件夹",
-    icon: folderIcon,
+    icon: folderAddIcon,
+    group: "create",
   },
   {
     key: "upload-file",
     label: "上传文件",
-    icon: arrowUpIcon,
+    icon: fileUploadIcon,
+    group: "upload",
   },
   {
     key: "upload-directory",
     label: "上传文件夹",
-    icon: arrowUpIcon,
+    icon: folderUploadIcon,
+    group: "upload",
   },
 ]);
 

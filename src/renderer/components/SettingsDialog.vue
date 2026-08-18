@@ -9,6 +9,7 @@ import type {
   CodexReasoningEffort,
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
+import arrowLeftIcon from "../assets/icons/arrow-left.svg";
 import AppDialog from "./AppDialog.vue";
 import NumberStepper from "./NumberStepper.vue";
 
@@ -219,7 +220,8 @@ async function detectLocalCodex(): Promise<void> {
       : result.error || "未检测到本地 Codex CLI。";
   } catch (error) {
     codexDetection.value = { available: false };
-    aiConfigMessage.value = error instanceof Error ? error.message : String(error);
+    aiConfigMessage.value =
+      error instanceof Error ? error.message : String(error);
   } finally {
     isDetectingCodex.value = false;
   }
@@ -372,14 +374,20 @@ function removeAiConfig(configId: string): void {
 </script>
 
 <template>
-  <AppDialog
-    v-if="open"
-    title="设置"
-    description="调整应用偏好。"
-    width="large"
-    @close="emit('close')">
+  <Teleport to="body">
+    <section
+      v-if="open"
+      class="settings-page"
+      role="dialog"
+      aria-modal="true"
+      aria-label="设置">
     <div class="settings-layout">
       <aside class="settings-nav" aria-label="设置分类">
+        <button type="button" class="settings-back" @click="emit('close')">
+          <img :src="arrowLeftIcon" alt="" />
+          返回应用
+        </button>
+        <p class="settings-nav-label">偏好设置</p>
         <button
           type="button"
           :class="[
@@ -412,10 +420,12 @@ function removeAiConfig(configId: string): void {
       <section
         v-if="activeSettingsSection === 'general'"
         class="settings-content">
+        <header class="settings-content-heading">
+          <h1>通用</h1>
+        </header>
         <div class="settings-field">
           <div>
             <h3>主题</h3>
-            <p>切换深色或浅色外观。</p>
           </div>
           <div class="theme-mode-control" aria-label="主题">
             <button
@@ -442,7 +452,6 @@ function removeAiConfig(configId: string): void {
         <div class="settings-field">
           <div>
             <h3>终端字体大小</h3>
-            <p>控制当前和后续终端的字体大小。</p>
           </div>
           <div class="stepper-control">
             <button
@@ -462,7 +471,6 @@ function removeAiConfig(configId: string): void {
         <div class="settings-field">
           <div>
             <h3>终端行高</h3>
-            <p>调整终端行之间的垂直间距。</p>
           </div>
           <div class="stepper-control">
             <button
@@ -482,7 +490,6 @@ function removeAiConfig(configId: string): void {
         <div class="settings-field">
           <div>
             <h3>选区颜色</h3>
-            <p>选择终端文本选区的背景颜色。</p>
           </div>
           <div class="color-select">
             <button
@@ -554,10 +561,12 @@ function removeAiConfig(configId: string): void {
       <section
         v-else-if="activeSettingsSection === 'ai'"
         class="settings-content">
+        <header class="settings-content-heading">
+          <h1>AI</h1>
+        </header>
         <div class="settings-field">
           <div>
             <h3>启用 AI</h3>
-            <p>在 AI 助手面板中启用在线模型回答能力。</p>
           </div>
           <label class="settings-toggle">
             <input
@@ -576,7 +585,7 @@ function removeAiConfig(configId: string): void {
 
         <div class="settings-field">
           <div>
-          <h3>模型配置</h3>
+            <h3>模型配置</h3>
             <p>{{ aiConfigSummary }}</p>
           </div>
           <button
@@ -590,7 +599,7 @@ function removeAiConfig(configId: string): void {
         <div class="settings-field">
           <div>
             <h3>发送最近终端输出</h3>
-            <p>开启后会先脱敏，再把最近终端输出发送给所选在线模型。</p>
+            <p>发送前自动脱敏。</p>
           </div>
           <label class="settings-toggle">
             <input
@@ -603,14 +612,15 @@ function removeAiConfig(configId: string): void {
                   ($event.target as HTMLInputElement).checked,
                 )
               " />
-            <span>{{ appSettings.ai.shareTerminalContext ? "开启" : "关闭" }}</span>
+            <span>{{
+              appSettings.ai.shareTerminalContext ? "开启" : "关闭"
+            }}</span>
           </label>
         </div>
 
         <div class="settings-field">
           <div>
             <h3>默认模式</h3>
-            <p>AI 助手启动时默认使用的权限模式。</p>
           </div>
           <div class="theme-mode-control ai-mode-setting">
             <button
@@ -631,13 +641,15 @@ function removeAiConfig(configId: string): void {
       <section
         v-else-if="activeSettingsSection === 'shortcuts'"
         class="settings-content">
+        <header class="settings-content-heading">
+          <h1>快捷键</h1>
+        </header>
         <div
           v-for="section in shortcutSections"
           :key="section.id"
           class="shortcut-section">
           <header class="shortcut-section-header">
             <h3>{{ section.title }}</h3>
-            <p>{{ section.description }}</p>
           </header>
 
           <div
@@ -646,7 +658,6 @@ function removeAiConfig(configId: string): void {
             class="settings-field shortcut-field">
             <div>
               <h4>{{ shortcut.title }}</h4>
-              <p>{{ shortcut.description }}</p>
             </div>
             <div class="shortcut-key-group">
               <kbd v-for="key in shortcut.keys" :key="key" class="shortcut-key">
@@ -657,12 +668,12 @@ function removeAiConfig(configId: string): void {
         </div>
       </section>
     </div>
-  </AppDialog>
+    </section>
+  </Teleport>
 
   <AppDialog
     v-if="isAiConfigDialogOpen"
     title="模型配置"
-    description="管理在线模型与本地 Codex 交接配置。"
     width="large"
     @close="closeAiConfigDialog">
     <div class="ai-config-dialog">
@@ -688,9 +699,7 @@ function removeAiConfig(configId: string): void {
       <div
         v-if="codexDetection?.available || aiConfigMessage"
         class="ai-config-status">
-        <div
-          v-if="codexDetection?.available"
-          class="ai-config-form-tip">
+        <div v-if="codexDetection?.available" class="ai-config-form-tip">
           已发现：{{ codexDetection.executablePath }}
           <button
             type="button"
@@ -729,9 +738,15 @@ function removeAiConfig(configId: string): void {
                   config.id === appSettings.ai.activeConfigId,
               }">
               <td>
-                {{ config.spec === "codex-cli" ? `Codex · ${config.model}` : config.model }}
+                {{
+                  config.spec === "codex-cli"
+                    ? `Codex · ${config.model}`
+                    : config.model
+                }}
               </td>
-              <td>{{ config.spec === "codex-cli" ? "Codex 交接" : "OpenAI 兼容" }}</td>
+              <td>
+                {{ config.spec === "codex-cli" ? "Codex 交接" : "OpenAI 兼容" }}
+              </td>
               <td>
                 {{
                   config.spec === "codex-cli"
@@ -780,7 +795,6 @@ function removeAiConfig(configId: string): void {
   <AppDialog
     v-if="isCodexConfigFormDialogOpen"
     title="配置 Codex 交接"
-    description="选择模型和思考强度后，添加到 AI 对话模型下拉。"
     width="medium"
     @close="isCodexConfigFormDialogOpen = false">
     <form class="ai-config-form" @submit.prevent="addDetectedCodexCli">
@@ -797,7 +811,10 @@ function removeAiConfig(configId: string): void {
           list="codex-model-options"
           placeholder="留空使用默认模型" />
         <datalist id="codex-model-options">
-          <option v-for="model in codexModelOptions" :key="model" :value="model" />
+          <option
+            v-for="model in codexModelOptions"
+            :key="model"
+            :value="model" />
         </datalist>
       </label>
 
@@ -831,9 +848,6 @@ function removeAiConfig(configId: string): void {
   <AppDialog
     v-if="isAiConfigFormDialogOpen"
     :title="aiConfigFormDialogTitle"
-    :description="
-      isEditingAiConfig ? '修改当前模型配置。' : '添加一个 OpenAI 兼容模型。'
-    "
     width="medium"
     @close="closeAiConfigFormDialog">
     <form class="ai-config-form" @submit.prevent="saveAiConfigForm">

@@ -11,6 +11,7 @@ defineProps<{
   isServerListLoading: boolean;
   listError: string;
   hasServers: boolean;
+  activeServerId: string;
 }>();
 
 const emit = defineEmits<{
@@ -52,8 +53,12 @@ const emit = defineEmits<{
       <article
         v-for="server in servers"
         :key="server.id"
-        class="server-item"
-        @click="emit('openServerTerminal', server)">
+        :class="['server-item', { active: server.id === activeServerId }]"
+        role="button"
+        tabindex="0"
+        :aria-current="server.id === activeServerId ? 'page' : undefined"
+        @click="emit('openServerTerminal', server)"
+        @keydown.enter.prevent="emit('openServerTerminal', server)">
         <div class="server-meta">
           <div class="server-title">
             <span

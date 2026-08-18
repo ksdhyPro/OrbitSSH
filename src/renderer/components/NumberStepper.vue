@@ -141,7 +141,7 @@ function onKeydown(event: KeyboardEvent): void {
   height: 34px;
   min-width: 0;
   border: 1px solid var(--border-input);
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 0 10px;
   outline: none;
   background: var(--bg-input);
@@ -153,6 +153,6 @@ function onKeydown(event: KeyboardEvent): void {
 
 .number-stepper .stepper-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(75, 143, 216, 0.18);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 </style>

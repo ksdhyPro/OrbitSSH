@@ -600,6 +600,7 @@ onUnmounted(() => {
           :is-server-list-loading="isServerListLoading"
           :list-error="listError"
           :has-servers="hasServers"
+          :active-server-id="activeTab?.serverId ?? ''"
           @open-connection-dialog="openConnectionDialog"
           @open-server-terminal="openServerTerminal"
           @edit-server="editServer"

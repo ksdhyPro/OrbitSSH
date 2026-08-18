@@ -3,5 +3,7 @@
 @import "./styles/remote-files.css";
 @import "./styles/terminal.css";
 @import "./styles/dialogs.css";
+@import "./styles/ai-settings.css";
 @import "./styles/ai.css";
 @import "./styles/forms-and-status.css";
+@import "./styles/light-theme.css";

@@ -35,7 +35,6 @@ function setAuthType(authType: ServerAuthType): void {
   <AppDialog
     v-if="open"
     :title="editingServerId ? '编辑连接' : '新增连接'"
-    description="填写 SSH 连接信息，保存后可直接打开终端和 SFTP。"
     width="medium"
     @close="emit('close')">
     <form class="connection-form" @submit.prevent="emit('submit')">

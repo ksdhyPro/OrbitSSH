@@ -139,12 +139,13 @@ watch(
 <template>
   <section class="workspace">
     <section class="terminal-area">
-      <nav class="session-tabs" aria-label="终端标签">
+      <nav class="session-tabs" role="tablist" aria-label="终端标签">
         <div
           v-for="tab in tabs"
           :key="tab.id"
           :class="['session-tab', { active: tab.id === activeTabId }]"
-          role="button"
+          role="tab"
+          :aria-selected="tab.id === activeTabId"
           tabindex="0"
           @click="emit('activateTab', tab.id)"
           @keydown.enter.prevent="emit('activateTab', tab.id)"

@@ -89,6 +89,10 @@ export const useTerminalsStore = defineStore("terminals", () => {
       terminal.options.fontSize = settingsStore.appSettings.terminal.fontSize;
       terminal.options.lineHeight = settingsStore.appSettings.terminal.lineHeight;
       terminal.options.theme = getCurrentTerminalTheme();
+      // xterm 在运行中的 Canvas 终端上不一定立即重绘背景，显式刷新避免残留旧主题底色。
+      if (terminal.rows > 0) {
+        terminal.refresh(0, terminal.rows - 1);
+      }
       fitAddon.fit();
     });
     scheduleTerminalFit();

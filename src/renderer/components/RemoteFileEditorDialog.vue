@@ -158,7 +158,9 @@ function searchPreviousByBackwardTab(event: KeyboardEvent): void {
       <p v-if="error" class="form-error">{{ error }}</p>
 
       <footer class="file-editor-footer">
-        <span>{{ isDirty ? "有未保存修改" : "已保存" }}</span>
+        <span :class="{ dirty: isDirty }">
+          {{ isDirty ? "有未保存修改" : "已保存" }}
+        </span>
         <div class="dialog-actions">
           <button type="button" class="ghost-button" @click="emit('requestClose')">
             关闭

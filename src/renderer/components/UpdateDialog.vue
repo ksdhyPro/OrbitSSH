@@ -25,7 +25,6 @@ const emit = defineEmits<{
   <AppDialog
     v-if="open"
     title="检查更新"
-    description="查看是否有新版本可用。"
     width="medium"
     @close="emit('close')">
     <div class="update-dialog-content">
@@ -33,20 +32,24 @@ const emit = defineEmits<{
       <div class="settings-field">
         <div>
           <h3>当前版本</h3>
-          <p>已安装的 OrbitSSH 版本号。</p>
         </div>
-        <span class="update-version-label">{{ currentVersion || '—' }}</span>
+        <div class="update-version-actions">
+          <span class="update-version-label">{{ currentVersion || '—' }}</span>
+          <button
+            v-if="status !== 'downloading'"
+            type="button"
+            :disabled="status === 'checking'"
+            @click="emit('check')">
+            {{ status === 'checking' ? '检查中…' : '检查更新' }}
+          </button>
+        </div>
       </div>
 
       <!-- 状态与操作 -->
-      <div class="settings-field">
+      <div v-if="status !== 'idle'" class="settings-field update-status-field">
         <div>
-          <h3>更新状态</h3>
           <p>
-            <template v-if="status === 'idle'">
-              点击下方按钮检查是否有新版本。
-            </template>
-            <template v-else-if="status === 'checking'">
+            <template v-if="status === 'checking'">
               正在检查更新…
             </template>
             <template v-else-if="status === 'update-available'">
@@ -73,13 +76,6 @@ const emit = defineEmits<{
           </p>
         </div>
         <div class="update-actions">
-          <button
-            v-if="status !== 'downloading'"
-            type="button"
-            :disabled="status === 'checking'"
-            @click="emit('check')">
-            检查更新
-          </button>
           <button
             v-if="status === 'update-available'"
             type="button"

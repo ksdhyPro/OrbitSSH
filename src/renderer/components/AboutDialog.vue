@@ -18,7 +18,6 @@ const projectUrlGithub = "https://github.com/ksdhyPro/OrbitSSH";
   <AppDialog
     v-if="open"
     title="关于 OrbitSSH"
-    description="SSH / SFTP 客户端"
     width="medium"
     @close="emit('close')"
   >
