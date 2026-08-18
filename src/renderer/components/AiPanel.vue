@@ -109,6 +109,7 @@ const modeMenuItems = computed<ContextMenuItem[]>(() =>
     label: opt.label,
     icon: opt.icon,
     desc: modeDescs[opt.value],
+    warning: opt.value === "full",
   })),
 );
 
@@ -832,7 +833,10 @@ function formatDuration(durationMs: number): string {
               <section
                 v-for="processItem in item.items"
                 :key="processItem.id"
-                class="ai-process-item">
+                :class="[
+                  'ai-process-item',
+                  { 'ai-command-process-item': processItem.type === 'card' },
+                ]">
                 <header>
                   <span>{{ getProcessItemTitle(processItem) }}</span>
                 </header>
@@ -872,7 +876,9 @@ function formatDuration(durationMs: number): string {
           </details>
         </template>
 
-        <div v-if="hasStatusBar" class="ai-status-bar">
+        <div
+          v-if="hasStatusBar"
+          :class="['ai-status-bar', { 'is-active': processStatusText === '处理中...' }]">
           <span
             v-if="processStatusText === '处理中...'"
             class="ai-loading-dots"
@@ -926,7 +932,10 @@ function formatDuration(durationMs: number): string {
         <div class="ai-compose-actions">
           <button
             type="button"
-            class="ai-mode-trigger"
+            :class="[
+              'ai-mode-trigger',
+              { 'ai-mode-trigger-warning': mode === 'full' },
+            ]"
             data-floating-menu-trigger
             :title="currentModeOption.label"
             :disabled="isSending"

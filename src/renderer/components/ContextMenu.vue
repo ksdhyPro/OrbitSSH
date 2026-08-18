@@ -53,6 +53,7 @@ function shouldSeparateItem(index: number): boolean {
       :class="{
         disabled: item.disabled,
         danger: item.danger,
+        warning: item.warning,
         'has-desc': item.desc,
         'separator-before': shouldSeparateItem(index),
       }"

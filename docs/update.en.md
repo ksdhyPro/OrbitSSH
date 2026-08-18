@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.0
+
+1. Reworked the light and dark visual system. The light theme now uses warm white and neutral-gray layers, primary actions use a Codex-inspired warm orange, and terminals use an independent themed work surface.
+2. Rebuilt Settings as a full-screen preferences view, and standardized dialog spacing, icon sizing, the custom select control, and context-menu styling for more consistent file operations.
+3. Upgraded the AI collaboration panel with clearer message hierarchy, command-process cards, execution feedback, and a refined composer. Full Access now consistently uses a warm-orange warning treatment in buttons, menus, and icons.
+4. Standardized UI font sizing by removing inconsistent fractional and odd pixel sizes, and improved terminal-canvas and icon refresh behavior during theme switches.
+
 ## v1.1.16
 
 1. Added local Codex CLI detection and integration, allowing installed Codex to be added as an AI chat model from Settings.

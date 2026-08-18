@@ -406,6 +406,21 @@
   color: var(--danger-strong);
 }
 
+/* 警告操作保留暖橙语义，与不可逆删除的红色危险态区分。 */
+.context-menu button.warning {
+  color: var(--warning);
+}
+
+.context-menu button.warning small {
+  color: var(--warning);
+  opacity: 0.78;
+}
+
+.context-menu button.warning:hover:not(:disabled) {
+  background: var(--warning-fill);
+  color: var(--warning);
+}
+
 .context-menu button:disabled {
   background: transparent;
   color: var(--text-disabled-strong);
@@ -438,6 +453,10 @@
 
 .context-menu button.danger .menu-item-icon img {
   filter: none;
+}
+
+.context-menu button.warning .menu-item-icon img {
+  filter: var(--warning-icon-filter);
 }
 
 .workspace {

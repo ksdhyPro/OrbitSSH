@@ -6,6 +6,7 @@ export interface ContextMenuItem {
   desc?: string
   disabled?: boolean
   danger?: boolean
+  warning?: boolean
 }
 
 export interface ContextMenuState {

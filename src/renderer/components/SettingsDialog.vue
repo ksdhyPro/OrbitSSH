@@ -629,7 +629,10 @@ function removeAiConfig(configId: string): void {
               type="button"
               :class="[
                 'theme-mode-option',
-                { active: appSettings.ai.defaultMode === item },
+                {
+                  active: appSettings.ai.defaultMode === item,
+                  'is-full-access': item === 'full',
+                },
               ]"
               @click="emit('updateAiSetting', 'defaultMode', item)">
               {{ aiModeLabels[item] }}
