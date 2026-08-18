@@ -304,6 +304,7 @@
 
 /* 连续设置项组合成系统设置分组，减少独立卡片造成的视觉噪声。 */
 .settings-content > .settings-field:first-child,
+.settings-content > .settings-content-heading + .settings-field,
 .shortcut-section > .settings-field:first-of-type {
   border-radius: 10px 10px 0 0;
 }

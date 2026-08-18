@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.1
+
+1. Fixed missing top corners on the first row of grouped Settings sections such as General and AI, which occurred because the section heading preceded the first setting item.
+
 ## v1.2.0
 
 1. Reworked the light and dark visual system. The light theme now uses warm white and neutral-gray layers, primary actions use a Codex-inspired warm orange, and terminals use an independent themed work surface.
