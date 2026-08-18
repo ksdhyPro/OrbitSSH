@@ -12,6 +12,22 @@ body {
   min-height: 680px;
   margin: 0;
   overflow: hidden;
+  /* 客户端界面默认不应像网页一样可任意框选文字。 */
+  user-select: none;
+}
+
+/* 仅在需要编辑、复制或查看详情的区域恢复文字选择。 */
+input,
+textarea,
+select,
+[contenteditable="true"],
+.terminal-host,
+.terminal-host *,
+.file-editor-body,
+.file-editor-body *,
+.app-dialog:has(.about-dialog-content),
+.app-dialog:has(.about-dialog-content) * {
+  user-select: text;
 }
 
 button {
@@ -23,6 +39,12 @@ button {
 
 button:disabled {
   opacity: 0.62;
+}
+
+/* 图标和图片只承担界面展示，不允许被浏览器原生拖拽为文件或图片。 */
+img {
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 /* 键盘导航保留清晰焦点环，鼠标点击仍由上方规则隐藏默认轮廓。 */

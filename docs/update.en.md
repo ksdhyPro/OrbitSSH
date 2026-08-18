@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.2
+
+1. Improved native-client interactions by disabling arbitrary UI text selection and native image dragging by default, while preserving required text selection in inputs, About, terminals, and the remote file editor.
+
 ## v1.2.1
 
 1. Fixed missing top corners on the first row of grouped Settings sections such as General and AI, which occurred because the section heading preceded the first setting item.
