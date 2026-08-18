@@ -9,6 +9,7 @@ import {
   type AiSettings,
   type AiProvider,
   type AiApiSpec,
+  type CodexReasoningEffort,
   type AppThemeMode
 } from '../../shared/settings.js'
 
@@ -48,13 +49,17 @@ function normalizeIdleDisconnectMinutes(value: unknown): number {
 }
 
 function normalizeAiProvider(value: unknown): AiProvider {
-  return value === 'deepseek' || value === 'glm' || value === 'other'
+  return value === 'deepseek' || value === 'glm' || value === 'codex' || value === 'other'
     ? value
     : 'other'
 }
 
 function normalizeAiSpec(value: unknown): AiApiSpec {
-  return value === 'openai' ? value : 'openai'
+  return value === 'codex-cli' ? value : 'openai'
+}
+
+function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
+  return value === 'low' || value === 'high' || value === 'xhigh' ? value : 'medium'
 }
 
 function normalizeAiMode(value: unknown): AiSettings['defaultMode'] {
@@ -112,15 +117,24 @@ function normalizeAiModelConfig(
   const model = normalizeString(value?.model)
   const name = normalizeString(value?.name) || model || `模型 ${index + 1}`
   const baseUrl = normalizeString(value?.baseUrl)
+  const spec = normalizeAiSpec(value?.spec)
+  // 兼容早期版本：当时错误地把 CLI 路径保存到了 model 字段。
+  const legacyExecutablePath = spec === 'codex-cli' && /codex(?:\.exe)?$/i.test(model)
+    ? model
+    : ''
+  const codexExecutablePath = normalizeString(value?.codexExecutablePath) || legacyExecutablePath
+  const normalizedModel = legacyExecutablePath ? '默认模型' : model
 
   return {
     id,
     name,
-    spec: normalizeAiSpec(value?.spec),
+    spec,
     provider,
     baseUrl,
     apiKey: normalizeString(value?.apiKey),
-    model
+    model: normalizedModel,
+    codexExecutablePath,
+    codexReasoningEffort: normalizeCodexReasoningEffort(value?.codexReasoningEffort)
   }
 }
 

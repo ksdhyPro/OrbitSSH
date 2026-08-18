@@ -13,7 +13,11 @@ import type {
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server";
-import type { AppSettings, UpdateStatusInfo } from "../shared/settings";
+import type {
+  AppSettings,
+  CodexCliDetection,
+  UpdateStatusInfo,
+} from "../shared/settings";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -93,6 +97,7 @@ declare global {
         save: (settings: AppSettings) => Promise<AppSettings>;
       };
       ai: {
+        detectLocalCodex: () => Promise<CodexCliDetection>;
         chat: (input: AiChatInput) => Promise<AiChatResult>;
         runApprovedCommand: (
           input: AiApprovedCommandInput,

@@ -12,6 +12,7 @@ import {
   normalizeApprovedCommandInput,
   normalizeRejectedApprovalInput,
 } from "../ai/ai-input.js";
+import { detectLocalCodexCli } from "../ai/codex-cli-provider.js";
 import { getSettings } from "../storage/settings-store.js";
 import {
   assertTabAccess,
@@ -25,6 +26,9 @@ function requireInputTabId(input: unknown, label: string): string {
 }
 
 export function registerAiIpc(): void {
+  // 检测只查询系统 PATH 和 CLI 版本，不读取 Codex 登录凭据。
+  ipcMain.handle("ai:detect-local-codex", () => detectLocalCodexCli());
+
   ipcMain.handle("ai:chat", (event, input: unknown) => {
     const normalizedInput = normalizeAiChatInput(input);
     assertTabAccess(event, normalizedInput.tabId);

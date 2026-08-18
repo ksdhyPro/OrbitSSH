@@ -22,8 +22,17 @@ export interface UpdateSettings {
   updateFeedUrl: string
 }
 
-export type AiProvider = 'deepseek' | 'glm' | 'other'
-export type AiApiSpec = 'openai'
+export type AiProvider = 'deepseek' | 'glm' | 'codex' | 'other'
+export type AiApiSpec = 'openai' | 'codex-cli'
+export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
+/** 本机 Codex CLI 的检测结果，不包含登录凭据等敏感信息。 */
+export interface CodexCliDetection {
+  available: boolean
+  executablePath?: string
+  version?: string
+  error?: string
+}
 
 export interface AiModelConfig {
   id: string
@@ -33,6 +42,10 @@ export interface AiModelConfig {
   baseUrl: string
   apiKey: string
   model: string
+  /** Codex CLI 可执行文件路径，仅 codex-cli 配置使用。 */
+  codexExecutablePath?: string
+  /** Codex 思考强度，仅 codex-cli 配置使用。 */
+  codexReasoningEffort?: CodexReasoningEffort
 }
 
 export interface AiSettings {

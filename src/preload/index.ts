@@ -11,7 +11,11 @@ import type {
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server.js";
-import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
+import type {
+  AppSettings,
+  CodexCliDetection,
+  UpdateStatusInfo,
+} from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
 import type {
   RemoteFileNode,
@@ -104,6 +108,8 @@ const orbitSSHApi = {
       ipcRenderer.invoke("settings:save", settings) as Promise<AppSettings>,
   },
   ai: {
+    detectLocalCodex: () =>
+      ipcRenderer.invoke("ai:detect-local-codex") as Promise<CodexCliDetection>,
     chat: (input: AiChatInput) =>
       ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
     runApprovedCommand: (input: AiApprovedCommandInput) =>

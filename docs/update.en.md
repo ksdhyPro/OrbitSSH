@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.16
+
+1. Added local Codex CLI detection and integration, allowing installed Codex to be added as an AI chat model from Settings.
+2. Added Codex model and reasoning-effort configuration. Users can enter any model name or use the local default model, and the AI model menu shows both the selected model and reasoning effort.
+3. Improved the Codex request flow with non-interactive CLI turns for diagnosis and command suggestions. Remote commands continue to run through the active OrbitSSH SSH connection with existing approval policies preserved.
+
 ## v1.1.15
 
 1. Fixed an error when opening remote text files with Windows CRLF line endings: the initial cursor position used the raw string length and could exceed the CodeMirror document range.
