@@ -40,6 +40,12 @@
   font-weight: 550;
 }
 
+/* AI 设置的启用态复用“完全访问”的暖橙色，统一风险与启用提示。 */
+.ai-settings-content {
+  --ai-active-color: var(--warning);
+  --ai-active-hover: var(--warning);
+}
+
 .settings-toggle input {
   position: relative;
   flex: 0 0 auto;
@@ -71,14 +77,18 @@
     transform 140ms ease;
 }
 
-.settings-toggle input:checked {
-  border-color: var(--brand);
-  background: var(--brand);
+.ai-settings-content .settings-toggle input:checked {
+  border-color: var(--ai-active-color);
+  background: var(--ai-active-color);
 }
 
-.settings-toggle input:checked::after {
-  background: var(--brand-ink);
+.ai-settings-content .settings-toggle input:checked::after {
+  background: #fff;
   transform: translateX(16px);
+}
+
+.ai-settings-content .settings-toggle:has(input:checked) span {
+  color: var(--ai-active-hover);
 }
 
 .settings-toggle input:focus-visible {
@@ -89,4 +99,35 @@
 .ai-mode-setting {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 200px;
+}
+
+.ai-settings-content .theme-mode-option.active:not(.is-full-access) {
+  border-color: var(--ai-active-color);
+  background: var(--ai-active-color);
+  color: #fff;
+  box-shadow: none;
+}
+
+.settings-field-link {
+  cursor: pointer;
+}
+
+.settings-field-link:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--focus-ring-soft);
+}
+
+.settings-row-arrow {
+  display: grid;
+  place-items: center;
+  justify-self: end;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.settings-row-arrow img {
+  width: 20px;
+  height: 20px;
+  opacity: 0.82;
 }

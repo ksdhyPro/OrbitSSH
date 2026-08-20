@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.3
+
+1. Fixed right-side overflow when narrowing the AI panel by unifying grid and child sizing, calculating drag width from the actual content boundary, and adding layout regression coverage.
+2. Refined the AI panel header to match the terminal tab-bar height and display the active connection as a right-aligned tag. Disabling AI now removes the entire panel and divider so the terminal reclaims the space.
+3. Improved AI conversation interactions with a new assistant icon and copy actions for both user prompts and AI responses.
+4. Improved AI Settings and Codex configuration with consistent custom select controls, direct configuration after successful local Codex detection, and refined Settings visuals.
+5. Reworked About OrbitSSH as a native system dialog showing the app version, commit metadata, and runtime versions, with one-click copying.
+
 ## v1.2.2
 
 1. Improved native-client interactions by disabling arbitrary UI text selection and native image dragging by default, while preserving required text selection in inputs, About, terminals, and the remote file editor.

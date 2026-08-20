@@ -3,6 +3,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 console.log("[OrbitSSH preload] preload 已执行");
 
 const orbitSSHApi = {
+  about: {
+    show: () => ipcRenderer.invoke("about:show"),
+  },
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
   getAppInfo: () => ipcRenderer.invoke("app:get-info"),
   logger: {

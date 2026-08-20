@@ -278,6 +278,7 @@ function getTaskCurrentItemText(task: DownloadTask): string {
         帮助
       </button>
       <ContextMenu
+        class="header-menu-dropdown"
         :menu="headerMenu"
         :items="headerMenuItems"
         @select="selectHeaderMenuItem"

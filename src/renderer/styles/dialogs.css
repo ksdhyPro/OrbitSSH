@@ -22,6 +22,11 @@
   box-shadow: var(--shadow-dialog);
 }
 
+/* 自绘下拉菜单需要越过弹窗内容区显示，避免选项被裁切。 */
+.app-dialog:has(.app-select) {
+  overflow: visible;
+}
+
 .app-dialog-medium {
   width: min(520px, 100%);
 }
@@ -690,6 +695,18 @@
 .ai-config-mini-button:hover {
   border-color: var(--border-hover-strong);
   background: var(--bg-hover-cool);
+}
+
+.ai-config-dialog .ai-config-mini-button,
+.ai-config-dialog .settings-primary-button {
+  min-width: 64px;
+  height: 32px;
+}
+
+.ai-config-mini-button.ai-config-danger-button {
+  border-color: var(--danger-border);
+  background: var(--danger-overlay);
+  color: var(--danger);
 }
 
 .ai-config-mini-button.ai-config-danger-button:hover {

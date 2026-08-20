@@ -63,6 +63,9 @@ import type {
 } from "../shared/ai.js";
 
 const orbitSSHApi = {
+  about: {
+    show: () => ipcRenderer.invoke("about:show") as Promise<boolean>,
+  },
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
   getAppInfo: () =>
     ipcRenderer.invoke("app:get-info") as Promise<{

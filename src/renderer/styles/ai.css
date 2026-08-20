@@ -1,9 +1,9 @@
 .ai-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: var(--ai-panel-width, 360px);
-  min-width: 320px;
-  max-width: min(680px, calc(100vw - var(--sidebar-width, 320px) - 260px));
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   min-height: 0;
   overflow: hidden;
   border-left: 1px solid var(--border-window);
@@ -41,8 +41,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 56px;
-  padding: 8px 18px;
+  height: 44px;
+  min-height: 44px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -61,10 +62,43 @@
   font-weight: 600;
 }
 
-.ai-panel-header p {
-  margin-top: 3px;
-  color: var(--text-tertiary);
+/* 标题与当前连接保持单行，头部高度与终端标签栏一致。 */
+.ai-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ai-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.ai-panel-title img {
+  width: 22px;
+  height: 22px;
+}
+
+.ai-context-tag {
+  display: block;
+  min-width: 0;
+  max-width: 140px;
+  height: 22px;
+  /* margin-left: auto; */
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-elevated-3);
+  color: var(--text-secondary);
   font-size: 12px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-panel-header-actions {
@@ -270,7 +304,15 @@
     opacity 100ms ease;
 }
 
-.ai-message.assistant:hover .ai-copy-btn,
+/* 聊天内容需要支持鼠标拖选与快捷键复制，避免受全局界面禁选规则影响。 */
+.ai-message,
+.ai-message p,
+.ai-message .ai-markdown,
+.ai-message .ai-markdown * {
+  user-select: text;
+}
+
+.ai-message:hover .ai-copy-btn,
 .ai-copy-btn:focus-visible {
   opacity: 0.78;
 }
@@ -852,6 +894,7 @@
   gap: 6px;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .ai-mode-trigger {
@@ -892,7 +935,9 @@
 /* 模型切换触发器：紧邻发送按钮靠右，模型名过长时省略 */
 .ai-model-trigger {
   margin-left: auto;
+  min-width: 0;
   max-width: 160px;
+  flex: 0 1 160px;
 }
 
 .ai-model-trigger-label {

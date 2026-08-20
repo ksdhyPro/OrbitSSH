@@ -10,7 +10,9 @@ import type {
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
+import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import AppDialog from "./AppDialog.vue";
+import AppSelect, { type AppSelectOption } from "./AppSelect.vue";
 import NumberStepper from "./NumberStepper.vue";
 
 const props = defineProps<{
@@ -56,21 +58,18 @@ const isDetectingCodex = ref(false);
 const isCodexConfigFormDialogOpen = ref(false);
 const codexModel = ref("");
 const codexReasoningEffort = ref<CodexReasoningEffort>("medium");
-const codexModelOptions = [
-  "默认模型",
-  "gpt-5.6-terra",
-  "gpt-5.6-sol",
-  "gpt-5.5",
-  "gpt-5.4",
+const codexModelOptions: AppSelectOption[] = [
+  { value: "", label: "默认模型" },
+  { value: "gpt-5.6-terra", label: "gpt-5.6-terra" },
+  { value: "gpt-5.6-sol", label: "gpt-5.6-sol" },
+  { value: "gpt-5.5", label: "gpt-5.5" },
+  { value: "gpt-5.4", label: "gpt-5.4" },
 ];
-const codexReasoningOptions: Array<{
-  value: CodexReasoningEffort;
-  label: string;
-}> = [
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
-  { value: "xhigh", label: "极高" },
+const codexReasoningOptions: AppSelectOption[] = [
+  { value: "low", label: "低", detail: "low" },
+  { value: "medium", label: "中", detail: "medium" },
+  { value: "high", label: "高", detail: "high" },
+  { value: "xhigh", label: "极高", detail: "xhigh" },
 ];
 const aiConfigForm = ref({
   model: "",
@@ -215,13 +214,16 @@ async function detectLocalCodex(): Promise<void> {
   try {
     const result = await window.orbitSSH.ai.detectLocalCodex();
     codexDetection.value = result;
-    aiConfigMessage.value = result.available
-      ? `已检测到本地 Codex CLI（${result.version || "版本未知"}）。`
-      : result.error || "未检测到本地 Codex CLI。";
-  } catch (error) {
+    if (result.available && result.executablePath) {
+      // 检测成功后直接进入配置，不在列表弹窗中暴露本地可执行文件路径。
+      openCodexConfigForm();
+      return;
+    }
+
+    aiConfigMessage.value = "未检测到本地 Codex CLI。";
+  } catch {
     codexDetection.value = { available: false };
-    aiConfigMessage.value =
-      error instanceof Error ? error.message : String(error);
+    aiConfigMessage.value = "未检测到本地 Codex CLI。";
   } finally {
     isDetectingCodex.value = false;
   }
@@ -233,6 +235,11 @@ function openCodexConfigForm(): void {
   codexReasoningEffort.value = "medium";
   aiConfigMessage.value = "";
   isCodexConfigFormDialogOpen.value = true;
+}
+
+/** AppSelect 的值为字符串，在这里收窄为 Codex 支持的思考强度。 */
+function updateCodexReasoningEffort(value: string): void {
+  codexReasoningEffort.value = value as CodexReasoningEffort;
 }
 
 function addDetectedCodexCli(): void {
@@ -381,296 +388,301 @@ function removeAiConfig(configId: string): void {
       role="dialog"
       aria-modal="true"
       aria-label="设置">
-    <div class="settings-layout">
-      <aside class="settings-nav" aria-label="设置分类">
-        <button type="button" class="settings-back" @click="emit('close')">
-          <img :src="arrowLeftIcon" alt="" />
-          返回应用
-        </button>
-        <p class="settings-nav-label">偏好设置</p>
-        <button
-          type="button"
-          :class="[
-            'settings-nav-item',
-            { active: activeSettingsSection === 'general' },
-          ]"
-          @click="emit('updateActiveSection', 'general')">
-          通用
-        </button>
-        <button
-          type="button"
-          :class="[
-            'settings-nav-item',
-            { active: activeSettingsSection === 'ai' },
-          ]"
-          @click="emit('updateActiveSection', 'ai')">
-          AI
-        </button>
-        <button
-          type="button"
-          :class="[
-            'settings-nav-item',
-            { active: activeSettingsSection === 'shortcuts' },
-          ]"
-          @click="emit('updateActiveSection', 'shortcuts')">
-          快捷键
-        </button>
-      </aside>
+      <div class="settings-layout">
+        <aside class="settings-nav" aria-label="设置分类">
+          <button type="button" class="settings-back" @click="emit('close')">
+            <img :src="arrowLeftIcon" alt="" />
+            返回应用
+          </button>
+          <p class="settings-nav-label">偏好设置</p>
+          <button
+            type="button"
+            :class="[
+              'settings-nav-item',
+              { active: activeSettingsSection === 'general' },
+            ]"
+            @click="emit('updateActiveSection', 'general')">
+            通用
+          </button>
+          <button
+            type="button"
+            :class="[
+              'settings-nav-item',
+              { active: activeSettingsSection === 'ai' },
+            ]"
+            @click="emit('updateActiveSection', 'ai')">
+            AI
+          </button>
+          <button
+            type="button"
+            :class="[
+              'settings-nav-item',
+              { active: activeSettingsSection === 'shortcuts' },
+            ]"
+            @click="emit('updateActiveSection', 'shortcuts')">
+            快捷键
+          </button>
+        </aside>
 
-      <section
-        v-if="activeSettingsSection === 'general'"
-        class="settings-content">
-        <header class="settings-content-heading">
-          <h1>通用</h1>
-        </header>
+        <section
+          v-if="activeSettingsSection === 'general'"
+          class="settings-content">
+          <header class="settings-content-heading">
+            <h1>通用</h1>
+          </header>
         <div class="settings-field">
-          <div>
-            <h3>主题</h3>
-          </div>
-          <div class="theme-mode-control" aria-label="主题">
-            <button
-              type="button"
-              :class="[
-                'theme-mode-option',
-                { active: appSettings.appearance.themeMode === 'dark' },
-              ]"
-              @click="emit('updateThemeMode', 'dark')">
-              深色
-            </button>
-            <button
-              type="button"
-              :class="[
-                'theme-mode-option',
-                { active: appSettings.appearance.themeMode === 'light' },
-              ]"
-              @click="emit('updateThemeMode', 'light')">
-              浅色
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>终端字体大小</h3>
-          </div>
-          <div class="stepper-control">
-            <button
-              type="button"
-              @click="emit('stepTerminalNumberSetting', 'fontSize', -1)">
-              -
-            </button>
-            <output>{{ appSettings.terminal.fontSize }}</output>
-            <button
-              type="button"
-              @click="emit('stepTerminalNumberSetting', 'fontSize', 1)">
-              +
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>终端行高</h3>
-          </div>
-          <div class="stepper-control">
-            <button
-              type="button"
-              @click="emit('stepTerminalNumberSetting', 'lineHeight', -0.1)">
-              -
-            </button>
-            <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
-            <button
-              type="button"
-              @click="emit('stepTerminalNumberSetting', 'lineHeight', 0.1)">
-              +
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>选区颜色</h3>
-          </div>
-          <div class="color-select">
-            <button
-              type="button"
-              class="color-select-trigger"
-              @click="
-                emit(
-                  'updateSelectionDropdownOpen',
-                  !isSelectionBackgroundDropdownOpen,
-                )
-              ">
-              <span
-                class="color-swatch"
-                :style="{
-                  background: appSettings.terminal.selectionBackground,
-                }"></span>
-              <span>{{ appSettings.terminal.selectionBackground }}</span>
-            </button>
-
-            <div
-              v-if="isSelectionBackgroundDropdownOpen"
-              class="color-select-menu">
+            <div>
+              <h3>主题</h3>
+            </div>
+            <div class="theme-mode-control" aria-label="主题">
               <button
-                v-for="color in selectionBackgroundOptions"
-                :key="color"
                 type="button"
-                class="color-select-option"
-                @click="emit('selectSelectionBackground', color)">
-                <span
-                  class="color-swatch"
-                  :style="{ background: color }"></span>
-                <span>{{ color }}</span>
+                :class="[
+                  'theme-mode-option',
+                  { active: appSettings.appearance.themeMode === 'dark' },
+                ]"
+                @click="emit('updateThemeMode', 'dark')">
+                深色
+              </button>
+              <button
+                type="button"
+                :class="[
+                  'theme-mode-option',
+                  { active: appSettings.appearance.themeMode === 'light' },
+                ]"
+                @click="emit('updateThemeMode', 'light')">
+                浅色
               </button>
             </div>
           </div>
-        </div>
 
-        <div class="settings-field">
-          <div>
-            <h3>SSH 保活间隔（秒）</h3>
-            <p>设置为 0 时禁用 SSH 和 SFTP 保活包。</p>
+          <div class="settings-field">
+            <div>
+              <h3>终端字体大小</h3>
+            </div>
+            <div class="stepper-control">
+              <button
+                type="button"
+                @click="emit('stepTerminalNumberSetting', 'fontSize', -1)">
+                -
+              </button>
+              <output>{{ appSettings.terminal.fontSize }}</output>
+              <button
+                type="button"
+                @click="emit('stepTerminalNumberSetting', 'fontSize', 1)">
+                +
+              </button>
+            </div>
           </div>
-          <NumberStepper
-            :model-value="appSettings.connection.keepaliveIntervalSeconds"
-            :min="0"
-            :max="300"
-            :step="5"
-            placeholder="10"
-            @update:model-value="
-              emit('updateKeepaliveIntervalSeconds', $event)
-            " />
-        </div>
 
-        <div class="settings-field">
-          <div>
-            <h3>空闲断开时间（分钟）</h3>
-            <p>设置为 0 时禁用空闲自动断开。</p>
+          <div class="settings-field">
+            <div>
+              <h3>终端行高</h3>
+            </div>
+            <div class="stepper-control">
+              <button
+                type="button"
+                @click="emit('stepTerminalNumberSetting', 'lineHeight', -0.1)">
+                -
+              </button>
+              <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
+              <button
+                type="button"
+                @click="emit('stepTerminalNumberSetting', 'lineHeight', 0.1)">
+                +
+              </button>
+            </div>
           </div>
-          <NumberStepper
-            :model-value="appSettings.connection.idleDisconnectMinutes"
-            :min="0"
-            :max="1440"
-            :step="5"
-            placeholder="0"
-            @update:model-value="emit('updateIdleDisconnectMinutes', $event)" />
-        </div>
-      </section>
 
-      <section
-        v-else-if="activeSettingsSection === 'ai'"
-        class="settings-content">
-        <header class="settings-content-heading">
-          <h1>AI</h1>
-        </header>
-        <div class="settings-field">
-          <div>
-            <h3>启用 AI</h3>
+          <div class="settings-field">
+            <div>
+              <h3>选区颜色</h3>
+            </div>
+            <div class="color-select">
+              <button
+                type="button"
+                class="color-select-trigger"
+                @click="
+                  emit(
+                    'updateSelectionDropdownOpen',
+                    !isSelectionBackgroundDropdownOpen,
+                  )
+                ">
+                <span
+                  class="color-swatch"
+                  :style="{
+                    background: appSettings.terminal.selectionBackground,
+                  }"></span>
+                <span>{{ appSettings.terminal.selectionBackground }}</span>
+              </button>
+
+              <div
+                v-if="isSelectionBackgroundDropdownOpen"
+                class="color-select-menu">
+                <button
+                  v-for="color in selectionBackgroundOptions"
+                  :key="color"
+                  type="button"
+                  class="color-select-option"
+                  @click="emit('selectSelectionBackground', color)">
+                  <span
+                    class="color-swatch"
+                    :style="{ background: color }"></span>
+                  <span>{{ color }}</span>
+                </button>
+              </div>
+            </div>
           </div>
-          <label class="settings-toggle">
-            <input
-              type="checkbox"
-              :checked="appSettings.ai.enabled"
-              @change="
-                emit(
-                  'updateAiSetting',
-                  'enabled',
-                  ($event.target as HTMLInputElement).checked,
-                )
+
+          <div class="settings-field">
+            <div>
+              <h3>SSH 保活间隔（秒）</h3>
+              <p>设置为 0 时禁用 SSH 和 SFTP 保活包。</p>
+            </div>
+            <NumberStepper
+              :model-value="appSettings.connection.keepaliveIntervalSeconds"
+              :min="0"
+              :max="300"
+              :step="5"
+              placeholder="10"
+              @update:model-value="
+                emit('updateKeepaliveIntervalSeconds', $event)
               " />
-            <span>{{ appSettings.ai.enabled ? "开启" : "关闭" }}</span>
-          </label>
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>模型配置</h3>
-            <p>{{ aiConfigSummary }}</p>
           </div>
-          <button
-            type="button"
-            class="settings-primary-button"
-            @click="openAiConfigDialog">
-            查看
-          </button>
-        </div>
 
-        <div class="settings-field">
-          <div>
-            <h3>发送最近终端输出</h3>
-            <p>发送前自动脱敏。</p>
-          </div>
-          <label class="settings-toggle">
-            <input
-              type="checkbox"
-              :checked="appSettings.ai.shareTerminalContext"
-              @change="
-                emit(
-                  'updateAiSetting',
-                  'shareTerminalContext',
-                  ($event.target as HTMLInputElement).checked,
-                )
+          <div class="settings-field">
+            <div>
+              <h3>空闲断开时间（分钟）</h3>
+              <p>设置为 0 时禁用空闲自动断开。</p>
+            </div>
+            <NumberStepper
+              :model-value="appSettings.connection.idleDisconnectMinutes"
+              :min="0"
+              :max="1440"
+              :step="5"
+              placeholder="0"
+              @update:model-value="
+                emit('updateIdleDisconnectMinutes', $event)
               " />
-            <span>{{
-              appSettings.ai.shareTerminalContext ? "开启" : "关闭"
-            }}</span>
-          </label>
-        </div>
-
-        <div class="settings-field">
-          <div>
-            <h3>默认模式</h3>
           </div>
-          <div class="theme-mode-control ai-mode-setting">
-            <button
-              v-for="item in aiModeOptions"
-              :key="item"
-              type="button"
-              :class="[
-                'theme-mode-option',
-                {
-                  active: appSettings.ai.defaultMode === item,
-                  'is-full-access': item === 'full',
-                },
-              ]"
-              @click="emit('updateAiSetting', 'defaultMode', item)">
-              {{ aiModeLabels[item] }}
-            </button>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section
-        v-else-if="activeSettingsSection === 'shortcuts'"
-        class="settings-content">
-        <header class="settings-content-heading">
-          <h1>快捷键</h1>
-        </header>
-        <div
-          v-for="section in shortcutSections"
-          :key="section.id"
-          class="shortcut-section">
-          <header class="shortcut-section-header">
-            <h3>{{ section.title }}</h3>
+        <section
+          v-else-if="activeSettingsSection === 'ai'"
+          class="settings-content ai-settings-content">
+          <header class="settings-content-heading">
+            <h1>AI</h1>
           </header>
+          <div class="settings-field">
+            <div>
+              <h3>启用 AI</h3>
+            </div>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                :checked="appSettings.ai.enabled"
+                @change="
+                  emit(
+                    'updateAiSetting',
+                    'enabled',
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                " />
+            </label>
+          </div>
 
           <div
-            v-for="shortcut in section.shortcuts"
-            :key="shortcut.id"
-            class="settings-field shortcut-field">
+            class="settings-field settings-field-link"
+            role="button"
+            tabindex="0"
+            aria-label="查看模型配置"
+            @click="openAiConfigDialog"
+            @keydown.enter="openAiConfigDialog"
+            @keydown.space.prevent="openAiConfigDialog">
             <div>
-              <h4>{{ shortcut.title }}</h4>
+              <h3>模型配置</h3>
+              <p>{{ aiConfigSummary }}</p>
             </div>
-            <div class="shortcut-key-group">
-              <kbd v-for="key in shortcut.keys" :key="key" class="shortcut-key">
-                {{ key }}
-              </kbd>
+          <span class="settings-row-arrow" aria-hidden="true">
+            <img :src="chevronRightIcon" alt="" />
+          </span>
+          </div>
+
+          <div class="settings-field">
+            <div>
+              <h3>发送最近终端输出</h3>
+              <p>发送前自动脱敏。</p>
+            </div>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                :checked="appSettings.ai.shareTerminalContext"
+                @change="
+                  emit(
+                    'updateAiSetting',
+                    'shareTerminalContext',
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                " />
+            </label>
+          </div>
+
+          <div class="settings-field">
+            <div>
+              <h3>默认模式</h3>
+            </div>
+            <div class="theme-mode-control ai-mode-setting">
+              <button
+                v-for="item in aiModeOptions"
+                :key="item"
+                type="button"
+                :class="[
+                  'theme-mode-option',
+                  {
+                    active: appSettings.ai.defaultMode === item,
+                    'is-full-access': item === 'full',
+                  },
+                ]"
+                @click="emit('updateAiSetting', 'defaultMode', item)">
+                {{ aiModeLabels[item] }}
+              </button>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+        </section>
+
+        <section
+          v-else-if="activeSettingsSection === 'shortcuts'"
+          class="settings-content">
+          <header class="settings-content-heading">
+            <h1>快捷键</h1>
+          </header>
+          <div
+            v-for="section in shortcutSections"
+            :key="section.id"
+            class="shortcut-section">
+            <header class="shortcut-section-header">
+              <h3>{{ section.title }}</h3>
+            </header>
+
+            <div
+              v-for="shortcut in section.shortcuts"
+              :key="shortcut.id"
+              class="settings-field shortcut-field">
+              <div>
+                <h4>{{ shortcut.title }}</h4>
+              </div>
+              <div class="shortcut-key-group">
+                <kbd
+                  v-for="key in shortcut.keys"
+                  :key="key"
+                  class="shortcut-key">
+                  {{ key }}
+                </kbd>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </section>
   </Teleport>
 
@@ -699,18 +711,7 @@ function removeAiConfig(configId: string): void {
         </div>
       </div>
 
-      <div
-        v-if="codexDetection?.available || aiConfigMessage"
-        class="ai-config-status">
-        <div v-if="codexDetection?.available" class="ai-config-form-tip">
-          已发现：{{ codexDetection.executablePath }}
-          <button
-            type="button"
-            class="ai-config-mini-button"
-            @click="openCodexConfigForm">
-            配置 Codex
-          </button>
-        </div>
+      <div v-if="aiConfigMessage" class="ai-config-status">
         <p v-if="aiConfigMessage" class="ai-config-form-tip">
           {{ aiConfigMessage }}
         </p>
@@ -802,35 +803,24 @@ function removeAiConfig(configId: string): void {
     @close="isCodexConfigFormDialogOpen = false">
     <form class="ai-config-form" @submit.prevent="addDetectedCodexCli">
       <p class="ai-config-form-tip">
-        模型名可直接输入；留空则使用本机 Codex 默认模型。
+            请选择要使用的模型；默认模型会使用本机 Codex 默认模型。
       </p>
 
       <label>
         <span>模型</span>
-        <input
+        <AppSelect
           v-model="codexModel"
-          class="settings-text-input"
-          type="text"
-          list="codex-model-options"
-          placeholder="留空使用默认模型" />
-        <datalist id="codex-model-options">
-          <option
-            v-for="model in codexModelOptions"
-            :key="model"
-            :value="model" />
-        </datalist>
+          :options="codexModelOptions"
+          ariaLabel="推荐模型" />
       </label>
 
       <label>
         <span>思考强度</span>
-        <select v-model="codexReasoningEffort" class="settings-text-input">
-          <option
-            v-for="option in codexReasoningOptions"
-            :key="option.value"
-            :value="option.value">
-            {{ option.label }}（{{ option.value }}）
-          </option>
-        </select>
+        <AppSelect
+          :model-value="codexReasoningEffort"
+          :options="codexReasoningOptions"
+          ariaLabel="思考强度"
+          @update:model-value="updateCodexReasoningEffort" />
       </label>
 
       <div class="ai-config-form-actions">

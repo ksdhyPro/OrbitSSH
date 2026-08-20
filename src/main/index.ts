@@ -14,6 +14,7 @@ import { registerSystemIpc } from "./ipc/system-ipc.js";
 import { registerWindowIpc } from "./ipc/window-ipc.js";
 import { registerUpdateIpc } from "./ipc/update-ipc.js";
 import { registerAiIpc } from "./ipc/ai-ipc.js";
+import { registerAboutIpc } from "./ipc/about-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { writeStartupDiagnostic } from "./startup-diagnostics.js";
@@ -290,6 +291,7 @@ function createMainWindow(): BrowserWindow {
 
 // 注册基础 IPC，后续 SSH/SFTP 能力只能通过这里扩展。
 function registerBaseIpc(): void {
+  registerAboutIpc();
   registerLoggerIpc();
   registerClipboardIpc();
   registerDialogIpc();

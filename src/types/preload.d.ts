@@ -65,6 +65,9 @@ import type {
 declare global {
   interface Window {
     orbitSSH: {
+      about: {
+        show: () => Promise<boolean>;
+      };
       getAppInfo: () => Promise<{
         name: string;
         version: string;

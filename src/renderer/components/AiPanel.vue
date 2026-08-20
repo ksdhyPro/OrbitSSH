@@ -12,6 +12,7 @@ import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import closeIcon from "../assets/icons/close.svg";
 import collapseIcon from "../assets/icons/collapse.svg";
 import aiAskIcon from "../assets/icons/ai-ask.svg";
+import aiAssistantIcon from "../assets/icons/ai-assistant.png";
 import aiFullIcon from "../assets/icons/ai-full.svg";
 import copyIcon from "../assets/icons/copy-ai.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
@@ -161,9 +162,7 @@ const modelMenuItems = computed<ContextMenuItem[]>(() =>
   props.configs.map(config => ({
     key: config.id,
     label:
-      config.spec === "codex-cli"
-        ? `Codex · ${config.model}`
-        : config.model,
+      config.spec === "codex-cli" ? `Codex · ${config.model}` : config.model,
     desc:
       config.spec === "codex-cli"
         ? `思考强度：${config.codexReasoningEffort ?? "medium"}`
@@ -414,7 +413,7 @@ const timelineItems = computed<DisplayTimelineItem[]>(() => {
 const copiedMessageId = ref<string | null>(null);
 let copiedMessageTimer: ReturnType<typeof setTimeout> | null = null;
 
-async function copyAssistantMessage(message: AiPanelMessage): Promise<void> {
+async function copyMessage(message: AiPanelMessage): Promise<void> {
   if (!message.content) return;
 
   try {
@@ -730,9 +729,16 @@ function formatDuration(durationMs: number): string {
 
     <template v-else>
       <header class="ai-panel-header">
-        <div>
-          <h2>AI 助手</h2>
-          <p>{{ context.serverName || "未选择服务器" }}</p>
+        <div class="ai-panel-heading">
+          <h2 class="ai-panel-title">
+            <img :src="aiAssistantIcon" alt="" />
+            <span>AI 助手</span>
+          </h2>
+          <span
+            class="ai-context-tag"
+            :title="context.serverName || '未选择服务器'">
+            {{ context.serverName || "未选择服务器" }}
+          </span>
         </div>
         <div class="ai-panel-header-actions">
           <button
@@ -797,14 +803,13 @@ function formatDuration(durationMs: number): string {
             <header class="ai-message-header">
               <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
               <button
-                v-if="item.message.role === 'assistant'"
                 type="button"
                 class="ai-copy-btn"
                 :title="copiedMessageId === item.message.id ? '已复制' : '复制'"
                 :aria-label="
                   copiedMessageId === item.message.id ? '已复制' : '复制'
                 "
-                @click="copyAssistantMessage(item.message)">
+                @click="copyMessage(item.message)">
                 <span
                   v-if="copiedMessageId === item.message.id"
                   class="ai-copy-success"
@@ -878,7 +883,10 @@ function formatDuration(durationMs: number): string {
 
         <div
           v-if="hasStatusBar"
-          :class="['ai-status-bar', { 'is-active': processStatusText === '处理中...' }]">
+          :class="[
+            'ai-status-bar',
+            { 'is-active': processStatusText === '处理中...' },
+          ]">
           <span
             v-if="processStatusText === '处理中...'"
             class="ai-loading-dots"

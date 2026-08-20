@@ -12,6 +12,21 @@ interface StatsEntry {
   osName: string;
 }
 
+interface StatsHistory {
+  cpu: number[];
+  memory: number[];
+  disk: number[];
+}
+
+type StatsHistoryKey = keyof StatsHistory;
+
+const MAX_SPARKLINE_POINTS = 24;
+const SPARKLINE_WIDTH = 38;
+const SPARKLINE_HEIGHT = 12;
+const SPARKLINE_PADDING = 1;
+// 折线表达近期趋势而非绝对刻度；最小显示区间避免稳定数据被夸大成剧烈波动。
+const MIN_SPARKLINE_RANGE = 12;
+
 const props = defineProps<{
   activeTabId: string;
 }>();
@@ -31,6 +46,9 @@ const isDisconnected = computed(() => {
 // 按 tabId 缓存最近一次成功拉取的数据，切换回来时立即显示，避免闪烁。
 const statsCache = reactive<Record<string, StatsEntry>>({});
 
+// 每个终端独立保留最近采样，切换标签时避免不同服务器的折线互相串联。
+const statsHistory = reactive<Record<string, StatsHistory>>({});
+
 // 当前展示的数值（未拉取到远端数据前展示 "--"）。
 const currentStats = computed<StatsEntry | null>(() => {
   const tabId = props.activeTabId;
@@ -40,11 +58,19 @@ const currentStats = computed<StatsEntry | null>(() => {
   return null;
 });
 
+const currentHistory = computed<StatsHistory | null>(() => {
+  const tabId = props.activeTabId;
+  return tabId ? statsHistory[tabId] ?? null : null;
+});
+
+function calculateDiskUsage(diskFree: number, diskTotal: number): number {
+  if (diskTotal <= 0) return 0;
+  return Math.round(((diskTotal - diskFree) / diskTotal) * 100);
+}
+
 const diskUsage = computed(() => {
   const s = currentStats.value;
-  if (!s || s.diskTotal <= 0) return 0;
-  const used = s.diskTotal - s.diskFree;
-  return Math.round((used / s.diskTotal) * 100);
+  return s ? calculateDiskUsage(s.diskFree, s.diskTotal) : 0;
 });
 
 let cpuMemoryTimer: ReturnType<typeof setInterval> | undefined;
@@ -64,6 +90,59 @@ function dotClass(pct: number): string {
   return "dot-danger";
 }
 
+function sparklineToneClass(pct: number): string {
+  if (pct <= 80) return "sparkline-safe";
+  if (pct <= 95) return "sparkline-warn";
+  return "sparkline-danger";
+}
+
+function appendHistory(
+  tabId: string,
+  key: StatsHistoryKey,
+  value: number,
+): void {
+  const history =
+    statsHistory[tabId] ??
+    (statsHistory[tabId] = { cpu: [], memory: [], disk: [] });
+  const values = history[key];
+
+  values.push(Math.min(100, Math.max(0, value)));
+  if (values.length > MAX_SPARKLINE_POINTS) {
+    values.splice(0, values.length - MAX_SPARKLINE_POINTS);
+  }
+}
+
+function sparklinePoints(values: number[] | undefined): string {
+  if (!values?.length) return "";
+
+  const drawableWidth = SPARKLINE_WIDTH - SPARKLINE_PADDING * 2;
+  const drawableHeight = SPARKLINE_HEIGHT - SPARKLINE_PADDING * 2;
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const midpoint = (minimum + maximum) / 2;
+  const visibleRange = Math.max(maximum - minimum, MIN_SPARKLINE_RANGE);
+  const upperBound = midpoint + visibleRange / 2;
+  const toY = (value: number): number =>
+    SPARKLINE_PADDING +
+    ((upperBound - value) / visibleRange) * drawableHeight;
+
+  // 首次或稳定采样显示在中线，避免高占用率让折线长期贴住顶部。
+  if (values.length === 1) {
+    const y = toY(values[0]);
+    return `${SPARKLINE_PADDING},${y.toFixed(1)} ${SPARKLINE_WIDTH - SPARKLINE_PADDING},${y.toFixed(1)}`;
+  }
+
+  const intervalCount = Math.max(values.length - 1, 1);
+
+  return values
+    .map((value, index) => {
+      const x = SPARKLINE_PADDING + (index / intervalCount) * drawableWidth;
+      const y = toY(value);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 async function fetchCpuMemory(): Promise<void> {
   const tabId = props.activeTabId;
   if (!tabId) return;
@@ -71,6 +150,8 @@ async function fetchCpuMemory(): Promise<void> {
   try {
     const result = await window.orbitSSH?.system.getStats(tabId);
     if (result && props.activeTabId === tabId) {
+      appendHistory(tabId, "cpu", result.cpuUsage);
+      appendHistory(tabId, "memory", result.memoryUsage);
       statsCache[tabId] = {
         cpuUsage: result.cpuUsage,
         memoryUsage: result.memoryUsage,
@@ -93,6 +174,11 @@ async function fetchDisk(): Promise<void> {
   try {
     const result = await window.orbitSSH?.system.getStats(tabId);
     if (result && props.activeTabId === tabId) {
+      appendHistory(
+        tabId,
+        "disk",
+        calculateDiskUsage(result.diskFree, result.diskTotal),
+      );
       statsCache[tabId] = {
         cpuUsage: statsCache[tabId]?.cpuUsage ?? result.cpuUsage,
         memoryUsage: statsCache[tabId]?.memoryUsage ?? result.memoryUsage,
@@ -206,6 +292,19 @@ onUnmounted(() => {
           <template v-if="currentStats">
             <span :class="['status-dot', dotClass(currentStats.cpuUsage)]"></span>
             {{ currentStats.cpuUsage }}%
+            <!-- 暂时隐藏迷你折线，保留实现便于后续直接恢复。 -->
+            <!--
+            <svg
+              :class="[
+                'status-sparkline',
+                sparklineToneClass(currentStats.cpuUsage),
+              ]"
+              viewBox="0 0 38 12"
+              preserveAspectRatio="none"
+              aria-hidden="true">
+              <polyline :points="sparklinePoints(currentHistory?.cpu)" />
+            </svg>
+            -->
           </template>
           <template v-else>--</template>
         </span>
@@ -217,6 +316,19 @@ onUnmounted(() => {
             <span
               :class="['status-dot', dotClass(currentStats.memoryUsage)]"></span>
             {{ currentStats.memoryUsage }}%
+            <!-- 暂时隐藏迷你折线，保留实现便于后续直接恢复。 -->
+            <!--
+            <svg
+              :class="[
+                'status-sparkline',
+                sparklineToneClass(currentStats.memoryUsage),
+              ]"
+              viewBox="0 0 38 12"
+              preserveAspectRatio="none"
+              aria-hidden="true">
+              <polyline :points="sparklinePoints(currentHistory?.memory)" />
+            </svg>
+            -->
             <small>
               {{ formatBytes(currentStats.memoryUsed) }} /
               {{ formatBytes(currentStats.memoryTotal) }}
@@ -231,6 +343,16 @@ onUnmounted(() => {
           <template v-if="currentStats && currentStats.diskTotal > 0">
             <span :class="['status-dot', dotClass(diskUsage)]"></span>
             {{ diskUsage }}%
+            <!-- 暂时隐藏迷你折线，保留实现便于后续直接恢复。 -->
+            <!--
+            <svg
+              :class="['status-sparkline', sparklineToneClass(diskUsage)]"
+              viewBox="0 0 38 12"
+              preserveAspectRatio="none"
+              aria-hidden="true">
+              <polyline :points="sparklinePoints(currentHistory?.disk)" />
+            </svg>
+            -->
             <small>
               {{ formatBytes(currentStats.diskTotal - currentStats.diskFree) }} /
               {{ formatBytes(currentStats.diskTotal) }}

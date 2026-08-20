@@ -24,9 +24,7 @@ select,
 .terminal-host,
 .terminal-host *,
 .file-editor-body,
-.file-editor-body *,
-.app-dialog:has(.about-dialog-content),
-.app-dialog:has(.about-dialog-content) * {
+.file-editor-body * {
   user-select: text;
 }
 
@@ -328,7 +326,7 @@ input[type="number"] {
     6px
     minmax(0, 1fr)
     var(--ai-panel-resizer-width, 6px)
-    auto;
+    minmax(0, var(--ai-panel-track-width, 42px));
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -479,20 +477,20 @@ input[type="number"] {
 .header-menu {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   flex: 0 0 auto;
   height: 100%;
   -webkit-app-region: no-drag;
 }
 
 .header-menu button {
-  height: 28px;
-  min-width: 44px;
-  padding: 0 10px;
-  border-radius: 8px;
+  height: 24px;
+  min-width: 36px;
+  padding: 0 7px;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   transition:
     background-color 120ms ease,
     color 120ms ease;
@@ -502,6 +500,20 @@ input[type="number"] {
 .header-menu button.active {
   background: var(--accent-hover);
   color: var(--text-primary);
+}
+
+/* 顶栏菜单采用类似 VS Code 的紧凑菜单栏和下拉菜单布局。 */
+.header-menu-dropdown.context-menu {
+  min-width: 180px;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.header-menu-dropdown.context-menu button {
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 13px;
 }
 
 .panel {

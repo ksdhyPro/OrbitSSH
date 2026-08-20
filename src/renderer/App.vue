@@ -9,7 +9,6 @@ import {
 } from "vue";
 import "@xterm/xterm/css/xterm.css";
 
-import AboutDialog from "./components/AboutDialog.vue";
 import ConnectionDialog from "./components/ConnectionDialog.vue";
 import DataTransferDialog from "./components/DataTransferDialog.vue";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
@@ -60,8 +59,13 @@ const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
 const isUpdateDialogOpen = ref(false);
-const isAboutDialogOpen = ref(false);
+const contentShellElement = ref<HTMLElement | null>(null);
 let stopAppMenuListener: (() => void) | null = null;
+
+/** 返回 AI 分隔条拖拽时应使用的内容区右边界。 */
+function getContentShellRightBoundary(): number {
+  return contentShellElement.value?.getBoundingClientRect().right ?? window.innerWidth;
+}
 
 // core：API 代理（响应式）+ 日志（普通函数）
 const { orbitSSHApi } = storeToRefs(coreStore);
@@ -378,6 +382,16 @@ function closeDataTransferDialog(): void {
   isDataTransferDialogOpen.value = false;
 }
 
+async function showAboutDialog(): Promise<void> {
+  try {
+    await orbitSSHApi.value?.about.show();
+  } catch (error) {
+    writeRendererLog("打开关于弹窗失败", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 function handleAppMenuAction(action: AppMenuAction): void {
   if (action === "undo") {
     if (!undoFileEditor()) {
@@ -399,7 +413,7 @@ function handleAppMenuAction(action: AppMenuAction): void {
   }
 
   if (action === "open-about") {
-    isAboutDialogOpen.value = true;
+    void showAboutDialog();
     return;
   }
 
@@ -492,10 +506,18 @@ watch(sidebarWidth, () => {
   scheduleTerminalFit();
 });
 
-// AI 面板宽度或折叠状态变化都会改变终端可用宽度，需要重新 fit。
-watch([aiPanelWidth, isAiPanelOpen], () => {
-  scheduleTerminalFit();
-});
+// AI 面板宽度、折叠或启用状态变化都会改变终端可用宽度，需要重新 fit。
+watch(
+  [aiPanelWidth, isAiPanelOpen, () => appSettings.ai.enabled],
+  ([, , aiEnabled]) => {
+    // 禁用 AI 时终止可能仍在进行的拖拽，避免残留全局鼠标状态。
+    if (!aiEnabled) {
+      sidebarStore.stopAiPanelResize();
+    }
+
+    scheduleTerminalFit();
+  },
+);
 
 watch(
   tabs,
@@ -581,17 +603,24 @@ onUnmounted(() => {
       @open-data-transfer="openDataTransferDialog"
       @open-settings="openSettingsDialog"
       @open-update="isUpdateDialogOpen = true"
-      @open-about="isAboutDialogOpen = true"
+      @open-about="showAboutDialog"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />
 
     <div
+      ref="contentShellElement"
       class="content-shell"
       :style="{
         '--sidebar-width': `${sidebarWidth}px`,
         '--ai-panel-width': `${aiPanelWidth}px`,
-        '--ai-panel-resizer-width': isAiPanelOpen ? '6px' : '0px',
+        '--ai-panel-track-width': !appSettings.ai.enabled
+          ? '0px'
+          : isAiPanelOpen
+            ? `${aiPanelWidth}px`
+            : '42px',
+        '--ai-panel-resizer-width':
+          appSettings.ai.enabled && isAiPanelOpen ? '6px' : '0px',
       }">
       <aside class="sidebar">
         <ServerSidebar
@@ -682,6 +711,7 @@ onUnmounted(() => {
         @open-connection-dialog="openConnectionDialog" />
 
       <div
+        v-if="appSettings.ai.enabled"
         :class="[
           'ai-panel-resizer',
           { active: isResizingAiPanel, collapsed: !isAiPanelOpen },
@@ -690,9 +720,16 @@ onUnmounted(() => {
         aria-orientation="vertical"
         aria-label="调整 AI 面板宽度"
         :aria-hidden="!isAiPanelOpen"
-        @mousedown="isAiPanelOpen && startAiPanelResize($event)"></div>
+        @mousedown="
+          isAiPanelOpen &&
+          startAiPanelResize(
+            $event,
+            getContentShellRightBoundary(),
+          )
+        "></div>
 
       <AiPanel
+        v-if="appSettings.ai.enabled"
         :open="isAiPanelOpen"
         :enabled="appSettings.ai.enabled"
         :mode="aiMode"
@@ -803,11 +840,6 @@ onUnmounted(() => {
       @update-ai-settings="updateAiSettings"
       @update-theme-mode="updateThemeMode"
       @select-selection-background="selectSelectionBackground" />
-
-    <AboutDialog
-      :open="isAboutDialogOpen"
-      :version="updateCurrentVersion"
-      @close="isAboutDialogOpen = false" />
 
     <UpdateDialog
       :open="isUpdateDialogOpen"
