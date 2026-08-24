@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.0
+
+1. Added SFTP folder downloads. Selected folders are downloaded recursively with their complete directory structure, and users can choose the local destination before downloading. The picker defaults to Desktop on both Windows and macOS.
+2. Upgraded AI collaboration across servers. The AI can target saved SSH connections for diagnostics without exposing connection credentials to the model. Commands that modify data, transfer files, or operate Docker are shown in an approval card and run only after user confirmation.
+3. Reworked AI Agent execution orchestration by replacing the fixed 10-command limit with a dynamic budget based on elapsed time, repeated commands, and consecutive no-progress steps, allowing complex diagnostics to complete their required steps.
+4. Fixed incomplete recognition of Docker read-only queries, so commands such as container-count checks can run normally. The AI is also prevented from using the current terminal to SSH, SCP, or SFTP into another server; cross-server actions always use saved connections.
+5. Improved terminal session tabs. When many servers are open, tabs support horizontal mouse-wheel scrolling with a subtle scrollbar and no longer overflow into the AI panel. The close icon is centered correctly.
+
 ## v1.2.3
 
 1. Fixed right-side overflow when narrowing the AI panel by unifying grid and child sizing, calculating drag width from the actual content boundary, and adding layout regression coverage.

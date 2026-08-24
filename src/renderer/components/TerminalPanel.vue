@@ -46,6 +46,7 @@ const emit = defineEmits<{
 const terminalsStore = useTerminalsStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
+const sessionTabsElement = ref<HTMLElement | null>(null);
 const terminalContextMenu = reactive({
   open: false,
   x: 0,
@@ -53,6 +54,22 @@ const terminalContextMenu = reactive({
   canCopy: false,
   canPaste: false,
 });
+
+// 标签溢出时将纵向滚轮转换为横向滚动，方便快速切换较多服务器。
+function scrollSessionTabs(event: WheelEvent): void {
+  const sessionTabs = sessionTabsElement.value;
+  if (!sessionTabs || sessionTabs.scrollWidth <= sessionTabs.clientWidth) {
+    return;
+  }
+
+  const scrollDelta = event.deltaX || event.deltaY;
+  if (!scrollDelta) {
+    return;
+  }
+
+  event.preventDefault();
+  sessionTabs.scrollLeft += scrollDelta;
+}
 
 const terminalContextMenuItems = computed<ContextMenuItem[]>(() => [
   {
@@ -139,7 +156,12 @@ watch(
 <template>
   <section class="workspace">
     <section class="terminal-area">
-      <nav class="session-tabs" role="tablist" aria-label="终端标签">
+      <nav
+        ref="sessionTabsElement"
+        class="session-tabs"
+        role="tablist"
+        aria-label="终端标签"
+        @wheel="scrollSessionTabs">
         <div
           v-for="tab in tabs"
           :key="tab.id"

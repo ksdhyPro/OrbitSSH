@@ -212,16 +212,23 @@
   padding: 6px 8px;
   overflow-x: auto;
   overflow-y: hidden;
+  overscroll-behavior-x: contain;
   border-bottom: 1px solid var(--border-tab);
   background: var(--bg-elevated-1);
   white-space: nowrap;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
   -webkit-app-region: no-drag;
 }
 
-/* 会话较多时仍可横向滚动，但隐藏浏览器式滚动条。 */
+/* 保留细滚动条，明确提示被遮挡的会话标签仍可继续查看。 */
 .session-tabs::-webkit-scrollbar {
-  display: none;
+  height: 4px;
+}
+
+.session-tabs::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-strong);
 }
 
 .session-tab {
@@ -312,6 +319,8 @@
   flex: 0 0 auto;
   width: 22px;
   height: 22px;
+  padding: 0;
+  line-height: 0;
   border-radius: 5px;
   background: transparent;
   opacity: 0;
@@ -332,6 +341,7 @@
 }
 
 .session-tab-close img {
+  display: block;
   width: var(--icon-size-micro);
   height: var(--icon-size-micro);
 }

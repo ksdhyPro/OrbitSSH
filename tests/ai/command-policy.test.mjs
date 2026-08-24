@@ -55,4 +55,8 @@ test("复合只读命令保留自动执行能力", () => {
     evaluateAiCommand("pwd; rm -rf /tmp/demo").decision,
     "requires_approval",
   );
+  assert.equal(
+    evaluateAiCommand("docker ps -q | wc -l && docker ps").decision,
+    "allow_readonly",
+  );
 });

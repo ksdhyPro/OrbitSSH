@@ -15,6 +15,7 @@ import {
 import {
   collectSseStream,
   parseRunShellToolCalls,
+  parseSavedServerToolCalls,
   type ParsedAssistantResponse,
   type RawToolCall,
 } from "./ai-response-parser.js";
@@ -22,6 +23,7 @@ import { requestCodexCliTurn } from "./codex-cli-provider.js";
 
 export type {
   ParsedAiCommand,
+  ParsedAiSavedServerCommand,
   ParsedAssistantResponse,
 } from "./ai-response-parser.js";
 
@@ -50,6 +52,25 @@ const aiTools = [
           },
         },
         required: ["command", "reason", "risk"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "inspect_saved_server",
+      description: "通过 OrbitSSH 已保存的 SSH 连接，在指定服务器执行一条只读查询。不得使用 ssh、scp 或读取认证信息。",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          serverName: { type: "string", description: "用户提及的已保存服务器名称" },
+          command: { type: "string", description: "仅限在目标服务器执行的只读 Shell 命令" },
+          reason: { type: "string", description: "为什么执行这条查询，用中文简短说明" },
+          risk: { type: "string", enum: ["low"], description: "跨服务器查看只能是 low 风险只读查询" },
+        },
+        required: ["serverName", "command", "reason", "risk"],
         additionalProperties: false,
       },
       strict: true,
@@ -304,8 +325,9 @@ async function requestAiTurnOnce(
     }
 
     const commands = parseRunShellToolCalls(normalizedToolCalls);
+    const savedServerCommands = parseSavedServerToolCalls(normalizedToolCalls);
     let retryable = false;
-    if (normalizedToolCalls.length > 0 && commands.length === 0) {
+    if (normalizedToolCalls.length > 0 && commands.length === 0 && savedServerCommands.length === 0) {
       retryable = true;
       writeAppLog({
         scope: "main.ai",
@@ -341,10 +363,10 @@ async function requestAiTurnOnce(
         tabId: input.tabId,
         contentLength: reply.length,
         toolCallCount: normalizedToolCalls.length,
-        hasCommands: commands.length > 0,
+        hasCommands: commands.length > 0 || savedServerCommands.length > 0,
       },
     });
-    return { reply, commands, retryable };
+    return { reply, commands, savedServerCommands, retryable };
   } catch (error) {
     if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
       return { reply: "[已终止]", commands: [] };
@@ -417,5 +439,6 @@ export async function requestAiTurn(
   return {
     reply: result.reply,
     commands: result.commands,
+    savedServerCommands: result.savedServerCommands,
   };
 }

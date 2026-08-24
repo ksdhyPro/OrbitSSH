@@ -25,13 +25,16 @@ import {
 import {
   requestAiTurn,
   type ParsedAiCommand,
+  type ParsedAiSavedServerCommand,
   type ParsedAssistantResponse,
 } from "./ai-provider.js";
+import { executeSavedServerReadonlyCommand } from './ai-saved-server-command.js';
 import {
   evaluateAiCommand,
   splitAiShellCommands,
 } from "./command-policy.js";
 import { ExpiringApprovalStore } from "./ai-approval-store.js";
+import { getAiExecutionStopReason } from './ai-execution-budget.js';
 
 interface PendingApprovalState {
   tabId: string;
@@ -41,6 +44,8 @@ interface PendingApprovalState {
   previousCards: AiCommandCard[];
   executedCommands: ExecutedAiCommandContext[];
   createdAt: number;
+  /** 已保存服务器工具的目标，批准后仍由主进程本地解析和直连。 */
+  savedServerCommand?: ParsedAiSavedServerCommand;
   /** AI 已耗尽本地策略重试后，用户可显式决定是否绕过该次拒绝。 */
   allowPolicyBypass?: boolean;
   emit?: AgentEmitter;
@@ -56,7 +61,6 @@ interface AgentEmitter {
   sendCommandCard(card: AiCommandCard): void;
 }
 
-const maxAgentCommandCount = 10;
 const maxLocalPolicyRetries = 3;
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
@@ -365,6 +369,19 @@ async function executeAgentCommand(
   const cardCreatedAt = options.cardCreatedAt ?? Date.now();
   let nextCards = commandCards;
 
+  // 已保存连接必须由主进程受控工具直连，禁止模型借当前服务器二次 ssh/scp 跳转。
+  if (/^\s*(?:ssh|scp|sftp)\b/i.test(command.command)) {
+    const rejectedCard = createRejectedCard(
+      input,
+      command,
+      "跨服务器操作必须使用已保存服务器工具，不能通过当前终端跳转 SSH",
+    );
+    emit?.sendCommandCard(rejectedCard);
+    nextCards = mergeCards(nextCards, rejectedCard);
+    messages.push(createAssistantMessage("已拦截通过当前服务器跳转 SSH 的命令。请使用已保存服务器名称，我会通过本地受控连接执行。"));
+    return { status: "return", result: { messages, commandCards: nextCards } };
+  }
+
   if (command.policy.decision === "deny" && !options.bypassPolicyDeny) {
     messages.push(createAssistantMessage(`命令已被本地策略拒绝：${command.policy.reason}`));
     return { status: "return", result: { messages, commandCards: nextCards } };
@@ -494,6 +511,85 @@ async function executeAgentCommand(
   }
 }
 
+async function executeSavedServerAgentCommand(
+  input: AiChatInput,
+  signal: AbortSignal,
+  emit: AgentEmitter | undefined,
+  command: EvaluatedAiCommand & { serverName: string },
+  commandCards: AiCommandCard[],
+  executedCommands: ExecutedAiCommandContext[],
+  messages: AiMessage[],
+  options: {
+    approvalId?: string;
+    bypassApproval?: boolean;
+    cardId?: string;
+    cardCreatedAt?: number;
+  } = {},
+): Promise<CommandExecutionResult> {
+  const displayCommand = `[${command.serverName}] ${command.command}`;
+  const displayItem: EvaluatedAiCommand = { ...command, command: displayCommand };
+
+  if (command.policy.decision === "deny") {
+    const rejected = createRejectedCard(input, displayItem, command.policy.reason);
+    emit?.sendCommandCard(rejected);
+    return { status: "return", result: { messages, commandCards: mergeCards(commandCards, rejected) } };
+  }
+
+  const cardId = options.cardId ?? createId();
+  const createdAt = options.cardCreatedAt ?? Date.now();
+  if (command.policy.decision !== "allow_readonly" && !options.bypassApproval) {
+    const approvalId = createId();
+    const approvalCard = createApprovalCard(input, displayItem, approvalId, cardId, createdAt, command.reason);
+    emit?.sendCommandCard(approvalCard);
+    const nextCards = mergeCards(commandCards, approvalCard);
+    storePendingApproval(approvalId, {
+      tabId: input.tabId,
+      input,
+      command: displayItem,
+      savedServerCommand: command,
+      cardId,
+      previousCards: nextCards,
+      executedCommands,
+      createdAt,
+      emit,
+    });
+    return { status: "return", result: { messages, commandCards: nextCards } };
+  }
+  const running = createRunningCard(input, displayItem, cardId, createdAt);
+  emit?.sendCommandCard(running);
+  let nextCards = mergeCards(commandCards, running);
+
+  try {
+    const remote = await executeSavedServerReadonlyCommand(
+      command.serverName,
+      command.command,
+      signal,
+    );
+    const completed = createCompletedCard(input, displayItem, remote.result, cardId, createdAt, options.approvalId);
+    emit?.sendCommandCard(completed);
+    nextCards = mergeCards(nextCards, completed);
+    return {
+      status: "continue",
+      commandCards: nextCards,
+      executedCommands: [
+        ...executedCommands,
+        {
+          command: `[${remote.serverName}] ${command.command}`,
+          reason: command.reason,
+          risk: command.risk,
+          result: remote.result,
+        },
+      ],
+    };
+  } catch (error) {
+    const failed = createFailedCard(input, displayItem, error, cardId, createdAt, options.approvalId);
+    emit?.sendCommandCard(failed);
+    nextCards = mergeCards(nextCards, failed);
+    messages.push(createAssistantMessage(`已保存服务器查询失败：${error instanceof Error ? error.message : String(error)}`));
+    return { status: "return", result: { messages, commandCards: nextCards } };
+  }
+}
+
 async function runAgentLoop(
   input: AiChatInput,
   settings: AppSettings,
@@ -503,14 +599,22 @@ async function runAgentLoop(
   initialExecutedCommands: ExecutedAiCommandContext[] = [],
 ): Promise<AiChatResult> {
   const messages: AiMessage[] = [];
+  const startedAt = Date.now();
   let commandCards = [...previousCards];
   let executedCommands = [...initialExecutedCommands];
   let policyFeedback: LocalPolicyRejectionFeedback | undefined;
   let localPolicyRetryCount = 0;
 
-  while (executedCommands.length < maxAgentCommandCount) {
+  while (true) {
     if (signal.aborted) {
       messages.push(createAssistantMessage("[已终止]"));
+      return { messages, commandCards };
+    }
+    const stopReason = getAiExecutionStopReason(executedCommands, startedAt);
+    if (stopReason) {
+      messages.push(createAssistantMessage(
+        `${stopReason}\n\n已完成 ${executedCommands.length} 条命令检查。请根据当前结果继续提问，或提供新的排查方向。`,
+      ));
       return { messages, commandCards };
     }
     const messageId = createId();
@@ -525,9 +629,12 @@ async function runAgentLoop(
       policyFeedback,
     );
     const reply = parsed.reply?.trim();
+    const nextSavedServerCommand = getNextSavedServerCommand(parsed);
     const nextCommand = getNextParsedCommand(parsed);
 
-    const defaultMessage = nextCommand
+    const defaultMessage = nextSavedServerCommand
+      ? `查看已保存服务器：${nextSavedServerCommand.serverName}（${nextSavedServerCommand.reason}）`
+      : nextCommand
       ? `执行：${nextCommand.command}（${nextCommand.reason}）`
       : "未收到有效回复。";
 
@@ -599,6 +706,21 @@ async function runAgentLoop(
       content: reply || defaultMessage,
       createdAt: messageCreatedAt,
     });
+    if (nextSavedServerCommand) {
+      const execution = await executeSavedServerAgentCommand(
+        input,
+        signal,
+        emit,
+        nextSavedServerCommand,
+        commandCards,
+        executedCommands,
+        messages,
+      );
+      if (execution.status === "return") return execution.result;
+      commandCards = execution.commandCards;
+      executedCommands = execution.executedCommands;
+      continue;
+    }
     if (!nextCommand) return { messages, commandCards };
 
     const execution = await executeAgentCommand(
@@ -615,12 +737,19 @@ async function runAgentLoop(
     executedCommands = execution.executedCommands;
   }
 
-  messages.push(
-    createAssistantMessage(
-      `已达到单轮最多 ${maxAgentCommandCount} 条命令的限制，请根据当前结果继续提问。`,
-    ),
-  );
-  return { messages, commandCards };
+}
+
+function getNextSavedServerCommand(
+  parsed: ParsedAssistantResponse,
+): (EvaluatedAiCommand & { serverName: string }) | null {
+  const command = parsed.savedServerCommands?.find(item => item.command.trim() && item.serverName.trim());
+  if (!command) return null;
+  return {
+    ...command,
+    command: command.command.trim(),
+    serverName: command.serverName.trim(),
+    policy: evaluateAiCommand(command.command),
+  };
 }
 
 async function runTrackedRequest<T>(
@@ -685,6 +814,37 @@ export async function runApprovedAiCommand(
     const messages: AiMessage[] = [];
     const previousCard = commandCards.find(card => card.id === approval.cardId);
     const cardCreatedAt = previousCard?.createdAt ?? Date.now();
+    if (approval.savedServerCommand) {
+      const savedServerCommand: EvaluatedAiCommand & { serverName: string } = {
+        ...approval.savedServerCommand,
+        policy: evaluateAiCommand(approval.savedServerCommand.command),
+      };
+      const execution = await executeSavedServerAgentCommand(
+        approval.input,
+        signal,
+        emit,
+        savedServerCommand,
+        commandCards,
+        executedCommands,
+        messages,
+        {
+          approvalId: input.approvalId,
+          bypassApproval: true,
+          cardId: approval.cardId,
+          cardCreatedAt,
+        },
+      );
+      if (execution.status === "return") return execution.result;
+      const loopResult = await runAgentLoop(
+        approval.input,
+        settings,
+        signal,
+        emit,
+        execution.commandCards,
+        execution.executedCommands,
+      );
+      return { messages: [...messages, ...loopResult.messages], commandCards: loopResult.commandCards };
+    }
     const evaluatedCommand: EvaluatedAiCommand = {
       ...approval.command,
       policy: evaluateAiCommand(approval.command.command),

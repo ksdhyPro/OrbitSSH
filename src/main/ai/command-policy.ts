@@ -206,7 +206,7 @@ const READONLY_PATTERNS: RegExp[] = [
   /^docker\s+--version$/,
   /^docker\s+version$/,
   /^docker\s+info$/,
-  /^docker\s+ps(?:\s+-a)?(?:\s+--format\s+['"]?[^;&|<>`$]{1,120}['"]?)?$/,
+  /^docker\s+ps(?:\s+-a)?(?:\s+-q)?(?:\s+--format\s+['"]?[^;&|<>`$]{1,120}['"]?)?$/,
   /^docker\s+images$/,
   /^docker\s+logs\s+--tail\s+\d{1,4}\s+[A-Za-z0-9_.-]+$/,
   /^docker\s+inspect\s+[A-Za-z0-9_.-]+$/,

@@ -1,12 +1,17 @@
 export interface ParsedAssistantResponse {
   reply?: string;
   commands?: ParsedAiCommand[];
+  savedServerCommands?: ParsedAiSavedServerCommand[];
 }
 
 export interface ParsedAiCommand {
   command: string;
   reason: string;
   risk: "low" | "medium" | "high";
+}
+
+export interface ParsedAiSavedServerCommand extends ParsedAiCommand {
+  serverName: string;
 }
 
 export interface StreamedToolCall {
@@ -101,6 +106,18 @@ export function parseRunShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCom
       ? []
       : buildCommandsFromToolArguments(toolCall.function.arguments),
   );
+}
+
+export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAiSavedServerCommand[] {
+  return rawToolCalls.flatMap(toolCall => {
+    if (toolCall.type !== 'function' || toolCall.function?.name !== 'inspect_saved_server') return []
+    const args = parseToolArguments(toolCall.function.arguments)
+    if (!args || typeof args !== 'object') return []
+    const record = args as Record<string, unknown>
+    const command = createCommandFromRecord(record, '查看已保存服务器')
+    const serverName = typeof record.serverName === 'string' ? record.serverName.trim() : ''
+    return command && serverName ? [{ ...command, serverName }] : []
+  })
 }
 
 export async function collectSseStream(
