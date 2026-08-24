@@ -34,6 +34,7 @@ export interface SftpDownloadInput {
   tabId: string
   path: string
   name: string
+  type?: RemoteFileNode['type']
   size?: number
   taskId?: string
   localPath?: string

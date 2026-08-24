@@ -501,7 +501,7 @@ export const useSftpStore = defineStore("sftp", () => {
     tabId: string,
     node: RemoteFileNode | null,
   ): boolean {
-    return Boolean(node && node.type === "file" && tabId);
+    return Boolean(node && (node.type === "file" || node.type === "directory") && tabId);
   }
 
   function getFileTextProbeState(
@@ -1084,6 +1084,7 @@ export const useSftpStore = defineStore("sftp", () => {
         tabId,
         path: node.path,
         name: node.name,
+        type: node.type,
         size: node.size,
       });
     } catch (error) {

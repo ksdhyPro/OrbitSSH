@@ -86,21 +86,26 @@ const menuItems = computed<ContextMenuItem[]>(() => {
 
   if (node?.type === "directory") {
     return [
-      ...createItems,
-      uploadFileItem,
-      uploadDirectoryItem,
+      // 文件夹菜单按单一顺序展示，避免在下载操作前后插入分隔线。
+      ...createItems.map((item) => ({ ...item, group: undefined })),
+      { ...uploadFileItem, group: undefined },
+      { ...uploadDirectoryItem, group: undefined },
+      {
+        key: "download",
+        label: "下载文件夹",
+        icon: downloadIcon,
+        disabled: !props.canDownloadRemoteFile(node),
+      },
       {
         key: "rename",
         label: "重命名",
         icon: renameIcon,
-        group: "manage",
         disabled: !props.canDeleteRemoteNode(node),
       },
       {
         key: "delete",
         label: "删除",
         icon: trashIcon,
-        group: "manage",
         disabled: !props.canDeleteRemoteNode(node),
         danger: true,
       },

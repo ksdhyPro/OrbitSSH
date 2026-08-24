@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { basename, join } from 'node:path'
 
@@ -10,6 +10,7 @@ import {
   createUploadPlan,
   createRemoteDirectory,
   createRemoteFile,
+  downloadRemoteDirectory,
   deleteRemoteNode,
   downloadRemoteFile,
   enqueueTransferTask,
@@ -118,6 +119,7 @@ function normalizeDownloadInput(
     tabId,
     path: requireNonEmptyString(record.path, '远程路径'),
     name: requireNonEmptyString(record.name, '文件名'),
+    type: record.type === undefined ? 'file' : requireEnum(record.type, '节点类型', remoteNodeTypes),
     size: requireOptionalFiniteNumber(record.size, '文件大小'),
     taskId: requireOptionalString(record.taskId, '任务 ID'),
     localPath: requireOptionalString(record.localPath, '本地路径'),
@@ -293,6 +295,24 @@ export function registerSftpIpc(): void {
     const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
     let filePath = input.localPath
 
+    if (input.type === 'directory' && !input.localDirectoryPath) {
+      const directoryDialogOptions = {
+        title: '选择文件夹下载位置',
+        defaultPath: app.getPath('desktop'),
+        buttonLabel: '选择此文件夹',
+        properties: ['openDirectory', 'createDirectory'] as Electron.OpenDialogOptions['properties']
+      }
+      const result = ownerWindow
+        ? await dialog.showOpenDialog(ownerWindow, directoryDialogOptions)
+        : await dialog.showOpenDialog(directoryDialogOptions)
+
+      if (result.canceled || !result.filePaths[0]) {
+        return { saved: false }
+      }
+
+      input.localDirectoryPath = result.filePaths[0]
+    }
+
     if (!filePath && input.localDirectoryPath) {
       // 目标文件名只取 basename，避免远程名称跳出用户当前选择的本地目录。
       filePath = join(input.localDirectoryPath, basename(input.name))
@@ -316,6 +336,9 @@ export function registerSftpIpc(): void {
     }
 
     const taskId = input.taskId ?? randomUUID()
+    const targetPath = input.type === 'directory'
+      ? join(input.localDirectoryPath as string, basename(input.name))
+      : filePath as string
     const baseEvent = {
       taskId,
       tabId: input.tabId,
@@ -324,7 +347,7 @@ export function registerSftpIpc(): void {
       transferredBytes: input.transferredBytes ?? 0,
       totalBytes: input.size ?? 0,
       speedBytesPerSecond: 0,
-      filePath
+      filePath: targetPath
     }
     event.sender.send('sftp:download-progress', {
       ...baseEvent,
@@ -332,14 +355,23 @@ export function registerSftpIpc(): void {
     })
 
     // 下载任务放到后台执行，IPC 调用只负责创建任务并立即返回，避免长下载被暂停后出现 reply 未返回。
-    void enqueueTransferTask(taskId, () => downloadRemoteFile(
-        input.tabId,
-        input.path,
-        filePath,
-        { taskId, name: input.name },
-        input.size,
-        (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
-      ))
+    void enqueueTransferTask(taskId, () => input.type === 'directory'
+      ? downloadRemoteDirectory(
+          input.tabId,
+          input.path,
+          input.name,
+          input.localDirectoryPath as string,
+          { taskId },
+          (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
+        )
+      : downloadRemoteFile(
+          input.tabId,
+          input.path,
+          filePath as string,
+          { taskId, name: input.name },
+          input.size,
+          (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
+        ))
       .catch((error) => {
         event.sender.send('sftp:download-progress', {
           ...baseEvent,
@@ -348,7 +380,7 @@ export function registerSftpIpc(): void {
         })
       })
 
-    return { saved: true, taskId, filePath }
+    return { saved: true, taskId, filePath: targetPath }
   })
 
   ipcMain.handle('sftp:download-control', (_event, rawInput: unknown) => {

@@ -30,6 +30,7 @@ export {
 
 export {
   controlRemoteDownloadTask,
+  downloadRemoteDirectory,
   downloadRemoteFile
 } from './sftp-download-transfer.js'
 

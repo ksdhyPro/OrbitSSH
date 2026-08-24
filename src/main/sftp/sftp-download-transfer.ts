@@ -1,6 +1,7 @@
 import SftpClient from 'ssh2-sftp-client'
 
-import { open as openLocalFile, rm } from 'node:fs/promises'
+import { mkdir, open as openLocalFile, rm } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
@@ -28,13 +29,56 @@ interface DownloadRuntimeTask {
   emitProgress: (status: SftpDownloadProgressEvent['status'], error?: string) => void
 }
 
+interface RemoteDownloadEntry {
+  remotePath: string
+  relativePath: string
+  type: 'file' | 'directory'
+  size: number
+}
+
+interface DirectoryDownloadRuntimeTask {
+  currentTaskId?: string
+  paused: boolean
+  canceled: boolean
+  resume?: () => void
+}
+
 const activeDownloadTasks = new Map<string, DownloadRuntimeTask>()
+const activeDirectoryDownloadTasks = new Map<string, DirectoryDownloadRuntimeTask>()
 
 export async function controlRemoteDownloadTask(
   taskId: string,
   action: 'pause' | 'resume' | 'cancel',
   localPath?: string
 ): Promise<boolean> {
+  const directoryTask = activeDirectoryDownloadTasks.get(taskId)
+
+  if (directoryTask) {
+    if (action === 'pause') {
+      directoryTask.paused = true
+      if (directoryTask.currentTaskId) {
+        await controlRemoteDownloadTask(directoryTask.currentTaskId, 'pause')
+      }
+      return true
+    }
+
+    if (action === 'resume') {
+      directoryTask.paused = false
+      directoryTask.resume?.()
+      directoryTask.resume = undefined
+      return true
+    }
+
+    directoryTask.canceled = true
+    directoryTask.paused = false
+    directoryTask.resume?.()
+    directoryTask.resume = undefined
+    if (directoryTask.currentTaskId) {
+      await controlRemoteDownloadTask(directoryTask.currentTaskId, 'cancel')
+    }
+    return true
+  }
+
   const task = activeDownloadTasks.get(taskId)
 
   if (!task) {
@@ -88,6 +132,146 @@ export async function controlRemoteDownloadTask(
     })
   })
   return true
+}
+
+function createSafeRelativePath(parentPath: string, name: string): string {
+  // 远端返回的条目名必须是单一文件名，避免构造本地路径时越出用户选择的目录。
+  if (!name || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+    throw new Error('远程目录包含不安全的文件名，已停止下载')
+  }
+
+  return parentPath ? `${parentPath}/${name}` : name
+}
+
+async function collectRemoteDownloadEntries(
+  tabId: string,
+  remotePath: string,
+  relativePath: string,
+  entries: RemoteDownloadEntry[]
+): Promise<void> {
+  const session = getSftpSession(tabId)
+  const children = await session.client.list(remotePath)
+
+  for (const child of children) {
+    const childRelativePath = createSafeRelativePath(relativePath, child.name)
+    const childRemotePath = `${normalizeRemotePath(remotePath).replace(/\/$/, '')}/${child.name}`
+
+    if (child.type === 'd') {
+      entries.push({ remotePath: childRemotePath, relativePath: childRelativePath, type: 'directory', size: 0 })
+      await collectRemoteDownloadEntries(tabId, childRemotePath, childRelativePath, entries)
+      continue
+    }
+
+    entries.push({
+      remotePath: childRemotePath,
+      relativePath: childRelativePath,
+      type: 'file',
+      size: child.size ?? 0
+    })
+  }
+}
+
+function waitForDirectoryDownloadResume(task: DirectoryDownloadRuntimeTask): Promise<void> {
+  return new Promise((resolve) => {
+    task.resume = resolve
+  })
+}
+
+export async function downloadRemoteDirectory(
+  tabId: string,
+  remotePath: string,
+  name: string,
+  localDirectoryPath: string,
+  task: Pick<SftpDownloadProgressEvent, 'taskId'>,
+  onProgress?: (event: SftpDownloadProgressEvent) => void
+): Promise<boolean> {
+  const rootName = createSafeRelativePath('', basename(name))
+  const localRootPath = join(localDirectoryPath, rootName)
+  const entries: RemoteDownloadEntry[] = [{
+    remotePath: normalizeRemotePath(remotePath), relativePath: '', type: 'directory', size: 0
+  }]
+  const runtimeTask: DirectoryDownloadRuntimeTask = { paused: false, canceled: false }
+
+  await collectRemoteDownloadEntries(tabId, remotePath, '', entries)
+  const totalBytes = entries.reduce((total, entry) => total + entry.size, 0)
+  let transferredBytes = 0
+  let completedBytes = 0
+  let currentSpeedBytesPerSecond = 0
+  let lastSpeedAt = Date.now()
+  let lastSpeedBytes = 0
+
+  const emitProgress = (status: SftpDownloadProgressEvent['status'], error?: string): void => {
+    const now = Date.now()
+    if (status === 'progress') {
+      const elapsedSeconds = Math.max((now - lastSpeedAt) / 1000, 0.001)
+      currentSpeedBytesPerSecond = Math.max((transferredBytes - lastSpeedBytes) / elapsedSeconds, 0)
+      lastSpeedAt = now
+      lastSpeedBytes = transferredBytes
+    }
+    onProgress?.({
+      taskId: task.taskId, tabId, name, path: normalizeRemotePath(remotePath), status,
+      transferredBytes, totalBytes, speedBytesPerSecond: status === 'started' ? 0 : currentSpeedBytesPerSecond,
+      filePath: localRootPath, error
+    })
+  }
+
+  activeDirectoryDownloadTasks.set(task.taskId, runtimeTask)
+  emitProgress('started')
+
+  try {
+    for (const entry of entries) {
+      if (runtimeTask.canceled) break
+
+      const localPath = entry.relativePath ? join(localRootPath, ...entry.relativePath.split('/')) : localRootPath
+      if (entry.type === 'directory') {
+        await mkdir(localPath, { recursive: true })
+        continue
+      }
+
+      await mkdir(join(localPath, '..'), { recursive: true })
+      let completed = false
+      while (!completed && !runtimeTask.canceled) {
+        const childTaskId = `${task.taskId}:${entry.relativePath}`
+        runtimeTask.currentTaskId = childTaskId
+        const downloaded = await downloadRemoteFile(
+          tabId, entry.remotePath, localPath, { taskId: childTaskId, name }, entry.size,
+          (event) => {
+            transferredBytes = completedBytes + event.transferredBytes
+            emitProgress(event.status === 'completed' ? 'progress' : event.status, event.error)
+          }
+        )
+        runtimeTask.currentTaskId = undefined
+
+        if (downloaded) {
+          completedBytes += entry.size
+          transferredBytes = completedBytes
+          completed = true
+        } else if (!runtimeTask.canceled) {
+          // 子文件被暂停时，若用户已在状态收敛前点击继续，直接重试并从临时文件续传。
+          if (runtimeTask.paused) {
+            emitProgress('paused')
+            await waitForDirectoryDownloadResume(runtimeTask)
+          }
+          if (!runtimeTask.canceled) emitProgress('progress')
+        }
+      }
+    }
+
+    if (runtimeTask.canceled) {
+      emitProgress('canceled')
+      return false
+    }
+
+    transferredBytes = totalBytes
+    emitProgress('completed')
+    writeAppLog({ scope: 'main.sftp', message: '远程文件夹下载完成', data: { tabId, path: remotePath, localPath: localRootPath, size: totalBytes } })
+    return true
+  } catch (error) {
+    emitProgress('error', error instanceof Error ? error.message : String(error))
+    return false
+  } finally {
+    activeDirectoryDownloadTasks.delete(task.taskId)
+  }
 }
 
 export async function downloadRemoteFile(

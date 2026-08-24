@@ -243,6 +243,12 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
       ...createItems,
       ...uploadItems,
       {
+        key: "download",
+        label: "下载文件夹",
+        icon: arrowDownIcon,
+        disabled: !sftpStore.canDownloadRemoteFile(pane.tabId, node),
+      },
+      {
         key: "rename",
         label: "重命名",
         icon: editIcon,
