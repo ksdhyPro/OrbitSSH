@@ -28,7 +28,20 @@ const orbitSSHApi = {
     create: input => ipcRenderer.invoke("server:create", input),
     update: input => ipcRenderer.invoke("server:update", input),
     setPinned: input => ipcRenderer.invoke("server:set-pinned", input),
+    listAutomationTasks: serverId =>
+      ipcRenderer.invoke("server:automation-tasks:list", serverId),
+    createAutomationTask: input =>
+      ipcRenderer.invoke("server:automation-tasks:create", input),
     delete: serverId => ipcRenderer.invoke("server:delete", serverId),
+  },
+  automation: {
+    run: taskId => ipcRenderer.invoke("automation:run", { taskId }),
+    cancel: runId => ipcRenderer.invoke("automation:cancel", runId),
+    onRunEvent: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("automation:run-event", listener);
+      return () => ipcRenderer.removeListener("automation:run-event", listener);
+    },
   },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),

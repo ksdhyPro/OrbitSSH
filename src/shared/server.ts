@@ -35,6 +35,22 @@ export interface ServerPinInput {
   isPinned: boolean
 }
 
+/** 绑定到单台服务器的终端常用命令。 */
+export interface ServerAutomationTask {
+  id: string
+  serverId: string
+  name: string
+  script: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ServerAutomationTaskInput {
+  serverId: string
+  name: string
+  script: string
+}
+
 export type ServerAuthConfig =
   | (ServerConfig & {
       authType: 'password'

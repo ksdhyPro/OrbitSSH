@@ -502,20 +502,6 @@ input[type="number"] {
   color: var(--text-primary);
 }
 
-/* 顶栏菜单采用类似 VS Code 的紧凑菜单栏和下拉菜单布局。 */
-.header-menu-dropdown.context-menu {
-  min-width: 180px;
-  padding: 4px;
-  border-radius: 6px;
-}
-
-.header-menu-dropdown.context-menu button {
-  min-height: 28px;
-  padding: 3px 8px;
-  border-radius: 3px;
-  font-size: 13px;
-}
-
 .panel {
   min-height: 0;
   border: 0;

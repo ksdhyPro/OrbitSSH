@@ -362,6 +362,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     }
   }
 
+  // 写入常用命令时不附加换行，仅插入到当前命令行，交由用户确认后执行。
   function handleTerminalKeyEvent(event: KeyboardEvent): boolean {
     const isSearchShortcut =
       event.type === "keydown" &&

@@ -9,6 +9,8 @@ import type {
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
+  ServerAutomationTask,
+  ServerAutomationTaskInput,
   ServerInput,
   ServerPinInput,
   ServerUpdateInput,
@@ -61,6 +63,7 @@ import type {
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai";
+import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation";
 
 declare global {
   interface Window {
@@ -93,7 +96,14 @@ declare global {
         create: (input: ServerInput) => Promise<ServerConfig>;
         update: (input: ServerUpdateInput) => Promise<ServerConfig>;
         setPinned: (input: ServerPinInput) => Promise<ServerConfig>;
+        listAutomationTasks: (serverId: string) => Promise<ServerAutomationTask[]>;
+        createAutomationTask: (input: ServerAutomationTaskInput) => Promise<ServerAutomationTask>;
         delete: (serverId: string) => Promise<boolean>;
+      };
+      automation: {
+        run: (taskId: string) => Promise<AutomationTaskRunResult>;
+        cancel: (runId: string) => Promise<boolean>;
+        onRunEvent: (callback: (event: AutomationTaskRunEvent) => void) => () => void;
       };
       settings: {
         get: () => Promise<AppSettings>;

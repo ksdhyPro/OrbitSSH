@@ -7,6 +7,8 @@ import type {
 } from "../shared/local-files.js";
 import type {
   ServerConfig,
+  ServerAutomationTask,
+  ServerAutomationTaskInput,
   ServerInput,
   ServerPinInput,
   ServerUpdateInput,
@@ -61,6 +63,7 @@ import type {
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai.js";
+import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation.js";
 
 const orbitSSHApi = {
   about: {
@@ -102,8 +105,21 @@ const orbitSSHApi = {
       ipcRenderer.invoke("server:update", input) as Promise<ServerConfig>,
     setPinned: (input: ServerPinInput) =>
       ipcRenderer.invoke("server:set-pinned", input) as Promise<ServerConfig>,
+    listAutomationTasks: (serverId: string) =>
+      ipcRenderer.invoke("server:automation-tasks:list", serverId) as Promise<ServerAutomationTask[]>,
+    createAutomationTask: (input: ServerAutomationTaskInput) =>
+      ipcRenderer.invoke("server:automation-tasks:create", input) as Promise<ServerAutomationTask>,
     delete: (serverId: string) =>
       ipcRenderer.invoke("server:delete", serverId) as Promise<boolean>,
+  },
+  automation: {
+    run: (taskId: string) => ipcRenderer.invoke("automation:run", { taskId }) as Promise<AutomationTaskRunResult>,
+    cancel: (runId: string) => ipcRenderer.invoke("automation:cancel", runId) as Promise<boolean>,
+    onRunEvent: (callback: (event: AutomationTaskRunEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AutomationTaskRunEvent) => callback(payload);
+      ipcRenderer.on("automation:run-event", listener);
+      return () => ipcRenderer.removeListener("automation:run-event", listener);
+    },
   },
   settings: {
     get: () => ipcRenderer.invoke("settings:get") as Promise<AppSettings>,

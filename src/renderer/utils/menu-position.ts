@@ -5,8 +5,8 @@
  * 定位上下文为视口（菜单使用 position: fixed），因此全部使用 client 坐标。
  */
 
-/** 菜单项固定高度（出自 .context-menu button { height: 32px }）。 */
-export const CONTEXT_MENU_ITEM_HEIGHT = 32;
+/** 统一紧凑菜单项高度（出自 .context-menu button { min-height: 28px }）。 */
+export const CONTEXT_MENU_ITEM_HEIGHT = 28;
 
 /** 容器边框 1px × 2 + 少量安全余量 */
 const CONTAINER_OVERHEAD = 8;
@@ -41,7 +41,7 @@ export interface MenuContainerSize {
 
 /**
  * 根据菜单项数量估算高度。
- * 菜单项固定为 32px，加上容器边框与少量余量。
+ * 菜单项固定为 28px，加上容器边框与少量余量。
  */
 function heightForItemCount(itemCount: number): number {
   return itemCount * CONTEXT_MENU_ITEM_HEIGHT + CONTAINER_OVERHEAD;

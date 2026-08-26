@@ -86,9 +86,20 @@
 }
 
 .app-dialog-header .icon-button {
+  display: grid;
+  place-items: center;
+  align-self: center;
   width: 28px;
   height: 28px;
+  padding: 0;
+  line-height: 0;
   flex: 0 0 auto;
+}
+
+.app-dialog-header .icon-button img {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .dialog-fade-enter-active,
@@ -118,6 +129,99 @@
   gap: 10px;
   padding: 16px;
 }
+
+/* 常用命令弹窗沿用连接表单布局，命令内容支持多行编辑。 */
+.automation-task-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 16px;
+}
+
+/* 标签与输入控件分开，避免命令表单阅读时视觉过于拥挤。 */
+.automation-task-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.automation-task-form label > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.automation-task-form input {
+  height: 36px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.automation-task-form .dialog-actions {
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.automation-task-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.automation-task-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.automation-task-hint,
+.automation-run-notice {
+  margin: -4px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.automation-run-dialog {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 16px;
+}
+
+.automation-script-preview,
+.automation-run-output {
+  min-height: 132px;
+  max-height: 300px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: 12px/1.6 "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.automation-run-status {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.automation-run-status.is-completed { color: var(--success); }
+.automation-run-status.is-failed { color: var(--danger); }
+.automation-run-status.is-cancelled { color: var(--text-tertiary); }
 
 /* 主设置改为应用内全屏工作区，保留二级配置弹窗处理复杂编辑任务。 */
 .settings-page {

@@ -3,6 +3,8 @@
 ## v1.4.0
 
 1. Improved the Codex CLI setup flow. When local detection fails, users can manually enter the Codex CLI executable path and continue configuring the model and reasoning effort.
+2. Unified terminal and SFTP context-menu styling, extracted a reusable menu component, and added grouped items, separators, and hover-expanded nested menus.
+3. Added server-specific automation tasks: save multi-line Shell scripts, review them before execution, run them in an independent SSH session, stream output in real time, and stop a running task without affecting the current terminal session.
 
 ## v1.3.0
 

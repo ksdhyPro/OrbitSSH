@@ -2,18 +2,20 @@ import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
-import type { ServerAuthConfig, ServerAuthType, ServerConfig, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
+import type { ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 
 interface ServerStoreSchema {
   servers: ServerConfig[]
   passwords: Record<string, string>
+  automationTasks: Record<string, ServerAutomationTask[]>
 }
 
 const store = new Store<ServerStoreSchema>({
   name: 'servers',
   defaults: {
     servers: [],
-    passwords: {}
+    passwords: {},
+    automationTasks: {}
   }
 })
 
@@ -92,9 +94,74 @@ function savePasswords(passwords: Record<string, string>): void {
   store.set('passwords', passwords)
 }
 
+function getAutomationTasks(): Record<string, ServerAutomationTask[]> {
+  return store.get('automationTasks', {})
+}
+
+function saveAutomationTasks(tasks: Record<string, ServerAutomationTask[]>): void {
+  store.set('automationTasks', tasks)
+}
+
 export function listServers(): ServerConfig[] {
   // 已置顶的服务器始终显示在列表前方，其余项目保持原有顺序。
   return getServers().sort((left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)))
+}
+
+// 常用命令按 serverId 分区保存，保证不同服务器间不会相互混用。
+export function listServerAutomationTasks(serverId: string): ServerAutomationTask[] {
+  if (typeof serverId !== 'string' || !serverId.trim()) {
+    throw new Error('服务器 ID 无效')
+  }
+
+  return [...(getAutomationTasks()[serverId] ?? [])]
+}
+
+export function getServerAutomationTask(taskId: string): ServerAutomationTask {
+  const normalizedTaskId = typeof taskId === 'string' ? taskId.trim() : ''
+
+  for (const tasks of Object.values(getAutomationTasks())) {
+    const task = tasks.find(item => item.id === normalizedTaskId)
+    if (task) return task
+  }
+
+  throw new Error('自动化任务不存在')
+}
+
+export function createServerAutomationTask(input: ServerAutomationTaskInput): ServerAutomationTask {
+  const serverId = typeof input.serverId === 'string' ? input.serverId.trim() : ''
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const script = typeof input.script === 'string' ? input.script.trim() : ''
+
+  if (!serverId) {
+    throw new Error('服务器 ID 无效')
+  }
+
+  if (!name || !script) {
+    throw new Error('请填写命令名称和命令内容')
+  }
+
+  if (name.length > 100) {
+    throw new Error('命令名称不能超过 100 个字符')
+  }
+
+  if (script.length > 20_000) {
+    throw new Error('命令内容不能超过 4000 个字符')
+  }
+
+  const now = Date.now()
+  const task: ServerAutomationTask = {
+    id: crypto.randomUUID(),
+    serverId,
+    name,
+    script,
+    createdAt: now,
+    updatedAt: now
+  }
+  const tasks = getAutomationTasks()
+  tasks[serverId] = [...(tasks[serverId] ?? []), task]
+  saveAutomationTasks(tasks)
+
+  return task
 }
 
 export function getServerAuthConfig(serverId: string): ServerAuthConfig {
@@ -292,6 +359,11 @@ export function deleteServer(serverId: string): void {
 
   savePasswords(passwords)
   saveServers(servers.filter((item) => item.id !== serverId))
+
+  // 删除服务器时同步清理其专属常用命令，避免本地配置残留。
+  const tasks = getAutomationTasks()
+  delete tasks[serverId]
+  saveAutomationTasks(tasks)
 }
 
 // 更新置顶状态时只改动目标服务器，避免影响已保存的连接认证信息。

@@ -311,15 +311,16 @@
 .context-menu {
   position: fixed;
   z-index: 80;
-  min-width: 196px;
+  /* 所有浮动菜单共用顶部“工具/帮助”的紧凑面板规格。 */
+  min-width: 180px;
   margin: 0;
   max-height: calc(100vh - 16px);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--border-menu);
-  padding: 6px;
-  border-radius: 12px;
+  padding: 4px;
+  border-radius: 6px;
   background: var(--surface-floating-strong);
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-menu);
@@ -345,14 +346,15 @@
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 7px;
   width: 100%;
-  min-height: 36px;
+  min-height: 28px;
   margin: 0;
-  padding: 5px 9px 5px 7px;
-  border-radius: 8px;
+  padding: 3px 8px;
+  border-radius: 3px;
   background: transparent;
   color: var(--text-secondary);
+  font-size: 13px;
   text-align: left;
   transition:
     background-color 100ms ease,
@@ -369,6 +371,28 @@
 
 .context-menu button .menu-item-label {
   line-height: 1.3;
+}
+
+/* 带子菜单的条目在右侧提示可继续展开，图标位置与所有菜单保持一致。 */
+.context-menu .menu-item-submenu-indicator {
+  display: grid;
+  place-items: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+}
+
+.context-menu .menu-item-submenu-indicator img {
+  display: block;
+  width: 12px;
+  height: 12px;
+  filter: var(--icon-filter);
+  opacity: 0.62;
+}
+
+.context-menu button:hover:not(:disabled) .menu-item-submenu-indicator img {
+  opacity: 0.9;
 }
 
 .context-menu button small {
@@ -432,16 +456,16 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
   color: var(--text-muted);
 }
 
 .context-menu .menu-item-icon img {
   display: block;
-  width: var(--icon-size-medium);
-  height: var(--icon-size-medium);
+  width: var(--icon-size-regular);
+  height: var(--icon-size-regular);
   opacity: 0.86;
   filter: var(--icon-filter);
   transition: opacity 100ms ease;

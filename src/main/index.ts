@@ -15,6 +15,7 @@ import { registerWindowIpc } from "./ipc/window-ipc.js";
 import { registerUpdateIpc } from "./ipc/update-ipc.js";
 import { registerAiIpc } from "./ipc/ai-ipc.js";
 import { registerAboutIpc } from "./ipc/about-ipc.js";
+import { registerAutomationIpc } from "./ipc/automation-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { writeStartupDiagnostic } from "./startup-diagnostics.js";
@@ -304,6 +305,7 @@ function registerBaseIpc(): void {
   }));
 
   registerServerIpc();
+  registerAutomationIpc();
   registerSettingsIpc();
   registerSftpIpc();
   registerTerminalIpc();
