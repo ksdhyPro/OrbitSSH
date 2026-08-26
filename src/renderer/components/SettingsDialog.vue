@@ -57,6 +57,8 @@ const codexDetection = ref<CodexCliDetection | null>(null);
 const isDetectingCodex = ref(false);
 const isCodexConfigFormDialogOpen = ref(false);
 const codexModel = ref("");
+// 检测失败时允许用户手动指定 Codex CLI 可执行文件地址。
+const codexExecutablePath = ref("");
 const codexReasoningEffort = ref<CodexReasoningEffort>("medium");
 const codexModelOptions: AppSelectOption[] = [
   { value: "", label: "默认模型" },
@@ -203,6 +205,7 @@ function closeAiConfigDialog(): void {
   isCodexConfigFormDialogOpen.value = false;
   aiConfigMessage.value = "";
   codexModel.value = "";
+  codexExecutablePath.value = "";
   codexReasoningEffort.value = "medium";
   codexDetection.value = null;
 }
@@ -220,20 +223,21 @@ async function detectLocalCodex(): Promise<void> {
       return;
     }
 
-    aiConfigMessage.value = "未检测到本地 Codex CLI。";
+    openCodexConfigForm();
+    aiConfigMessage.value = "未检测到本地 Codex CLI，请手动输入可执行文件地址。";
   } catch {
     codexDetection.value = { available: false };
-    aiConfigMessage.value = "未检测到本地 Codex CLI。";
+    openCodexConfigForm();
+    aiConfigMessage.value = "未检测到本地 Codex CLI，请手动输入可执行文件地址。";
   } finally {
     isDetectingCodex.value = false;
   }
 }
 
 function openCodexConfigForm(): void {
-  if (!codexDetection.value?.executablePath) return;
   codexModel.value = "";
+  codexExecutablePath.value = codexDetection.value?.executablePath ?? "";
   codexReasoningEffort.value = "medium";
-  aiConfigMessage.value = "";
   isCodexConfigFormDialogOpen.value = true;
 }
 
@@ -243,8 +247,11 @@ function updateCodexReasoningEffort(value: string): void {
 }
 
 function addDetectedCodexCli(): void {
-  const executablePath = codexDetection.value?.executablePath;
-  if (!executablePath) return;
+  const executablePath = codexExecutablePath.value.trim();
+  if (!executablePath) {
+    aiConfigMessage.value = "请输入 Codex CLI 可执行文件地址。";
+    return;
+  }
   // 留空时明确表示使用本机 Codex 配置的默认模型。
   const selectedModel = codexModel.value.trim() || "默认模型";
   const existing = aiConfigDraft.value.find(
@@ -256,7 +263,7 @@ function addDetectedCodexCli(): void {
   );
   if (existing) {
     selectAiConfig(existing.id);
-    aiConfigMessage.value = "本地 Codex CLI 已存在，已切换为当前模型。";
+    aiConfigMessage.value = "Codex CLI 配置已存在，已切换为当前模型。";
     return;
   }
   const config: AiModelConfig = {
@@ -803,8 +810,18 @@ function removeAiConfig(configId: string): void {
     @close="isCodexConfigFormDialogOpen = false">
     <form class="ai-config-form" @submit.prevent="addDetectedCodexCli">
       <p class="ai-config-form-tip">
-            请选择要使用的模型；默认模型会使用本机 Codex 默认模型。
+        请选择要使用的模型；默认模型会使用本机 Codex 默认模型。
       </p>
+
+      <label>
+        <span>Codex CLI 地址</span>
+        <input
+          v-model="codexExecutablePath"
+          class="settings-text-input"
+          type="text"
+          placeholder="例如：C:\\Users\\用户名\\AppData\\Roaming\\npm\\codex.cmd"
+          autocomplete="off" />
+      </label>
 
       <label>
         <span>模型</span>

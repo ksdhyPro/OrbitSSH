@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.0
+
+1. Improved the Codex CLI setup flow. When local detection fails, users can manually enter the Codex CLI executable path and continue configuring the model and reasoning effort.
+
 ## v1.3.0
 
 1. Added SFTP folder downloads. Selected folders are downloaded recursively with their complete directory structure, and users can choose the local destination before downloading. The picker defaults to Desktop on both Windows and macOS.
