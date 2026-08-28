@@ -33,7 +33,7 @@ const emit = defineEmits<{ close: []; submit: [] }>()
           spellcheck="false"
           placeholder="例如：&#10;docker compose pull&#10;docker compose up -d"></textarea>
       </label>
-      <p class="automation-task-hint">支持多行 Shell 命令；执行前会再次展示脚本供确认。</p>
+      <p class="automation-task-hint">每个非空行是一条 Shell 命令，执行前会再次展示内容供确认。</p>
       <p v-if="error" class="form-error">{{ error }}</p>
       <footer class="dialog-actions">
         <button type="button" class="ghost-button" @click="emit('close')">取消</button>

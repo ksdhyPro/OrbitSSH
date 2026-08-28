@@ -49,6 +49,7 @@ import type {
 } from "../shared/sftp";
 import type {
   TerminalDataEvent,
+  TerminalAutomationCommandInput,
   TerminalOpenResult,
   TerminalResizeInput,
   TerminalStatusEvent,
@@ -179,6 +180,7 @@ declare global {
         open: (serverId: string) => Promise<TerminalOpenResult>;
         openLocal: () => Promise<TerminalOpenResult>;
         write: (tabId: string, data: string) => Promise<boolean>;
+        writeAutomationCommand: (input: TerminalAutomationCommandInput) => Promise<boolean>;
         resize: (input: TerminalResizeInput) => Promise<boolean>;
         close: (tabId: string) => Promise<boolean>;
         reconnect: (tabId: string, serverId: string) => Promise<boolean>;

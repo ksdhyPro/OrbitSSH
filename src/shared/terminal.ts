@@ -25,3 +25,10 @@ export interface TerminalResizeInput {
   cols: number
   rows: number
 }
+
+/** 独立任务终端用的命令输入，完成标记由 Main Process 追加。 */
+export interface TerminalAutomationCommandInput {
+  tabId: string
+  command: string
+  commandIndex: number
+}

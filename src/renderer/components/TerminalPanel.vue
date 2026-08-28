@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
 import closeIcon from "../assets/icons/close.svg";
 import reconnectIcon from "../assets/icons/reconnect.svg";
 import type { ServerAutomationTask } from "../../shared/server";
-import type { AutomationTaskRunEvent, AutomationTaskRunStatus } from "../../shared/automation";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { TerminalTab } from "../types/terminal";
 import { getStatusText } from "../utils/status-text";
@@ -14,6 +13,7 @@ import { closeFloatingMenus } from "../utils/floating-menu";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import { useTerminalsStore } from "../stores/useTerminalsStore";
 import { useCoreStore } from "../stores/useCoreStore";
+import { useServersStore } from "../stores/useServersStore";
 import AutomationRunDialog from "./AutomationRunDialog.vue";
 import AutomationTaskDialog from "./AutomationTaskDialog.vue";
 import ContextMenu from "./ContextMenu.vue";
@@ -48,6 +48,7 @@ const emit = defineEmits<{
 
 const terminalsStore = useTerminalsStore();
 const core = useCoreStore();
+const serversStore = useServersStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const sessionTabsElement = ref<HTMLElement | null>(null);
@@ -67,14 +68,7 @@ const automationTaskDialog = reactive({
   isSubmitting: false,
 });
 const automationTaskForm = reactive({ name: "", script: "" });
-const automationRun = reactive<{
-  open: boolean;
-  task: ServerAutomationTask | null;
-  status: AutomationTaskRunStatus;
-  output: string;
-  error: string;
-  runId: string;
-}>({ open: false, task: null, status: "confirm", output: "", error: "", runId: "" });
+const automationRun = reactive<{ open: boolean; task: ServerAutomationTask | null }>({ open: false, task: null });
 
 // 标签溢出时将纵向滚轮转换为横向滚动，方便快速切换较多服务器。
 function scrollSessionTabs(event: WheelEvent): void {
@@ -211,60 +205,33 @@ async function saveAutomationTask(): Promise<void> {
 function openAutomationRunDialog(task: ServerAutomationTask): void {
   automationRun.open = true;
   automationRun.task = task;
-  automationRun.status = "confirm";
-  automationRun.output = "";
-  automationRun.error = "";
-  automationRun.runId = "";
 }
 
 function closeAutomationRunDialog(): void {
-  if (automationRun.status === "running") return;
   automationRun.open = false;
   automationRun.task = null;
 }
 
 async function startAutomationRun(): Promise<void> {
-  if (!automationRun.task || !core.orbitSSHApi?.automation) {
-    automationRun.status = "failed";
-    automationRun.error = "自动化执行服务不可用，请重启应用后重试";
+  if (!automationRun.task) {
     return;
   }
-  automationRun.status = "running";
-  automationRun.output = "";
-  automationRun.error = "";
+  const server = serversStore.servers.find(item => item.id === automationRun.task?.serverId);
+  if (!server) {
+    core.writeRendererLog("执行自定义指令失败：服务器不存在", { taskId: automationRun.task.id }, "warn");
+    return;
+  }
   try {
-    const result = await core.orbitSSHApi.automation.run(automationRun.task.id);
-    automationRun.runId = result.runId;
+    await terminalsStore.openTerminalAutomation(server, automationRun.task.name, automationRun.task.script);
+    closeAutomationRunDialog();
   } catch (error) {
-    automationRun.status = "failed";
-    automationRun.error = error instanceof Error ? error.message : "自动化任务启动失败";
+    core.writeRendererLog(
+      "启动独立任务终端失败",
+      { taskId: automationRun.task.id, error: error instanceof Error ? error.message : String(error) },
+      "warn",
+    );
   }
 }
-
-async function cancelAutomationRun(): Promise<void> {
-  if (!automationRun.runId || !core.orbitSSHApi?.automation) return;
-  await core.orbitSSHApi.automation.cancel(automationRun.runId);
-}
-
-function handleAutomationRunEvent(event: AutomationTaskRunEvent): void {
-  if (event.runId !== automationRun.runId || !automationRun.task) return;
-  if (event.type === "output") {
-    automationRun.output = `${automationRun.output}${event.text ?? ""}`.slice(-30_000);
-    return;
-  }
-  if (event.type === "completed") automationRun.status = "completed";
-  if (event.type === "cancelled") automationRun.status = "cancelled";
-  if (event.type === "failed") {
-    automationRun.status = "failed";
-    automationRun.error = event.text ?? "自动化任务执行失败";
-  }
-}
-
-let stopAutomationRunEvents: (() => void) | undefined;
-onMounted(() => {
-  stopAutomationRunEvents = core.orbitSSHApi?.automation?.onRunEvent(handleAutomationRunEvent);
-});
-onUnmounted(() => stopAutomationRunEvents?.());
 
 function closeTerminalContextMenu(): void {
   terminalContextMenu.open = false;
@@ -476,12 +443,8 @@ watch(
         :open="automationRun.open"
         :server-name="getActiveTerminalTab()?.title ?? ''"
         :task="automationRun.task"
-        :status="automationRun.status"
-        :output="automationRun.output"
-        :error="automationRun.error"
         @close="closeAutomationRunDialog"
-        @start="startAutomationRun"
-        @cancel="cancelAutomationRun" />
+        @start="startAutomationRun" />
       <StatusBar :active-tab-id="activeTabId" />
     </section>
   </section>

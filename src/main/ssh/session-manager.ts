@@ -15,6 +15,7 @@ import { getServerAuthConfig } from "../storage/server-store.js";
 import type {
   TerminalSessionKind,
   TerminalOpenResult,
+  TerminalAutomationCommandInput,
   TerminalResizeInput,
   TerminalStatusEvent,
 } from "../../shared/terminal.js";
@@ -738,6 +739,30 @@ export function writeTerminalInput(tabId: string, data: string): void {
 
   // SSH 输入显式按 UTF-8 写入，保证中文按终端编码传给远端 shell。
   session.shellStream?.write(Buffer.from(data, "utf8"));
+}
+
+/**
+ * 向独立任务终端写入一条命令，并追加不可见的 OSC 完成标记。
+ * 标记命令的回显会在 Main Process 中滤除，终端中只保留用户配置的原始命令及其输出。
+ */
+export function writeTerminalAutomationCommand(
+  input: TerminalAutomationCommandInput,
+): boolean {
+  const session = terminalSessions.get(input.tabId);
+  const command = input.command.trim();
+
+  if (!session || session.kind !== "ssh" || !session.shellStream || !command) {
+    return false;
+  }
+
+  // 使用 eval 包住整条命令，确保像 vim 这类前台程序启动后不会误读完成标记的输入。
+  const quotedCommand = `'${command.replace(/'/g, "'\\''")}'`;
+  const markerCommand = `eval ${quotedCommand}; printf '\\033]633;OrbitSSH;automation-complete;${input.tabId};${input.commandIndex}\\007'\r`;
+  session.pendingShellCommandEcho = markerCommand;
+  session.pendingShellCommandEchoPrefix = undefined;
+  session.shellStream.write(Buffer.from(markerCommand, "utf8"));
+  touchTerminalSession(session);
+  return true;
 }
 
 export function resizeTerminal(input: TerminalResizeInput): void {

@@ -32,6 +32,17 @@ export interface TerminalStoreCallbacks {
   afterClose?: (tabId: string) => void | Promise<void>;
 }
 
+interface TerminalOpenOptions extends TerminalStoreCallbacks {
+  title?: string;
+  automationCommands?: string[];
+}
+
+interface TerminalAutomationRun {
+  commands: string[];
+  nextCommandIndex: number;
+  commandInFlight?: number;
+}
+
 // 终端域 store：管理 Tab、xterm 实例、搜索与 IPC 监听，通过回调通知外部域处理 SFTP 等副作用。
 export const useTerminalsStore = defineStore("terminals", () => {
   const core = useCoreStore();
@@ -53,6 +64,8 @@ export const useTerminalsStore = defineStore("terminals", () => {
   const lastSentTerminalSizes = new Map<string, { cols: number; rows: number }>();
   const pendingTerminalSizes = new Map<string, { cols: number; rows: number }>();
   const terminalResizeTimers = new Map<string, number>();
+  // 独立任务标签只在收到上一条命令的完成标记后，才会发送下一条命令。
+  const terminalAutomationRuns = new Map<string, TerminalAutomationRun>();
   let removeTerminalDataListener: (() => void) | undefined;
   let removeTerminalStatusListener: (() => void) | undefined;
   let fitScheduleTimer: number | undefined;
@@ -560,6 +573,28 @@ export const useTerminalsStore = defineStore("terminals", () => {
       return true;
     });
 
+    // 自定义指令在主进程追加 OSC 633 完成标记，避免轮询终端输出或干扰用户主终端。
+    terminal.parser.registerOscHandler(633, data => {
+      const [source, event, markerTabId, commandIndexText] = data.split(";");
+
+      if (source !== "OrbitSSH" || event !== "automation-complete" || markerTabId !== tab.id) {
+        return false;
+      }
+
+      const commandIndex = Number(commandIndexText);
+      const run = terminalAutomationRuns.get(tab.id);
+
+      if (!run || !Number.isInteger(commandIndex) || run.commandInFlight !== commandIndex) {
+        return true;
+      }
+
+      run.commandInFlight = undefined;
+      run.nextCommandIndex = commandIndex + 1;
+      terminal.writeln(`\r\n[OrbitSSH] 第 ${commandIndex + 1} 条命令已完成。`);
+      void runNextTerminalAutomationCommand(tab.id);
+      return true;
+    });
+
     terminal.onData(data => {
       void core.orbitSSHApi?.terminals.write(tab.id, data);
     });
@@ -586,8 +621,8 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
   async function openServerTerminal(
     server: ServerConfig,
-    callbacks: Pick<TerminalStoreCallbacks, "afterOpen"> = {},
-  ): Promise<void> {
+    options: TerminalOpenOptions = {},
+  ): Promise<TerminalTab> {
     if (!core.orbitSSHApi) {
       throw new Error("请通过 Electron 窗口启动应用");
     }
@@ -604,9 +639,16 @@ export const useTerminalsStore = defineStore("terminals", () => {
     const tab: TerminalTab = {
       id: result.tabId,
       serverId: server.id,
-      title: server.name,
+      title: options.title ?? server.name,
       status: "connecting",
     };
+
+    if (options.automationCommands?.length) {
+      terminalAutomationRuns.set(tab.id, {
+        commands: options.automationCommands,
+        nextCommandIndex: 0,
+      });
+    }
 
     tabs.value = [...tabs.value, tab];
     activeTabId.value = tab.id;
@@ -615,7 +657,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     const beforeCreateAt = performance.now();
     createTerminalInstance(tab);
     const afterCreateAt = performance.now();
-    await callbacks.afterOpen?.(tab);
+    await options.afterOpen?.(tab);
     const afterCallbackAt = performance.now();
     core.writeRendererLog("终端打开流程耗时", {
       tabId: tab.id,
@@ -626,6 +668,68 @@ export const useTerminalsStore = defineStore("terminals", () => {
       afterOpenCallbackMs: Math.round(afterCallbackAt - afterCreateAt),
       totalMs: Math.round(afterCallbackAt - startedAt),
     });
+    return tab;
+  }
+
+  /** 将多行自定义指令按行顺序放入全新的 SSH 终端，绝不写入用户当前终端。 */
+  async function openTerminalAutomation(
+    server: ServerConfig,
+    taskName: string,
+    script: string,
+  ): Promise<void> {
+    const commands = script
+      .split(/\r?\n/)
+      .map(command => command.trim())
+      .filter(command => command && !command.startsWith("#"));
+
+    if (commands.length === 0) {
+      throw new Error("未找到可执行的命令");
+    }
+
+    await openServerTerminal(server, {
+      title: `${server.name} · ${taskName}`,
+      automationCommands: commands,
+    });
+  }
+
+  /** 在任务标签已连接时发送下一条命令；标签关闭或断开后任务映射会被清理。 */
+  async function runNextTerminalAutomationCommand(tabId: string): Promise<void> {
+    const run = terminalAutomationRuns.get(tabId);
+    const terminal = terminalInstances.get(tabId)?.terminal;
+    const tab = tabs.value.find(item => item.id === tabId);
+
+    if (!run || !terminal || tab?.status !== "connected" || run.commandInFlight !== undefined) {
+      return;
+    }
+
+    if (run.nextCommandIndex >= run.commands.length) {
+      terminal.writeln("[OrbitSSH] 自定义指令执行完成。");
+      terminalAutomationRuns.delete(tabId);
+      return;
+    }
+
+    const commandIndex = run.nextCommandIndex;
+    run.commandInFlight = commandIndex;
+    terminal.writeln(`\r\n[OrbitSSH] 正在执行第 ${commandIndex + 1}/${run.commands.length} 条命令：`);
+    terminal.writeln(`$ ${run.commands[commandIndex]}`);
+
+    try {
+      const accepted = await core.orbitSSHApi?.terminals.writeAutomationCommand({
+        tabId,
+        command: run.commands[commandIndex],
+        commandIndex,
+      });
+
+      if (!accepted && terminalAutomationRuns.get(tabId) === run) {
+        terminal.writeln("[OrbitSSH] 命令未发送：终端连接尚未就绪或已关闭。");
+        terminalAutomationRuns.delete(tabId);
+      }
+    } catch (error) {
+      if (terminalAutomationRuns.get(tabId) === run) {
+        terminal.writeln(`[OrbitSSH] 命令发送失败：${error instanceof Error ? error.message : String(error)}`);
+        terminalAutomationRuns.delete(tabId);
+      }
+    }
   }
 
   async function openLocalTerminal(): Promise<void> {
@@ -680,6 +784,8 @@ export const useTerminalsStore = defineStore("terminals", () => {
     tabId: string,
     callbacks: Pick<TerminalStoreCallbacks, "beforeClose" | "afterClose"> = {},
   ): Promise<void> {
+    // 用户关闭独立任务标签后立即丢弃队列，避免连接关闭流程中的异步事件继续发送命令。
+    terminalAutomationRuns.delete(tabId);
     await callbacks.beforeClose?.(tabId);
     await core.orbitSSHApi?.terminals.close(tabId);
     const terminalEntry = terminalInstances.get(tabId);
@@ -772,6 +878,12 @@ export const useTerminalsStore = defineStore("terminals", () => {
     if (event.status === "connected" && event.tabId === activeTabId.value) {
       scheduleTerminalFit();
     }
+
+    if (event.status === "connected") {
+      void runNextTerminalAutomationCommand(event.tabId);
+    } else if (event.status === "disconnected" || event.status === "error") {
+      terminalAutomationRuns.delete(event.tabId);
+    }
   }
 
   function startListeners(): void {
@@ -806,6 +918,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     window.clearTimeout(fitScheduleTimer);
     terminalResizeTimers.forEach(timer => window.clearTimeout(timer));
     terminalResizeTimers.clear();
+    terminalAutomationRuns.clear();
     pendingTerminalSizes.clear();
     lastSentTerminalSizes.clear();
     disposeAllTerminals();
@@ -835,6 +948,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     scheduleTerminalFit,
     createTerminalInstance,
     openServerTerminal,
+    openTerminalAutomation,
     openLocalTerminal,
     activateTerminalTab,
     closeTerminalTab,

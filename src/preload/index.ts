@@ -49,6 +49,7 @@ import type {
 import type { SystemStats } from "../main/ipc/system-ipc.js";
 import type {
   TerminalDataEvent,
+  TerminalAutomationCommandInput,
   TerminalOpenResult,
   TerminalResizeInput,
   TerminalStatusEvent,
@@ -263,6 +264,8 @@ const orbitSSHApi = {
       ipcRenderer.invoke("terminal:open-local") as Promise<TerminalOpenResult>,
     write: (tabId: string, data: string) =>
       ipcRenderer.invoke("terminal:write", tabId, data) as Promise<boolean>,
+    writeAutomationCommand: (input: TerminalAutomationCommandInput) =>
+      ipcRenderer.invoke("terminal:write-automation-command", input) as Promise<boolean>,
     resize: (input: TerminalResizeInput) =>
       ipcRenderer.invoke("terminal:resize", input) as Promise<boolean>,
     close: (tabId: string) =>

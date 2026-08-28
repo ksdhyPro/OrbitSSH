@@ -115,6 +115,7 @@ const orbitSSHApi = {
     open: serverId => ipcRenderer.invoke("terminal:open", serverId),
     openLocal: () => ipcRenderer.invoke("terminal:open-local"),
     write: (tabId, data) => ipcRenderer.invoke("terminal:write", tabId, data),
+    writeAutomationCommand: input => ipcRenderer.invoke("terminal:write-automation-command", input),
     resize: input => ipcRenderer.invoke("terminal:resize", input),
     close: tabId => ipcRenderer.invoke("terminal:close", tabId),
     reconnect: (tabId, serverId) =>

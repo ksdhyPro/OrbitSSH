@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.0
+
+1. Upgraded custom-command execution: after confirming the command preview, OrbitSSH opens a dedicated terminal tab instead of occupying the terminal currently in use.
+2. Added sequential execution for multiple non-empty command lines. The terminal shows progress, the original command, and live output, and sends the next command only after the previous one finishes.
+3. Closing a terminal tab created for a custom command immediately prevents any remaining commands from being sent.
+
 ## v1.4.0
 
 1. Improved the Codex CLI setup flow. When local detection fails, users can manually enter the Codex CLI executable path and continue configuring the model and reasoning effort.

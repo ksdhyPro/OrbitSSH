@@ -6,10 +6,11 @@ import {
   openTerminalSession,
   reconnectTerminalSession,
   resizeTerminal,
+  writeTerminalAutomationCommand,
   writeTerminalInput
 } from '../ssh/session-manager.js'
 import { disposeAiTabState } from '../ai/ai-agent.js'
-import type { TerminalResizeInput } from '../../shared/terminal.js'
+import type { TerminalAutomationCommandInput, TerminalResizeInput } from '../../shared/terminal.js'
 import {
   assertTabAccess,
   requireFiniteNumber,
@@ -33,6 +34,17 @@ export function registerTerminalIpc(): void {
     assertTabAccess(event, normalizedTabId)
     writeTerminalInput(normalizedTabId, requireString(data, '终端输入'))
     return true
+  })
+
+  ipcMain.handle('terminal:write-automation-command', (event, input: unknown) => {
+    const record = requireRecord(input, '自动化命令参数')
+    const tabId = requireNonEmptyString(record.tabId, '终端标签页 ID')
+    assertTabAccess(event, tabId)
+    return writeTerminalAutomationCommand({
+      tabId,
+      command: requireNonEmptyString(record.command, '自动化命令'),
+      commandIndex: Math.max(0, Math.floor(requireFiniteNumber(record.commandIndex, '命令序号')))
+    } satisfies TerminalAutomationCommandInput)
   })
 
   ipcMain.handle('terminal:resize', (event, input: unknown) => {
