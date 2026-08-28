@@ -3,6 +3,7 @@ import { computed } from "vue";
 import copyIcon from "../assets/icons/copy.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
+import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
 import type { TerminalTab } from "../types/terminal";
 import type {
@@ -33,6 +34,7 @@ const props = defineProps<{
   canDownloadRemoteFile: (node: RemoteFileNode | null) => boolean;
   canUploadRemoteNode: (node: RemoteFileNode | null) => boolean;
   canDeleteRemoteNode: (node: RemoteFileNode | null) => boolean;
+  collapsed: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -74,6 +76,7 @@ const emit = defineEmits<{
   commitRename: [];
   cancelRename: [];
   createBlankNode: [type: "file" | "directory"];
+  toggleCollapsed: [];
 }>();
 
 function updateRenameValue(value: string): void {
@@ -101,24 +104,35 @@ const remoteFileEmptyText = computed(() => {
 </script>
 
 <template>
-  <section class="panel file-panel">
-    <div class="panel-header">
-      <h2>
-        远程文件
-        <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
-          已断开
-        </span>
-      </h2>
+  <section :class="['panel', 'file-panel', { collapsed }]">
+    <div class="panel-header" draggable="true">
       <button
+        type="button"
+        class="panel-toggle"
+        :aria-expanded="!collapsed"
+        aria-controls="file-panel-content"
+        @click="emit('toggleCollapsed')">
+        <img :class="{ expanded: !collapsed }" :src="chevronRightIcon" alt="" />
+        <h2>
+          远程文件
+          <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
+            已断开
+          </span>
+        </h2>
+      </button>
+      <button
+        v-if="!collapsed"
         type="button"
         class="icon-button"
         aria-label="刷新目录"
         :disabled="!activeTab || isSftpDisconnected"
-        @click="emit('refresh')">
+        @click.stop="emit('refresh')">
         <img :src="refreshIcon" alt="" />
       </button>
     </div>
 
+    <Transition name="panel-slide">
+    <div v-show="!collapsed" id="file-panel-content" class="file-panel-content">
     <div class="file-path-row">
       <input
         :value="filePathInput"
@@ -215,5 +229,7 @@ const remoteFileEmptyText = computed(() => {
       @create="emit('createBlankNode', $event)"
       @upload="emit('uploadToCurrentDirectory', $event)"
       @close="emit('closeBlankContextMenu')" />
+    </div>
+    </Transition>
   </section>
 </template>

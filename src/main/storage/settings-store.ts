@@ -10,7 +10,9 @@ import {
   type AiProvider,
   type AiApiSpec,
   type CodexReasoningEffort,
-  type AppThemeMode
+  type AppThemeMode,
+  type SidebarPanelSettings,
+  type SidebarSettings
 } from '../../shared/settings.js'
 
 interface SettingsStoreSchema {
@@ -56,6 +58,40 @@ function normalizeAiProvider(value: unknown): AiProvider {
 
 function normalizeAiSpec(value: unknown): AiApiSpec {
   return value === 'codex-cli' ? value : 'openai'
+}
+
+function normalizeSidebarPanelSettings(
+  value: Partial<SidebarPanelSettings> | undefined,
+  fallback: SidebarPanelSettings
+): SidebarPanelSettings {
+  const height = Number(value?.height)
+
+  return {
+    collapsed: value?.collapsed === true,
+    // 面板的实际最大高度由渲染进程按当前窗口空间限制。
+    height: Number.isFinite(height) ? clampNumber(height, 160, 1200) : fallback.height
+  }
+}
+
+function normalizeSidebarSettings(value: Partial<SidebarSettings> | undefined): SidebarSettings {
+  const allowedPanels = ['servers', 'automation', 'remoteFiles'] as const
+  const requestedOrder = Array.isArray(value?.panelOrder) ? value.panelOrder : []
+  const panelOrder = requestedOrder.filter(
+    (panel): panel is SidebarSettings['panelOrder'][number] =>
+      typeof panel === 'string' && allowedPanels.includes(panel as SidebarSettings['panelOrder'][number])
+  )
+
+  // 兼容旧设置并去重，确保每个面板始终恰好出现一次。
+  allowedPanels.forEach(panel => {
+    if (!panelOrder.includes(panel)) panelOrder.push(panel)
+  })
+
+  return {
+    servers: normalizeSidebarPanelSettings(value?.servers, defaultAppSettings.sidebar.servers),
+    automation: normalizeSidebarPanelSettings(value?.automation, defaultAppSettings.sidebar.automation),
+    remoteFiles: normalizeSidebarPanelSettings(value?.remoteFiles, defaultAppSettings.sidebar.remoteFiles),
+    panelOrder
+  }
 }
 
 function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
@@ -159,6 +195,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
 
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
   const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
+  const sidebarSettings = settings?.sidebar ?? defaultAppSettings.sidebar
   const connectionSettings = settings?.connection ?? defaultAppSettings.connection
   const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
   const updateSettings = settings?.update ?? defaultAppSettings.update
@@ -167,6 +204,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     appearance: {
       themeMode: normalizeThemeMode(appearanceSettings.themeMode)
     },
+    sidebar: normalizeSidebarSettings(sidebarSettings),
     connection: {
       keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(connectionSettings.keepaliveIntervalSeconds),
       idleDisconnectMinutes: normalizeIdleDisconnectMinutes(connectionSettings.idleDisconnectMinutes)

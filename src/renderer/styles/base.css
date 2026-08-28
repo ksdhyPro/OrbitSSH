@@ -338,9 +338,71 @@ input[type="number"] {
   flex-direction: column;
   gap: 0;
   min-height: 0;
-  padding: 8px 10px 12px;
+  padding: 8px 4px;
+  overflow: hidden;
   background: var(--bg-elevated-1);
   -webkit-app-region: no-drag;
+}
+
+.sidebar-panel-slot {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 排在最下面的面板自动占用剩余高度，内部列表仍独立滚动。 */
+.sidebar-panel-slot.is-last {
+  flex: 1 1 auto;
+}
+
+.sidebar-panel-slot.is-last.collapsed {
+  flex: 0 0 auto;
+}
+
+.sidebar-panel-slot.dragging {
+  opacity: 0.55;
+}
+
+.sidebar-panel-resizer {
+  position: relative;
+  flex: 0 0 6px;
+  height: 6px;
+  cursor: row-resize;
+  background: var(--bg-elevated-1);
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-panel-resizer::before {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-window);
+  content: "";
+}
+
+.sidebar-panel-resizer::after {
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 48px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  content: "";
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+}
+
+.sidebar-panel-resizer:hover::after,
+.sidebar-panel-resizer.active::after {
+  opacity: 0.72;
+}
+
+.sidebar-panel-resizer.disabled {
+  cursor: default;
 }
 
 .sidebar-resizer {
@@ -512,29 +574,54 @@ input[type="number"] {
 
 .server-panel {
   display: flex;
-  flex: 0 0 34%;
   flex-direction: column;
-  min-height: 190px;
-  max-height: 320px;
-  border-bottom: 1px solid var(--border-subtle);
+  height: 100%;
+  min-height: 0;
 }
 
 .file-panel {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   container-type: inline-size;
 }
 
 .panel-header {
-  flex: 0 0 42px;
+  flex: 0 0 34px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 42px;
+  height: 34px;
   padding: 0 6px 0 8px;
   border-bottom: 0;
+  cursor: pointer;
+}
+
+/* 折叠状态仅保留紧凑标题行，为最底部面板留出更舒适的视觉呼吸空间。 */
+.sidebar-panel-slot.collapsed .panel-header {
+  flex-basis: 28px;
+  height: 28px;
+  padding: 0 4px 0 6px;
+}
+
+.panel-header[draggable="true"] {
+  cursor: grab;
+  -webkit-user-drag: element;
+  user-drag: element;
+}
+
+.panel-header[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.panel-header[draggable="true"] button {
+  cursor: pointer;
+}
+
+.panel-header:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .panel-header h2 {
@@ -627,6 +714,57 @@ input[type="number"] {
   filter: var(--icon-filter);
 }
 
+.panel-toggle {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  gap: 5px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.panel-toggle img {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  filter: var(--icon-filter);
+  opacity: 0.82;
+  transition: transform 120ms ease;
+}
+
+.panel-toggle img.expanded {
+  transform: rotate(90deg);
+}
+
+.panel-toggle h2 {
+  min-width: 0;
+}
+
+.file-panel-content {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 折叠面板展开时以短距离下滑呈现，避免内容突兀出现。 */
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .icon-button:hover {
   background: var(--accent-hover);
   color: var(--text-primary);
@@ -676,6 +814,79 @@ input[type="number"] {
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease;
+}
+
+.automation-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.automation-sidebar-list {
+  display: grid;
+  /* 指令项按自身内容从顶部排列，避免单项占满整个可用区域。 */
+  align-content: start;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 2px 0 8px;
+  overflow: auto;
+}
+
+.automation-sidebar-empty {
+  margin: 4px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.automation-sidebar-empty.error {
+  color: var(--danger);
+}
+
+.automation-sidebar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 3px 8px 3px 10px;
+  border-radius: 7px;
+}
+
+.automation-sidebar-item:hover {
+  background: var(--bg-hover);
+}
+
+.automation-sidebar-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-run-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.automation-run-button:hover {
+  background: var(--accent-hover);
+}
+
+.automation-run-button img {
+  width: 18px;
+  height: 18px;
+  filter: var(--icon-filter);
 }
 
 .server-item:hover {

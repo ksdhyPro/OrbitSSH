@@ -17,6 +17,20 @@ export interface AppearanceSettings {
   themeMode: AppThemeMode
 }
 
+/** 左侧折叠面板的展开状态与上次调整后的高度。 */
+export interface SidebarPanelSettings {
+  collapsed: boolean
+  height: number
+}
+
+export interface SidebarSettings {
+  servers: SidebarPanelSettings
+  automation: SidebarPanelSettings
+  remoteFiles: SidebarPanelSettings
+  /** 左侧面板从上到下的显示顺序。 */
+  panelOrder: Array<'servers' | 'automation' | 'remoteFiles'>
+}
+
 export interface UpdateSettings {
   /** 更新服务器地址，空字符串表示使用构建时内置的默认地址 */
   updateFeedUrl: string
@@ -59,6 +73,7 @@ export interface AiSettings {
 
 export interface AppSettings {
   appearance: AppearanceSettings
+  sidebar: SidebarSettings
   connection: ConnectionSettings
   terminal: TerminalSettings
   update: UpdateSettings
@@ -87,6 +102,21 @@ export interface UpdateStatusInfo {
 export const defaultAppSettings: AppSettings = {
   appearance: {
     themeMode: 'dark'
+  },
+  sidebar: {
+    servers: {
+      collapsed: false,
+      height: 280
+    },
+    automation: {
+      collapsed: false,
+      height: 180
+    },
+    remoteFiles: {
+      collapsed: false,
+      height: 360
+    },
+    panelOrder: ['servers', 'automation', 'remoteFiles']
   },
   connection: {
     keepaliveIntervalSeconds: 10,

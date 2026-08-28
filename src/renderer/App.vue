@@ -15,6 +15,7 @@ import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
+import AutomationSidebar from "./components/AutomationSidebar.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
 import AiPanel from "./components/AiPanel.vue";
@@ -60,11 +61,286 @@ const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
 const isUpdateDialogOpen = ref(false);
 const contentShellElement = ref<HTMLElement | null>(null);
+const sidebarPanelsElement = ref<HTMLElement | null>(null);
+const sidebarPanelsHeight = ref(0);
+const isResizingSidebarPanels = ref(false);
+type SidebarPanel = "servers" | "automation" | "remoteFiles";
+let sidebarPanelResizeStartY = 0;
+let resizingSidebarPanel: SidebarPanel | null = null;
+let resizingPanelStartHeight = 0;
+let resizingAdjacentSidebarPanel: SidebarPanel | null = null;
+let resizingAdjacentPanelStartHeight = 0;
+let sidebarPanelsResizeObserver: ResizeObserver | null = null;
 let stopAppMenuListener: (() => void) | null = null;
+
+const SIDEBAR_PANEL_HEADER_HEIGHT = 34;
+const SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28;
+const SIDEBAR_PANEL_MIN_HEIGHT = 160;
+const SIDEBAR_PANEL_RESIZER_HEIGHT = 6;
 
 /** 返回 AI 分隔条拖拽时应使用的内容区右边界。 */
 function getContentShellRightBoundary(): number {
   return contentShellElement.value?.getBoundingClientRect().right ?? window.innerWidth;
+}
+
+const sidebarPanelOrder = computed(() => appSettings.sidebar.panelOrder);
+const draggedSidebarPanel = ref<SidebarPanel | null>(null);
+
+function isLastSidebarPanel(panel: SidebarPanel): boolean {
+  return sidebarPanelOrder.value.at(-1) === panel;
+}
+
+function getSidebarPanelHeight(panel: SidebarPanel): number {
+  return appSettings.sidebar[panel].collapsed
+    ? SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT
+    : appSettings.sidebar[panel].height;
+}
+
+function getSidebarPanelMinimumHeight(panel: SidebarPanel): number {
+  return appSettings.sidebar[panel].collapsed
+    ? SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT
+    : SIDEBAR_PANEL_MIN_HEIGHT;
+}
+
+/** 返回分隔线下方紧邻的面板，用于将拖拽高度在相邻面板间转移。 */
+function getNextSidebarPanel(panel: SidebarPanel): SidebarPanel | null {
+  const panelIndex = sidebarPanelOrder.value.indexOf(panel);
+  return panelIndex >= 0 ? sidebarPanelOrder.value[panelIndex + 1] ?? null : null;
+}
+
+/** 将侧栏实际可用高度同步为响应式数据，供窗口缩放后的布局重新计算使用。 */
+function refreshSidebarPanelsHeight(): void {
+  const sidebarElement = sidebarPanelsElement.value;
+  if (!sidebarElement) {
+    sidebarPanelsHeight.value = 0;
+    return;
+  }
+
+  const sidebarStyle = window.getComputedStyle(sidebarElement);
+  // clientHeight 包含上下内边距，需扣除后才是面板实际可分配的内容高度。
+  sidebarPanelsHeight.value = sidebarElement.clientHeight
+    - Number.parseFloat(sidebarStyle.paddingTop)
+    - Number.parseFloat(sidebarStyle.paddingBottom);
+}
+
+function getSidebarPanelMaxHeight(panel: SidebarPanel): number {
+  const containerHeight = sidebarPanelsHeight.value;
+  const lastPanel = sidebarPanelOrder.value.at(-1) ?? "remoteFiles";
+  const otherHeight = sidebarPanelOrder.value
+    .filter(candidate => candidate !== panel && candidate !== lastPanel)
+    .reduce((total, candidate) => total + getSidebarPanelHeight(candidate), 0);
+  // 排在最下面的面板自动填充余下空间，因此调整其他面板时始终为其保留最小可用高度。
+  const lastPanelMinimumHeight = getSidebarPanelMinimumHeight(lastPanel);
+  // 非末尾面板的分隔条始终保留，折叠时同样占用布局高度。
+  const resizerHeight = sidebarPanelOrder.value.slice(0, -1).length
+    * SIDEBAR_PANEL_RESIZER_HEIGHT;
+
+  return Math.max(
+    SIDEBAR_PANEL_MIN_HEIGHT,
+    containerHeight - otherHeight - lastPanelMinimumHeight - resizerHeight,
+  );
+}
+
+function clampSidebarPanelHeight(height: number, panel: SidebarPanel): number {
+  return Math.min(
+    Math.max(Math.round(height), SIDEBAR_PANEL_MIN_HEIGHT),
+    getSidebarPanelMaxHeight(panel),
+  );
+}
+
+// 保留用户保存的高度；窗口变小时仅收紧当前显示高度，恢复窗口后可自动还原。
+function getSidebarPanelDisplayHeight(
+  height: number,
+  panel: SidebarPanel,
+): number {
+  const containerHeight = sidebarPanelsHeight.value;
+  if (!containerHeight) return height;
+
+  const lastPanel = sidebarPanelOrder.value.at(-1) ?? "remoteFiles";
+  const fixedPanels = sidebarPanelOrder.value.slice(0, -1);
+  const lastPanelMinimumHeight = getSidebarPanelMinimumHeight(lastPanel);
+  const fixedPanelsHeight = containerHeight
+    - lastPanelMinimumHeight
+    - fixedPanels.length * SIDEBAR_PANEL_RESIZER_HEIGHT;
+  let allocatedHeight = 0;
+
+  for (let index = 0; index < fixedPanels.length; index += 1) {
+    const candidate = fixedPanels[index];
+    const candidateMinimumHeight = getSidebarPanelMinimumHeight(candidate);
+    const followingMinimumHeight = fixedPanels
+      .slice(index + 1)
+      .reduce(
+        (total, followingPanel) => total + getSidebarPanelHeight(followingPanel),
+        0,
+      );
+    // 优先展示保存高度；空间不足时从上到下收紧，同时为后续面板和末尾面板保留最小高度。
+    const availableHeight = fixedPanelsHeight - allocatedHeight - followingMinimumHeight;
+    const displayHeight = Math.max(
+      candidateMinimumHeight,
+      Math.min(getSidebarPanelHeight(candidate), availableHeight),
+    );
+
+    if (candidate === panel) return displayHeight;
+    allocatedHeight += displayHeight;
+  }
+
+  return height;
+}
+
+function getSidebarPanelStyle(panel: SidebarPanel): { height: string | undefined } {
+  if (appSettings.sidebar[panel].collapsed) {
+    return { height: `${SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT}px` };
+  }
+
+  return {
+    height: isLastSidebarPanel(panel)
+      ? undefined
+      : `${getSidebarPanelDisplayHeight(appSettings.sidebar[panel].height, panel)}px`,
+  };
+}
+
+function persistSidebarLayout(): void {
+  void settingsStore.saveAppSettings();
+}
+
+function toggleSidebarPanel(panel: "servers" | "automation" | "remoteFiles"): void {
+  const isOpening = appSettings.sidebar[panel].collapsed;
+  appSettings.sidebar[panel].collapsed = !isOpening;
+
+  if (isOpening) {
+    // 展开目标面板前，先将其余展开面板收至最小高度，为目标面板腾出全部可用空间。
+    sidebarPanelOrder.value.forEach(candidate => {
+      if (candidate !== panel && !appSettings.sidebar[candidate].collapsed) {
+        appSettings.sidebar[candidate].height = SIDEBAR_PANEL_MIN_HEIGHT;
+      }
+    });
+    appSettings.sidebar[panel].height = getSidebarPanelMaxHeight(panel);
+  }
+
+  persistSidebarLayout();
+}
+
+/** 仅高亮当前正在拖动的面板分隔条，避免其他分隔条同时出现激活样式。 */
+function isResizingSidebarPanel(panel: SidebarPanel): boolean {
+  return isResizingSidebarPanels.value && resizingSidebarPanel === panel;
+}
+
+function handleSidebarPanelResizeMove(event: MouseEvent): void {
+  if (!isResizingSidebarPanels.value) {
+    return;
+  }
+
+  if (!resizingSidebarPanel) return;
+
+  const requestedDelta = event.clientY - sidebarPanelResizeStartY;
+  const sourcePanel = resizingSidebarPanel;
+  const adjacentPanel = resizingAdjacentSidebarPanel;
+
+  if (adjacentPanel && !isLastSidebarPanel(adjacentPanel)) {
+    // 中间分隔线直接在两侧面板间转移高度，避免错误挤占最底部面板的剩余空间。
+    const appliedDelta = Math.min(
+      Math.max(
+        Math.round(requestedDelta),
+        getSidebarPanelMinimumHeight(sourcePanel) - resizingPanelStartHeight,
+      ),
+      resizingAdjacentPanelStartHeight - getSidebarPanelMinimumHeight(adjacentPanel),
+    );
+    appSettings.sidebar[sourcePanel].height = resizingPanelStartHeight + appliedDelta;
+    appSettings.sidebar[adjacentPanel].height = resizingAdjacentPanelStartHeight - appliedDelta;
+  } else {
+    // 下方为自动填充的末尾面板时，由末尾面板吸收高度变化，但仍保留它的最小高度。
+    appSettings.sidebar[sourcePanel].height = clampSidebarPanelHeight(
+      resizingPanelStartHeight + requestedDelta,
+      sourcePanel,
+    );
+  }
+  document.body.style.cursor = "row-resize";
+  document.body.style.userSelect = "none";
+}
+
+function stopSidebarPanelResize(): void {
+  if (!isResizingSidebarPanels.value) {
+    return;
+  }
+
+  isResizingSidebarPanels.value = false;
+  resizingSidebarPanel = null;
+  resizingAdjacentSidebarPanel = null;
+  resizingAdjacentPanelStartHeight = 0;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  window.removeEventListener("mousemove", handleSidebarPanelResizeMove);
+  window.removeEventListener("mouseup", stopSidebarPanelResize);
+  persistSidebarLayout();
+}
+
+function startSidebarPanelResize(event: MouseEvent, panel: SidebarPanel): void {
+  event.preventDefault();
+  sidebarPanelResizeStartY = event.clientY;
+  resizingSidebarPanel = panel;
+  resizingPanelStartHeight = getSidebarPanelDisplayHeight(
+    appSettings.sidebar[panel].height,
+    panel,
+  );
+  const adjacentPanel = getNextSidebarPanel(panel);
+  resizingAdjacentSidebarPanel = adjacentPanel && !appSettings.sidebar[adjacentPanel].collapsed
+    ? adjacentPanel
+    : null;
+  resizingAdjacentPanelStartHeight = resizingAdjacentSidebarPanel
+    ? isLastSidebarPanel(resizingAdjacentSidebarPanel)
+      ? appSettings.sidebar[resizingAdjacentSidebarPanel].height
+      : getSidebarPanelDisplayHeight(
+        appSettings.sidebar[resizingAdjacentSidebarPanel].height,
+        resizingAdjacentSidebarPanel,
+      )
+    : 0;
+  isResizingSidebarPanels.value = true;
+  document.body.style.cursor = "row-resize";
+  document.body.style.userSelect = "none";
+  window.addEventListener("mousemove", handleSidebarPanelResizeMove);
+  window.addEventListener("mouseup", stopSidebarPanelResize);
+}
+
+/** 记录被拖动的面板，拖放完成后统一写入持久化排序。 */
+function startSidebarPanelDrag(event: DragEvent, panel: SidebarPanel): void {
+  // 仅允许从面板标题发起排序拖拽，避免与远程文件的拖放操作冲突。
+  if (!(event.target instanceof Element) || !event.target.closest(".panel-header")) {
+    event.preventDefault();
+    return;
+  }
+
+  if (!event.dataTransfer) return;
+
+  draggedSidebarPanel.value = panel;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", panel);
+}
+
+function finishSidebarPanelDrag(event: DragEvent, targetPanel: SidebarPanel): void {
+  const sourcePanel = draggedSidebarPanel.value;
+  draggedSidebarPanel.value = null;
+  if (!sourcePanel || sourcePanel === targetPanel) return;
+
+  const nextOrder = [...sidebarPanelOrder.value];
+  const sourceIndex = nextOrder.indexOf(sourcePanel);
+  const targetIndex = nextOrder.indexOf(targetPanel);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+
+  nextOrder.splice(sourceIndex, 1);
+  const adjustedTargetIndex = sourceIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  const targetElement = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const targetMiddle = targetElement
+    ? targetElement.getBoundingClientRect().top + targetElement.clientHeight / 2
+    : Number.POSITIVE_INFINITY;
+  // 按鼠标落点决定插入目标面板的上方或下方，确保可拖到列表首尾。
+  const insertIndex = event.clientY > targetMiddle ? adjustedTargetIndex + 1 : adjustedTargetIndex;
+  nextOrder.splice(insertIndex, 0, sourcePanel);
+  appSettings.sidebar.panelOrder = nextOrder;
+  persistSidebarLayout();
+}
+
+function clearSidebarPanelDrag(): void {
+  draggedSidebarPanel.value = null;
 }
 
 // core：API 代理（响应式）+ 日志（普通函数）
@@ -475,6 +751,7 @@ async function closeTerminalTab(tabId: string): Promise<void> {
 
 // 窗口尺寸变化（含最大化/还原）后重新 fit 终端。
 function handleWindowResize(): void {
+  refreshSidebarPanelsHeight();
   scheduleTerminalFit();
 }
 
@@ -550,6 +827,11 @@ onMounted(() => {
   writeRendererLog("Renderer mounted", {
     hasOrbitSSHApi: Boolean(orbitSSHApi.value),
   });
+  refreshSidebarPanelsHeight();
+  sidebarPanelsResizeObserver = new ResizeObserver(refreshSidebarPanelsHeight);
+  if (sidebarPanelsElement.value) {
+    sidebarPanelsResizeObserver.observe(sidebarPanelsElement.value);
+  }
   void loadServers();
   void settingsStore.loadAppSettings();
   void loadAppInfo();
@@ -579,11 +861,14 @@ onUnmounted(() => {
   windowStore.stopFullScreenListenerWatch();
   stopAppMenuListener?.();
   stopAppMenuListener = null;
+  sidebarPanelsResizeObserver?.disconnect();
+  sidebarPanelsResizeObserver = null;
   destroyUpdate();
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
   sidebarStore.stopSidebarResize();
   sidebarStore.stopAiPanelResize();
+  stopSidebarPanelResize();
 });
 </script>
 
@@ -622,65 +907,111 @@ onUnmounted(() => {
         '--ai-panel-resizer-width':
           appSettings.ai.enabled && isAiPanelOpen ? '6px' : '0px',
       }">
-      <aside class="sidebar">
-        <ServerSidebar
-          :servers="servers"
-          :runtime-error="runtimeError"
-          :is-server-list-loading="isServerListLoading"
-          :list-error="listError"
-          :has-servers="hasServers"
-          :active-server-id="activeTab?.serverId ?? ''"
-          @open-connection-dialog="openConnectionDialog"
-          @open-server-terminal="openServerTerminal"
-          @edit-server="editServer"
-          @set-server-pinned="setServerPinned"
-          @delete-server="deleteServer" />
+      <aside ref="sidebarPanelsElement" class="sidebar">
+        <template v-for="panel in sidebarPanelOrder" :key="panel">
+          <div
+            draggable="true"
+            :class="[
+              'sidebar-panel-slot',
+              `sidebar-panel-slot-${panel}`,
+              {
+                collapsed: appSettings.sidebar[panel].collapsed,
+                'is-last': isLastSidebarPanel(panel),
+                dragging: draggedSidebarPanel === panel,
+              },
+            ]"
+            :style="getSidebarPanelStyle(panel)"
+            @dragstart="startSidebarPanelDrag($event, panel)"
+            @dragover.prevent
+            @drop="finishSidebarPanelDrag($event, panel)"
+            @dragend="clearSidebarPanelDrag">
+            <ServerSidebar
+              v-if="panel === 'servers'"
+              :servers="servers"
+              :runtime-error="runtimeError"
+              :is-server-list-loading="isServerListLoading"
+              :list-error="listError"
+              :has-servers="hasServers"
+              :active-server-id="activeTab?.serverId ?? ''"
+              :collapsed="appSettings.sidebar.servers.collapsed"
+              @open-connection-dialog="openConnectionDialog"
+              @open-server-terminal="openServerTerminal"
+              @edit-server="editServer"
+              @set-server-pinned="setServerPinned"
+              @delete-server="deleteServer"
+              @toggle-collapsed="toggleSidebarPanel('servers')" />
 
-        <SftpPanel
-          :active-tab="activeTab"
-          :active-sftp-tree="activeSftpTree"
-          :visible-file-tree="visibleFileTree"
-          :file-context-menu="fileContextMenu"
-          :blank-context-menu="blankContextMenu"
-          :renaming="renaming"
-          :file-drag-target-path="fileDragTargetPath"
-          :file-path-input="filePathInput"
-          :file-panel-hint="getFilePanelHint()"
-          :file-tree-element-ref="setFileTreeElement"
-          :is-editable-text-file="isEditableTextFile"
-          :get-file-edit-menu-label="getFileEditMenuLabel"
-          :can-download-remote-file="canDownloadRemoteFile"
-          :can-upload-remote-node="canUploadRemoteNode"
-          :can-delete-remote-node="canDeleteRemoteNode"
-          @update:file-path-input="filePathInput = $event"
-          @refresh="refreshActiveDirectory"
-          @submit-path="submitFilePathInput"
-          @copy-path="copyActiveSftpPath"
-          @sync-path="syncFileTreeToTerminalPath"
-          @open-context-menu="openFileContextMenu"
-          @open-blank-context-menu="handleOpenBlankContextMenu"
-          @close-file-context-menu="closeFileContextMenu"
-          @close-blank-context-menu="closeBlankContextMenu"
-          @select-node="handleFileSelectNode"
-          @select-all="handleFileSelectAll"
-          @clear-selection="handleFileClearSelection"
-          @marquee-select="handleFileMarqueeSelect"
-          @drag-start-node="handleFileDragStart"
-          @drag-over-node="handleFileDragOver"
-          @drag-leave-node="handleFileDragLeave"
-          @drop-node="handleFileDrop"
-          @drag-end-node="clearRemoteNodeDrag"
-          @open-file-by-double-click="openRemoteNodeByDoubleClick"
-          @preview-context-file="previewContextFile"
-          @edit-context-file="editContextFile"
-          @download-context-file="downloadContextFile"
-          @upload-context-file="uploadContextFile"
-          @upload-to-current-directory="uploadToActiveSftpDirectory"
-          @rename-context-file="renameContextFile"
-          @delete-context-file="deleteContextFile"
-          @commit-rename="handleCommitRename"
-          @cancel-rename="handleCancelRename"
-          @create-blank-node="handleCreateBlankNode" />
+            <AutomationSidebar
+              v-else-if="panel === 'automation'"
+              :active-tab="activeTab"
+              :collapsed="appSettings.sidebar.automation.collapsed"
+              @toggle-collapsed="toggleSidebarPanel('automation')" />
+
+            <SftpPanel
+              v-else
+              :active-tab="activeTab"
+              :active-sftp-tree="activeSftpTree"
+              :visible-file-tree="visibleFileTree"
+              :file-context-menu="fileContextMenu"
+              :blank-context-menu="blankContextMenu"
+              :renaming="renaming"
+              :file-drag-target-path="fileDragTargetPath"
+              :file-path-input="filePathInput"
+              :file-panel-hint="getFilePanelHint()"
+              :file-tree-element-ref="setFileTreeElement"
+              :is-editable-text-file="isEditableTextFile"
+              :get-file-edit-menu-label="getFileEditMenuLabel"
+              :can-download-remote-file="canDownloadRemoteFile"
+              :can-upload-remote-node="canUploadRemoteNode"
+              :can-delete-remote-node="canDeleteRemoteNode"
+              :collapsed="appSettings.sidebar.remoteFiles.collapsed"
+              @update:file-path-input="filePathInput = $event"
+              @refresh="refreshActiveDirectory"
+              @submit-path="submitFilePathInput"
+              @copy-path="copyActiveSftpPath"
+              @sync-path="syncFileTreeToTerminalPath"
+              @open-context-menu="openFileContextMenu"
+              @open-blank-context-menu="handleOpenBlankContextMenu"
+              @close-file-context-menu="closeFileContextMenu"
+              @close-blank-context-menu="closeBlankContextMenu"
+              @select-node="handleFileSelectNode"
+              @select-all="handleFileSelectAll"
+              @clear-selection="handleFileClearSelection"
+              @marquee-select="handleFileMarqueeSelect"
+              @drag-start-node="handleFileDragStart"
+              @drag-over-node="handleFileDragOver"
+              @drag-leave-node="handleFileDragLeave"
+              @drop-node="handleFileDrop"
+              @drag-end-node="clearRemoteNodeDrag"
+              @open-file-by-double-click="openRemoteNodeByDoubleClick"
+              @preview-context-file="previewContextFile"
+              @edit-context-file="editContextFile"
+              @download-context-file="downloadContextFile"
+              @upload-context-file="uploadContextFile"
+              @upload-to-current-directory="uploadToActiveSftpDirectory"
+              @rename-context-file="renameContextFile"
+              @delete-context-file="deleteContextFile"
+              @commit-rename="handleCommitRename"
+              @cancel-rename="handleCancelRename"
+              @create-blank-node="handleCreateBlankNode"
+              @toggle-collapsed="toggleSidebarPanel('remoteFiles')" />
+          </div>
+
+          <div
+            v-if="!isLastSidebarPanel(panel)"
+            :class="[
+              'sidebar-panel-resizer',
+              {
+                active: isResizingSidebarPanel(panel),
+                disabled: appSettings.sidebar[panel].collapsed,
+              },
+            ]"
+            role="separator"
+            aria-orientation="horizontal"
+            :aria-disabled="appSettings.sidebar[panel].collapsed"
+            :aria-label="`调整${panel === 'servers' ? '服务器' : panel === 'automation' ? '自定义指令' : '远程文件'}面板高度`"
+            @mousedown="!appSettings.sidebar[panel].collapsed && startSidebarPanelResize($event, panel)"></div>
+        </template>
       </aside>
 
       <div

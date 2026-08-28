@@ -32,6 +32,12 @@ export const useSettingsStore = defineStore("settings", () => {
       appearance: {
         themeMode: appSettings.appearance.themeMode,
       },
+      sidebar: {
+        servers: { ...appSettings.sidebar.servers },
+        automation: { ...appSettings.sidebar.automation },
+        remoteFiles: { ...appSettings.sidebar.remoteFiles },
+        panelOrder: [...appSettings.sidebar.panelOrder],
+      },
       connection: {
         keepaliveIntervalSeconds:
           appSettings.connection.keepaliveIntervalSeconds,
@@ -57,6 +63,10 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function applySavedSettings(savedSettings: AppSettings): void {
     Object.assign(appSettings.appearance, savedSettings.appearance);
+    Object.assign(appSettings.sidebar.servers, savedSettings.sidebar.servers);
+    Object.assign(appSettings.sidebar.automation, savedSettings.sidebar.automation);
+    Object.assign(appSettings.sidebar.remoteFiles, savedSettings.sidebar.remoteFiles);
+    appSettings.sidebar.panelOrder = [...savedSettings.sidebar.panelOrder];
     Object.assign(appSettings.connection, savedSettings.connection);
     Object.assign(appSettings.terminal, savedSettings.terminal);
     Object.assign(appSettings.update, savedSettings.update);

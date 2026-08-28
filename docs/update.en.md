@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.1
+
+1. Upgraded the left sidebar layout: Servers, Custom Commands, and Remote Files can be freely reordered, independently collapsed, and restored from local settings; the bottom panel fills remaining space automatically.
+2. Improved panel-height behavior: opening a collapsed panel expands it to the available maximum, and panels contract dynamically with window resizing to prevent overflow.
+3. Fixed panel-divider dragging: a middle divider now transfers height between its adjacent expanded panels instead of being incorrectly limited by the bottom panel's remaining space.
+
 ## v1.5.0
 
 1. Upgraded custom-command execution: after confirming the command preview, OrbitSSH opens a dedicated terminal tab instead of occupying the terminal currently in use.

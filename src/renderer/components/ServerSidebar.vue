@@ -3,6 +3,7 @@ import editIcon from "../assets/icons/edit.svg";
 import pinIcon from "../assets/icons/pin.svg";
 import plusIcon from "../assets/icons/plus.svg";
 import trashIcon from "../assets/icons/trash.svg";
+import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import type { ServerConfig } from "../../shared/server";
 
 defineProps<{
@@ -12,6 +13,7 @@ defineProps<{
   listError: string;
   hasServers: boolean;
   activeServerId: string;
+  collapsed: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -20,23 +22,34 @@ const emit = defineEmits<{
   editServer: [server: ServerConfig];
   setServerPinned: [server: ServerConfig];
   deleteServer: [serverId: string];
+  toggleCollapsed: [];
 }>();
 </script>
 
 <template>
-  <section class="panel server-panel">
-    <div class="panel-header">
-      <h2>服务器</h2>
+  <section :class="['panel', 'server-panel', { collapsed }]">
+    <div class="panel-header" draggable="true">
       <button
+        type="button"
+        class="panel-toggle"
+        :aria-expanded="!collapsed"
+        aria-controls="server-panel-content"
+        @click="emit('toggleCollapsed')">
+        <img :class="{ expanded: !collapsed }" :src="chevronRightIcon" alt="" />
+        <h2>服务器</h2>
+      </button>
+      <button
+        v-if="!collapsed"
         type="button"
         class="icon-button"
         aria-label="新增连接"
-        @click="emit('openConnectionDialog')">
+        @click.stop="emit('openConnectionDialog')">
         <img :src="plusIcon" alt="" />
       </button>
     </div>
 
-    <div class="server-list">
+    <Transition name="panel-slide">
+    <div v-show="!collapsed" id="server-panel-content" class="server-list">
       <div v-if="runtimeError" class="server-empty error">
         {{ runtimeError }}
       </div>
@@ -102,5 +115,6 @@ const emit = defineEmits<{
         </div>
       </article>
     </div>
+    </Transition>
   </section>
 </template>
