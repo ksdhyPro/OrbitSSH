@@ -123,8 +123,37 @@ function buildApplicationArchive() {
   );
 }
 
+function writeAppUpdateConfig() {
+  const publishConfigs = Array.isArray(packageJson.build.publish)
+    ? packageJson.build.publish
+    : [packageJson.build.publish];
+  const publishConfig = publishConfigs.find(
+    (config) => config && typeof config === "object" && config.provider === "generic",
+  );
+  if (!publishConfig || typeof publishConfig.url !== "string" || !publishConfig.url.trim()) {
+    throw new Error("缺少有效的 build.publish generic 更新地址");
+  }
+
+  const resourcesRoot = path.join(unpackedRoot, "resources");
+  const appUpdatePath = path.join(resourcesRoot, "app-update.yml");
+  const updaterCacheDirName = `${packageJson.name.toLowerCase()}-updater`;
+  const appUpdateYml = [
+    "provider: generic",
+    `url: ${JSON.stringify(publishConfig.url.trim())}`,
+    `updaterCacheDirName: ${updaterCacheDirName}`,
+    "",
+  ].join("\n");
+
+  // --dir 不会生成更新配置，自绘安装器需要在压缩前主动补齐。
+  mkdirSync(resourcesRoot, { recursive: true });
+  writeFileSync(appUpdatePath, appUpdateYml, "utf8");
+  if (!existsSync(appUpdatePath)) {
+    throw new Error(`更新配置生成失败：${appUpdatePath}`);
+  }
+}
+
 function verifyApplicationArchive() {
-  // 构建完成后必须确认主程序已进入压缩包，避免生成可运行但不含应用文件的安装器。
+  // 构建完成后必须确认主程序和更新配置均已进入压缩包。
   const result = spawnSync(sevenZipExecutable, ["l", "-slt", appArchive], {
     cwd: projectRoot,
     encoding: "utf8",
@@ -135,11 +164,13 @@ function verifyApplicationArchive() {
     throw new Error(`应用压缩包校验失败，退出码：${result.status}`);
   }
 
-  const executableEntry = `Path = ${packageJson.build.productName}.exe`;
-  if (!result.stdout.includes(executableEntry)) {
-    throw new Error(
-      `应用压缩包缺少主程序：${packageJson.build.productName}.exe`,
-    );
+  const requiredEntries = [
+    `Path = ${packageJson.build.productName}.exe`,
+    "Path = resources\\app-update.yml",
+  ];
+  const missingEntry = requiredEntries.find((entry) => !result.stdout.includes(entry));
+  if (missingEntry) {
+    throw new Error(`应用压缩包缺少必要文件：${missingEntry.slice(7)}`);
   }
 }
 
@@ -202,6 +233,7 @@ function main() {
   buildUnpackedApplication();
   if (!existsSync(unpackedRoot))
     throw new Error(`应用目录生成失败：${unpackedRoot}`);
+  writeAppUpdateConfig();
   buildApplicationArchive();
   verifyApplicationArchive();
   buildSkinArchive();

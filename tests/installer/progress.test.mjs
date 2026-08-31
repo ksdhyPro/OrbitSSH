@@ -54,3 +54,20 @@ test('安装器皮肤插件统一使用 OrbitSSH 命名空间', async () => {
   assert.equal(installerSource.includes(legacyPluginName), false, '安装脚本不应保留旧插件名称');
   assert.equal(buildSource.includes(legacyPluginName), false, '构建脚本不应保留旧插件名称');
 });
+
+test('自绘打包必须写入 electron-updater 配置', async () => {
+  const source = await readFile(buildScriptUrl, 'utf8');
+
+  assert.match(source, /function writeAppUpdateConfig\(\)/, '构建脚本必须生成 app-update.yml');
+  assert.match(source, /updaterCacheDirName/, '更新配置必须包含 updater 缓存目录');
+  assert.match(
+    source,
+    /writeAppUpdateConfig\(\);[\s\S]*?buildApplicationArchive\(\);/,
+    '必须在压缩应用目录之前写入更新配置'
+  );
+  assert.match(
+    source,
+    /Path = resources\\\\app-update\.yml/,
+    '最终应用归档必须校验 app-update.yml'
+  );
+});

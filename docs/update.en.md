@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.1
+
+1. Fixed update checks failing because the custom Windows installer omitted `app-update.yml`; the build now generates the updater configuration from the publish settings.
+2. Added build and archive validation for the updater configuration. Packaging now fails immediately if the update URL is missing or the configuration is absent from the application archive.
+
 ## v1.6.0
 
 1. Upgraded the Windows installation experience with an OrbitSSH-branded custom installer, including a unified pure-black interface, application icon, titles, buttons, and license controls that match the app's dark theme.
