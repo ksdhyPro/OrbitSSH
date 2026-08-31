@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.0
+
+1. Upgraded the Windows installation experience with an OrbitSSH-branded custom installer, including a unified pure-black interface, application icon, titles, buttons, and license controls that match the app's dark theme.
+2. Added high-DPI installer support with crisp branded images and control assets for 100%, 150%, and 200% display scaling.
+3. Fixed installation progress jumping directly to completion by extracting in the background and updating progress from actual extracted bytes; application archive validation now prevents empty packages from being published.
+4. Reworked the Windows release flow so `npm run dist` directly generates the custom installer and `latest.yml` metadata compatible with `electron-updater`.
+5. Optimized package compression to keep the Windows installer below 100 MB without removing runtime files or language resources.
+
 ## v1.5.1
 
 1. Upgraded the left sidebar layout: Servers, Custom Commands, and Remote Files can be freely reordered, independently collapsed, and restored from local settings; the bottom panel fills remaining space automatically.

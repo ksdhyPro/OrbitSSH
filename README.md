@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
-  <img src="https://img.shields.io/badge/version-1.1.7-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.6.0-orange" alt="Version" />
   <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
   <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
   <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
@@ -179,6 +179,8 @@ npm run build
 npm run dist
 ```
 
+Windows 打包会生成 OrbitSSH 深色自绘安装器及供 `electron-updater` 使用的 `latest.yml`。
+
 ### 质量检查
 
 ```bash
@@ -196,57 +198,39 @@ npm run build
 ```
 orbitssh/
 ├── src/
-│   ├── main/                    # Electron 主进程
-│   │   ├── index.ts            # 应用入口，窗口创建 & IPC 注册
-│   │   ├── ipc/                # IPC 处理器
-│   │   │   ├── ai-ipc.ts       # AI 助手 IPC
-│   │   │   ├── server-ipc.ts   # 服务器连接配置管理
-│   │   │   ├── terminal-ipc.ts # 终端会话 IPC
-│   │   │   ├── sftp-ipc.ts     # 文件传输 IPC
-│   │   │   ├── settings-ipc.ts # 应用设置读写
-│   │   │   ├── clipboard-ipc.ts# 剪贴板读写
-│   │   │   ├── dialog-ipc.ts   # 原生对话框
-│   │   │   ├── window-ipc.ts   # 窗口控制（最小化/最大化/关闭）
-│   │   │   ├── system-ipc.ts   # 系统信息
-│   │   │   ├── update-ipc.ts   # 应用更新
-│   │   │   └── logger-ipc.ts   # 日志通道
-│   │   ├── ssh/                # SSH 会话管理
-│   │   │   ├── session-manager.ts
-│   │   │   ├── terminal-command.ts      # 可取消的命令执行
-│   │   │   ├── terminal-system-stats.ts # 本地与远端资源统计
-│   │   │   └── auth-options.ts
-│   │   ├── sftp/               # SFTP 会话管理
-│   │   │   └── sftp-manager.ts
-│   │   ├── ai/                 # AI Agent、命令策略、上下文与响应解析
-│   │   │   ├── ai-agent.ts     # Agent 循环与命令执行编排
-│   │   │   ├── command-policy.ts
-│   │   │   ├── ai-provider.ts  # OpenAI 兼容模型适配
-│   │   │   └── ai-context.ts   # 上下文脱敏与预算
-│   │   ├── storage/            # 本地持久化存储
-│   │   │   ├── server-store.ts
-│   │   │   └── settings-store.ts
-│   │   ├── update/             # 自动更新模块
-│   │   │   └── index.ts
-│   │   └── logger.ts           # 应用日志
-│   ├── preload/                # 预加载脚本（contextBridge 安全暴露 API）
-│   │   ├── index.ts
-│   │   └── index.cjs
-│   ├── renderer/               # Vue 渲染进程
-│   │   ├── components/         # UI 组件
-│   │   ├── composables/        # 跨组件交互编排
-│   │   ├── assets/             # 图标 & 静态资源
-│   │   ├── styles.css          # 模块化样式入口
-│   │   ├── styles/             # 主题、终端、文件、弹窗与 AI 样式模块
-│   │   └── App.vue             # 根组件
-│   └── shared/                 # 主进程 ⇄ 渲染进程共享类型定义
-│       ├── server.ts
-│       ├── ai.ts
-│       ├── settings.ts
-│       ├── sftp.ts
-│       └── terminal.ts
-├── docs/                       # 文档 & 截图
-├── build/                      # 构建资源（图标、NSIS 脚本）
-├── scripts/                    # 辅助脚本
+│   ├── main/                         # Electron 主进程
+│   │   ├── bootstrap.ts              # 启动引导与主进程初始化
+│   │   ├── index.ts                  # 主窗口、托盘及应用生命周期
+│   │   ├── startup-diagnostics.ts    # Windows 启动诊断
+│   │   ├── ipc/                      # AI、SSH、SFTP、设置、窗口等 IPC
+│   │   ├── ai/                       # AI Agent、Codex、审批与命令策略
+│   │   ├── automation/               # 服务器自动化任务执行
+│   │   ├── local-files/              # 本地文件浏览能力
+│   │   ├── sftp/                     # SFTP 会话、上传、下载与远程传输
+│   │   ├── ssh/                      # SSH 会话、终端命令与系统状态
+│   │   ├── storage/                  # 服务器与设置持久化
+│   │   ├── update/                   # electron-updater 更新模块
+│   │   └── logger.ts                 # 应用日志
+│   ├── preload/                      # contextBridge 安全 API
+│   ├── renderer/                     # Vue 渲染进程
+│   │   ├── components/               # 终端、文件、AI 与设置组件
+│   │   ├── composables/              # 远程文件等交互编排
+│   │   ├── config/                   # 渲染进程配置
+│   │   ├── stores/                   # Pinia 状态管理
+│   │   ├── styles/                   # 主题、终端、文件与弹窗样式
+│   │   ├── utils/                    # 渲染进程通用工具
+│   │   └── App.vue                   # 根组件
+│   ├── shared/                       # 主进程 ⇄ 渲染进程共享类型
+│   └── types/                        # Preload 全局类型声明
+├── packaging/windows/                # Windows 自绘安装器
+│   ├── assets/                       # 图标及安装器品牌资源
+│   ├── scripts/                      # NSIS 安装与卸载逻辑
+│   ├── skin/                         # 深色 UI 与高 DPI 皮肤资源
+│   └── runtime/                      # 7-Zip、NSIS 与 OrbitSSHSkin
+├── scripts/                          # 构建、版本同步与资源生成脚本
+├── tests/                            # AI、主进程、SFTP、SSH 与安装器测试
+├── docs/                             # 文档、更新日志与截图
+├── build/                            # 应用图标及通用构建资源
 ├── vite.config.ts
 ├── tsconfig.json
 ├── tsconfig.electron.json

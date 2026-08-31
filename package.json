@@ -1,6 +1,6 @@
 {
   "name": "orbitssh",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "SSH client",
   "main": "dist-electron/main/bootstrap.js",
   "private": true,
@@ -15,7 +15,7 @@
     "version:sync": "node scripts/sync-version-from-update.cjs",
     "prepackage": "npm run version:sync",
     "package": "npm run build && electron-builder --win --dir",
-    "dist": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --win",
+    "dist": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ node scripts/build-windows-installer.cjs",
     "dist-mac": "npm run build && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/ electron-builder --mac"
   },
   "build": {
@@ -79,6 +79,9 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "packaging/windows/assets/header.bmp",
+      "installerSidebar": "packaging/windows/assets/sidebar.bmp",
+      "uninstallerSidebar": "packaging/windows/assets/sidebar.bmp",
       "license": "LICENSE",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,

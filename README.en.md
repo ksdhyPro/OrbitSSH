@@ -11,7 +11,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
-  <img src="https://img.shields.io/badge/version-1.1.7-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.6.0-orange" alt="Version" />
   <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
   <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
   <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
@@ -179,6 +179,8 @@ npm run build
 npm run dist
 ```
 
+The Windows build generates the OrbitSSH dark custom installer and a `latest.yml` file for `electron-updater`.
+
 ### Quality Checks
 
 ```bash
@@ -196,57 +198,39 @@ npm run build
 ```
 orbitssh/
 ├── src/
-│   ├── main/                    # Electron main process
-│   │   ├── index.ts            # App entry — window creation & IPC registration
-│   │   ├── ipc/                # IPC handlers
-│   │   │   ├── ai-ipc.ts       # AI assistant IPC
-│   │   │   ├── server-ipc.ts   # Server connection profile management
-│   │   │   ├── terminal-ipc.ts # Terminal session IPC
-│   │   │   ├── sftp-ipc.ts     # File transfer IPC
-│   │   │   ├── settings-ipc.ts # Application settings read/write
-│   │   │   ├── clipboard-ipc.ts# Clipboard read/write
-│   │   │   ├── dialog-ipc.ts   # Native dialog prompts
-│   │   │   ├── window-ipc.ts   # Window controls (minimize/maximize/close)
-│   │   │   ├── system-ipc.ts   # System info
-│   │   │   ├── update-ipc.ts   # Application updates
-│   │   │   └── logger-ipc.ts   # Logging channel
-│   │   ├── ssh/                # SSH session management
-│   │   │   ├── session-manager.ts
-│   │   │   ├── terminal-command.ts      # Cancellable command execution
-│   │   │   ├── terminal-system-stats.ts # Local and remote resource stats
-│   │   │   └── auth-options.ts
-│   │   ├── sftp/               # SFTP session management
-│   │   │   └── sftp-manager.ts
-│   │   ├── ai/                 # AI Agent, command policy, context, and response parsing
-│   │   │   ├── ai-agent.ts     # Agent loop and command execution orchestration
-│   │   │   ├── command-policy.ts
-│   │   │   ├── ai-provider.ts  # OpenAI-compatible provider adapter
-│   │   │   └── ai-context.ts   # Context redaction and budgets
-│   │   ├── storage/            # Local persistent storage
-│   │   │   ├── server-store.ts
-│   │   │   └── settings-store.ts
-│   │   ├── update/             # Auto-update module
-│   │   │   └── index.ts
-│   │   └── logger.ts           # Application logger
-│   ├── preload/                # Preload scripts (contextBridge secure API exposure)
-│   │   ├── index.ts
-│   │   └── index.cjs
-│   ├── renderer/               # Vue renderer process
-│   │   ├── components/         # UI components
-│   │   ├── composables/        # Cross-component interaction orchestration
-│   │   ├── assets/             # Icons & static assets
-│   │   ├── styles.css          # Modular stylesheet entry
-│   │   ├── styles/             # Theme, terminal, file, dialog, and AI styles
-│   │   └── App.vue             # Root component
-│   └── shared/                 # Shared type definitions (main ⇄ renderer)
-│       ├── server.ts
-│       ├── ai.ts
-│       ├── settings.ts
-│       ├── sftp.ts
-│       └── terminal.ts
-├── docs/                       # Documentation & screenshots
-├── build/                      # Build assets (icons, NSIS scripts)
-├── scripts/                    # Helper scripts
+│   ├── main/                         # Electron main process
+│   │   ├── bootstrap.ts              # Startup bootstrap and initialization
+│   │   ├── index.ts                  # Main window, tray, and app lifecycle
+│   │   ├── startup-diagnostics.ts    # Windows startup diagnostics
+│   │   ├── ipc/                      # AI, SSH, SFTP, settings, and window IPC
+│   │   ├── ai/                       # AI Agent, Codex, approvals, and command policy
+│   │   ├── automation/               # Server automation task execution
+│   │   ├── local-files/              # Local file browsing
+│   │   ├── sftp/                     # SFTP sessions, upload, download, and relay transfer
+│   │   ├── ssh/                      # SSH sessions, terminal commands, and system stats
+│   │   ├── storage/                  # Server and settings persistence
+│   │   ├── update/                   # electron-updater integration
+│   │   └── logger.ts                 # Application logger
+│   ├── preload/                      # contextBridge secure APIs
+│   ├── renderer/                     # Vue renderer process
+│   │   ├── components/               # Terminal, file, AI, and settings components
+│   │   ├── composables/              # Remote-file and interaction orchestration
+│   │   ├── config/                   # Renderer configuration
+│   │   ├── stores/                   # Pinia state management
+│   │   ├── styles/                   # Theme, terminal, file, and dialog styles
+│   │   ├── utils/                    # Renderer utilities
+│   │   └── App.vue                   # Root component
+│   ├── shared/                       # Shared main ⇄ renderer types
+│   └── types/                        # Global Preload type declarations
+├── packaging/windows/                # Custom Windows installer
+│   ├── assets/                       # Icons and branded installer assets
+│   ├── scripts/                      # NSIS install and uninstall logic
+│   ├── skin/                         # Dark UI and high-DPI skin assets
+│   └── runtime/                      # 7-Zip, NSIS, and OrbitSSHSkin
+├── scripts/                          # Build, version-sync, and asset scripts
+├── tests/                            # AI, main, SFTP, SSH, and installer tests
+├── docs/                             # Documentation, changelog, and screenshots
+├── build/                            # App icons and shared build assets
 ├── vite.config.ts
 ├── tsconfig.json
 ├── tsconfig.electron.json
