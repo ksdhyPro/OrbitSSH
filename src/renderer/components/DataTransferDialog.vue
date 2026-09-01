@@ -22,7 +22,7 @@ import type {
   SftpUploadProgressEvent,
 } from "../../shared/sftp";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
-import { resolveMenuPlacement } from "../utils/menu-position";
+import { resolveLocalMenuPlacement } from "../utils/menu-position";
 import { getRemoteParentPath } from "../utils/path";
 import { isPreviewImageFile } from "../utils/file-kind";
 import {
@@ -837,9 +837,25 @@ function resolveTransferMenuPlacement(
   event: MouseEvent,
   itemCount: number,
 ): { x: number; y: number } {
-  // 菜单渲染到页面根节点，统一使用鼠标视口坐标，避免弹窗动画和定位上下文造成偏移。
-  return resolveMenuPlacement(
-    { x: event.clientX, y: event.clientY },
+  const dialogElement = (event.currentTarget as HTMLElement | null)?.closest(
+    ".app-dialog",
+  );
+  const rect = dialogElement?.getBoundingClientRect();
+
+  if (!rect) {
+    return { x: event.clientX, y: event.clientY };
+  }
+
+  // 菜单保留在弹窗内，以弹窗左上角为原点计算局部坐标。
+  return resolveLocalMenuPlacement(
+    {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    },
+    {
+      width: rect.width,
+      height: rect.height,
+    },
     itemCount,
   );
 }
@@ -1593,15 +1609,13 @@ onUnmounted(() => {
       <span>{{ footerText }}</span>
     </footer>
 
-    <Teleport to="body">
-      <ContextMenu
-        class="data-transfer-context-menu"
-        :menu="transferContextMenu"
-        :items="transferMenuItems"
-        @select="selectTransferMenuItem"
-        @close="closeTransferContextMenu"
-      />
-    </Teleport>
+    <ContextMenu
+      class="data-transfer-context-menu"
+      :menu="transferContextMenu"
+      :items="transferMenuItems"
+      @select="selectTransferMenuItem"
+      @close="closeTransferContextMenu"
+    />
 
     <DeleteConfirmDialog
       :open="deleteConfirmDialog.open"
