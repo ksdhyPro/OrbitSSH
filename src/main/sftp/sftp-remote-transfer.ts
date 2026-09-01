@@ -78,6 +78,21 @@ interface PausedRemoteTransferTask {
 const activeRemoteTransferTasks = new Map<string, RemoteTransferRuntimeTask>()
 const pausedRemoteTransferTasks = new Map<string, PausedRemoteTransferTask>()
 
+function writeLocalRelayLog(
+  taskId: string,
+  stage: string,
+  data: Record<string, unknown> = {},
+  level: 'info' | 'warn' | 'error' = 'info'
+): void {
+  // 本地中转涉及多次独立连接，按阶段记录可定位卡住或失败的位置。
+  writeAppLog({
+    scope: 'main.sftp',
+    level,
+    message: '服务器间本地中转',
+    data: { taskId, stage, ...data }
+  })
+}
+
 function quoteShellValue(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
 }
@@ -453,8 +468,12 @@ async function runLocalRelayRemoteTransfer(
   sourceServer: ServerAuthConfig,
   targetServer: ServerAuthConfig
 ): Promise<void> {
+  writeLocalRelayLog(taskId, '连接源服务器', { sourceServerId: task.sourceServerId })
   const sourceClient = await createSftpClient(`remote-transfer-source-${taskId}`, sourceServer)
+  writeLocalRelayLog(taskId, '源服务器连接成功', { sourceServerId: task.sourceServerId })
+  writeLocalRelayLog(taskId, '连接目标服务器', { targetServerId: task.targetServerId })
   const targetClient = await createSftpClient(`remote-transfer-target-${taskId}`, targetServer)
+  writeLocalRelayLog(taskId, '目标服务器连接成功', { targetServerId: task.targetServerId })
   const tempDirectoryPath = task.tempDirectoryPath ?? (await mkdtemp(joinLocalPath(tmpdir(), `orbitssh-transfer-${taskId}-`)))
   let lastProgressAt = 0
   let lastSpeedAt = Date.now()
@@ -524,6 +543,12 @@ async function runLocalRelayRemoteTransfer(
       const existingLocalBytes = await getLocalFileSize(localPath)
       const localResumeOffset = existingLocalBytes > entry.size ? 0 : existingLocalBytes
 
+      writeLocalRelayLog(taskId, '开始传输文件', {
+        sourcePath: entry.sourcePath,
+        targetPath: entry.targetPath,
+        size: entry.size,
+        localResumeOffset
+      })
       await mkdir(dirname(localPath), { recursive: true })
       await targetClient.mkdir(posixPath.dirname(entry.targetPath), true)
       task.phase = 'download'
@@ -539,6 +564,7 @@ async function runLocalRelayRemoteTransfer(
           emitProgress()
         }
       })
+      writeLocalRelayLog(taskId, '源文件下载到本地完成', { sourcePath: entry.sourcePath, size: entry.size })
 
       if (task.paused || task.canceled) {
         break
@@ -580,6 +606,7 @@ async function runLocalRelayRemoteTransfer(
           }
         }
       )
+      writeLocalRelayLog(taskId, '本地文件上传到目标完成', { targetPath: entry.targetPath, size: entry.size })
 
       if (task.paused || task.canceled) {
         break
@@ -595,6 +622,7 @@ async function runLocalRelayRemoteTransfer(
       task.transferredBytes = getCompletedFileBytes()
       emitProgress()
       await rm(localPath, { force: true }).catch(() => undefined)
+      writeLocalRelayLog(taskId, '文件校验完成', { sourcePath: entry.sourcePath, targetPath: entry.targetPath, size: entry.size })
     }
   } finally {
     await sourceClient.end().catch(() => undefined)
@@ -780,6 +808,13 @@ export async function transferRemoteSourcesBetweenServers(
     } else if (task.paused) {
       wasPaused = true
     } else {
+      writeLocalRelayLog(input.taskId, '本地中转传输失败', {
+        phase: task.phase,
+        transferredBytes: task.transferredBytes,
+        totalBytes: task.totalBytes,
+        completedFileCount: task.completedSourcePaths.size,
+        error: error instanceof Error ? error.message : String(error)
+      }, 'error')
       task.emitProgress('error', error instanceof Error ? error.message : String(error))
       throw error
     }

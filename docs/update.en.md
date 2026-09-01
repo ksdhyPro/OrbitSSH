@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.2
+
+1. Added stage-level and per-file logs for server-to-server transfers that fall back to a local relay. Failures now record connection status, transfer progress, and the original error to help diagnose interrupted transfers.
+2. Fixed context-menu position drift in the two-server file transfer dialog. The menu now reliably follows the pointer and stays within the window bounds.
+
 ## v1.6.1
 
 1. Fixed update checks failing because the custom Windows installer omitted `app-update.yml`; the build now generates the updater configuration from the publish settings.
