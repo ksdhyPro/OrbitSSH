@@ -627,22 +627,6 @@
   white-space: pre-wrap;
 }
 
-.ai-process-markdown {
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.55;
-  overflow-wrap: anywhere;
-}
-
-.ai-process-markdown > * {
-  margin: 6px 0 0;
-}
-
-.ai-process-markdown > :first-child {
-  margin-top: 0;
-}
-
 .ai-loading-dots {
   display: inline-flex;
   align-items: center;

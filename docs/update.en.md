@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.6.3
+
+1. Improved the right-side AI response panel: reply text now stays visible in the conversation, while consecutive commands are grouped by reply into collapsed execution sections that can be expanded to inspect commands, results, and errors.
+
 ## v1.6.2
 
 1. Added stage-level and per-file logs for server-to-server transfers that fall back to a local relay. Failures now record connection status, transfer progress, and the original error to help diagnose interrupted transfers.
