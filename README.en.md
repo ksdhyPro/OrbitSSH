@@ -1,14 +1,30 @@
-# OrbitSSH
+<p align="center"><img src="build/icon.ico" width="96" alt="OrbitSSH Logo" /></p>
 
-An Electron + Vue 3 desktop SSH/SFTP client with a controlled-execution AI operations assistant.
+<h1 align="center">OrbitSSH</h1>
 
-Current version: `1.6.3` · [简体中文](README.md) · [Release notes](docs/update.en.md)
+<p align="center"><strong>Modern · Performant · Controlled AI Operations</strong></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.6.3-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
+  <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
+  <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+</p>
+
+<p align="center"><a href="README.md">简体中文</a> | English</p>
 
 ## Overview
 
 OrbitSSH brings SSH terminals, SFTP file management, server-to-server transfers, reusable automation tasks, and AI-assisted diagnostics into one desktop application. Electron's main process owns SSH, SFTP, file, and AI command execution; the Vue renderer is limited to presentation and interaction.
 
 The repository provides a Windows installer and macOS packaging script. Development requires Node.js 22 or later.
+
+## Screenshots
+
+| Terminal | SFTP file transfer | Settings |
+| :---: | :---: | :---: |
+| ![Terminal](docs/home.png) | ![SFTP file transfer](docs/transfer.png) | ![Settings](docs/setting.png) |
 
 ## Features
 
@@ -126,14 +142,25 @@ npm run dist-mac
 ## Project layout
 
 ```text
-src/main/       Electron main process: SSH, SFTP, AI, IPC, storage, updates, logs
-src/preload/    contextBridge API
-src/renderer/   Vue components, Pinia stores, styles, and interaction logic
-src/shared/     shared main-process/renderer types
-tests/          AI, SSH/SFTP, renderer, startup, and installer tests
-docs/           architecture notes, changelogs, and screenshots
-scripts/        development, packaging, asset, and version-sync scripts
-packaging/      Windows installer assets and scripts
+orbitssh/
+├── src/
+│   ├── main/          Electron main process: SSH, SFTP, AI, IPC, storage, updates, logs
+│   │   ├── ai/        Agent, providers, command policy, approvals, execution budgets
+│   │   ├── automation/ saved server-script execution
+│   │   ├── ipc/       restricted Renderer-to-main interfaces
+│   │   ├── sftp/      sessions, upload, download, sync, server-to-server transfer
+│   │   ├── ssh/       terminal sessions, authentication, commands, system stats
+│   │   └── storage/   server and settings persistence
+│   ├── preload/       contextBridge API
+│   ├── renderer/      Vue components, Pinia stores, styles, interaction logic
+│   ├── shared/        shared main-process/renderer types
+│   └── types/         global Preload type declarations
+├── tests/             AI, SSH/SFTP, renderer, startup, installer tests
+├── docs/              architecture notes, changelogs, screenshots
+├── scripts/           development, packaging, asset, version-sync scripts
+├── packaging/         Windows installer assets and scripts
+├── package.json
+└── vite.config.ts
 ```
 
 ## Contributing

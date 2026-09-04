@@ -1,14 +1,30 @@
-# OrbitSSH
+<p align="center"><img src="build/icon.ico" width="96" alt="OrbitSSH Logo" /></p>
 
-Electron + Vue 3 桌面 SSH / SFTP 客户端，内置受控执行的 AI 运维助手。
+<h1 align="center">OrbitSSH</h1>
 
-当前版本：`1.6.3` · [English](README.en.md) · [更新记录](docs/update.md)
+<p align="center"><strong>现代化 · 高性能 · 受控 AI 运维</strong></p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.6.3-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
+  <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
+  <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
+</p>
+
+<p align="center">简体中文 | <a href="README.en.md">English</a></p>
 
 ## 概览
 
 OrbitSSH 将 SSH 终端、SFTP 文件管理、服务器间传输、常用自动化任务和 AI 辅助诊断整合到一个桌面应用中。Electron 主进程管理 SSH、SFTP、文件和 AI 命令执行；Vue Renderer 只负责界面与交互。
 
 仓库提供 Windows 安装包与 macOS 打包脚本。开发环境需要 Node.js 22 或更高版本。
+
+## 界面预览
+
+| 终端主页 | SFTP 文件传输 | 设置面板 |
+| :---: | :---: | :---: |
+| ![终端主页](docs/home.png) | ![SFTP 文件传输](docs/transfer.png) | ![设置面板](docs/setting.png) |
 
 ## 功能
 
@@ -126,14 +142,25 @@ npm run dist-mac
 ## 项目结构
 
 ```text
-src/main/       Electron 主进程：SSH、SFTP、AI、IPC、存储、更新和日志
-src/preload/    contextBridge API
-src/renderer/   Vue 组件、Pinia 状态、样式与交互逻辑
-src/shared/     主进程与 Renderer 共享类型
-tests/          AI、SSH/SFTP、Renderer、启动与安装器测试
-docs/           架构说明、更新记录和截图
-scripts/        开发、打包、资源和版本同步脚本
-packaging/      Windows 安装器资源与脚本
+orbitssh/
+├── src/
+│   ├── main/          Electron 主进程：SSH、SFTP、AI、IPC、存储、更新和日志
+│   │   ├── ai/        Agent、模型适配、命令策略、审批与执行预算
+│   │   ├── automation/服务器常用脚本执行
+│   │   ├── ipc/       Renderer 与主进程的受限接口
+│   │   ├── sftp/      会话、上传、下载、同步和服务器间传输
+│   │   ├── ssh/       终端会话、认证、命令和系统状态
+│   │   └── storage/   服务器与设置持久化
+│   ├── preload/       contextBridge API
+│   ├── renderer/      Vue 组件、Pinia 状态、样式与交互逻辑
+│   ├── shared/        主进程与 Renderer 共享类型
+│   └── types/         Preload 全局类型声明
+├── tests/             AI、SSH/SFTP、Renderer、启动与安装器测试
+├── docs/              架构说明、更新记录和截图
+├── scripts/           开发、打包、资源和版本同步脚本
+├── packaging/         Windows 安装器资源与脚本
+├── package.json
+└── vite.config.ts
 ```
 
 ## 贡献
