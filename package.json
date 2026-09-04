@@ -1,6 +1,6 @@
 {
   "name": "orbitssh",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "SSH client",
   "main": "dist-electron/main/bootstrap.js",
   "private": true,

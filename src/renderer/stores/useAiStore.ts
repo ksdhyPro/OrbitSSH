@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { computed, onScopeDispose, ref } from "vue";
 
 import type {
   AiCommandCard,
@@ -22,6 +22,16 @@ interface AiConversationState {
 interface AiTabSessionState {
   activeConversationId: string;
   conversations: AiConversationState[];
+}
+
+interface AiActiveRequestState {
+  requestId: string;
+  conversationId: string;
+}
+
+interface AiStreamState extends AiActiveRequestState {
+  tabId: string;
+  messageIds: Set<string>;
 }
 
 const HISTORY_LIMIT = 24;
@@ -78,11 +88,27 @@ export const useAiStore = defineStore("ai", () => {
 
   const isPanelOpen = ref(true);
   const mode = ref<AiMode>(settingsStore.appSettings.ai.defaultMode);
-  const inputText = ref("");
-  const isSending = ref(false);
-  const error = ref("");
   const activeTabId = ref("");
   const sessionsByTabId = ref<Record<string, AiTabSessionState>>({});
+  const draftsByTabId = ref<Record<string, string>>({});
+  const errorsByTabId = ref<Record<string, string>>({});
+  const activeRequestsByTabId = ref<Record<string, AiActiveRequestState>>({});
+  const streamStatesByRequestId = new Map<string, AiStreamState>();
+
+  const inputText = computed({
+    get: () => draftsByTabId.value[activeTabId.value] ?? "",
+    set: (value: string) => {
+      if (!activeTabId.value) return;
+      draftsByTabId.value = {
+        ...draftsByTabId.value,
+        [activeTabId.value]: value,
+      };
+    },
+  });
+  const isSending = computed(() =>
+    Boolean(activeRequestsByTabId.value[activeTabId.value]),
+  );
+  const error = computed(() => errorsByTabId.value[activeTabId.value] ?? "");
 
   const canUseAi = computed(() => settingsStore.appSettings.ai.enabled);
   const activeConversation = computed(() =>
@@ -108,6 +134,31 @@ export const useAiStore = defineStore("ai", () => {
       conversation.commandCards.length >= LONG_CONVERSATION_COMMAND_CARD_LIMIT
     );
   });
+
+  function getActiveRequest(tabId: string): AiActiveRequestState | undefined {
+    return activeRequestsByTabId.value[tabId];
+  }
+
+  function setActiveRequest(tabId: string, request: AiActiveRequestState): void {
+    activeRequestsByTabId.value = {
+      ...activeRequestsByTabId.value,
+      [tabId]: request,
+    };
+  }
+
+  function clearActiveRequest(tabId: string, requestId: string): void {
+    if (activeRequestsByTabId.value[tabId]?.requestId !== requestId) return;
+    const nextRequests = { ...activeRequestsByTabId.value };
+    delete nextRequests[tabId];
+    activeRequestsByTabId.value = nextRequests;
+    for (const [requestId, streamState] of streamStatesByRequestId) {
+      if (streamState.tabId === tabId) streamStatesByRequestId.delete(requestId);
+    }
+  }
+
+  function setTabError(tabId: string, message: string): void {
+    errorsByTabId.value = { ...errorsByTabId.value, [tabId]: message };
+  }
 
   function togglePanel(): void {
     isPanelOpen.value = !isPanelOpen.value;
@@ -186,15 +237,18 @@ export const useAiStore = defineStore("ai", () => {
   function updateConversation(
     tabId: string,
     updater: (conversation: AiConversationState) => AiConversationState,
+    conversationId?: string,
   ): void {
-    const session = getTabSession(tabId);
+    const session = sessionsByTabId.value[tabId];
+    if (!session) return;
+    const targetConversationId = conversationId ?? session.activeConversationId;
 
     sessionsByTabId.value = {
       ...sessionsByTabId.value,
       [tabId]: {
         ...session,
         conversations: session.conversations.map(conversation =>
-          conversation.id === session.activeConversationId
+          conversation.id === targetConversationId
             ? updater(conversation)
             : conversation,
         ),
@@ -209,12 +263,13 @@ export const useAiStore = defineStore("ai", () => {
         item.id === card.id ? card : item,
       ),
       updatedAt: Date.now(),
-    }));
+    }), card.conversationId);
   }
 
   function mergeCommandCards(
     tabId: string,
     cards: AiCommandCard[],
+    conversationId: string,
   ): void {
     updateConversation(tabId, conversation => {
       const nextCards = [...conversation.commandCards];
@@ -234,27 +289,36 @@ export const useAiStore = defineStore("ai", () => {
         commandCards: nextCards,
         updatedAt: Date.now(),
       };
-    });
+    }, conversationId);
   }
 
-  function appendMessages(tabId: string, nextMessages: AiMessage[]): void {
+  function appendMessages(
+    tabId: string,
+    conversationId: string,
+    nextMessages: AiMessage[],
+  ): void {
     updateConversation(tabId, conversation => ({
       ...conversation,
       messages: [...conversation.messages, ...nextMessages],
       updatedAt: Date.now(),
-    }));
+    }), conversationId);
   }
 
-  function removeMessage(tabId: string, messageId: string): void {
+  function removeMessage(
+    tabId: string,
+    conversationId: string,
+    messageId: string,
+  ): void {
     updateConversation(tabId, conversation => ({
       ...conversation,
       messages: conversation.messages.filter(message => message.id !== messageId),
       updatedAt: Date.now(),
-    }));
+    }), conversationId);
   }
 
   function appendStreamChunk(
     tabId: string,
+    conversationId: string,
     messageId: string,
     chunk: string,
   ): void {
@@ -266,7 +330,7 @@ export const useAiStore = defineStore("ai", () => {
           : message,
       ),
       updatedAt: Date.now(),
-    }));
+    }), conversationId);
   }
 
   function hasBlockingCommandProcess(tabId: string): boolean {
@@ -280,7 +344,7 @@ export const useAiStore = defineStore("ai", () => {
   }
 
   function startNewConversation(tabId = activeTabId.value): void {
-    if (!tabId || isSending.value || hasBlockingCommandProcess(tabId)) {
+    if (!tabId || getActiveRequest(tabId) || hasBlockingCommandProcess(tabId)) {
       return;
     }
 
@@ -294,7 +358,7 @@ export const useAiStore = defineStore("ai", () => {
         conversations: [...session.conversations, conversation],
       },
     };
-    error.value = "";
+    setTabError(tabId, "");
   }
 
   function removeTabSession(tabId: string): void {
@@ -305,58 +369,80 @@ export const useAiStore = defineStore("ai", () => {
     const nextSessions = { ...sessionsByTabId.value };
     delete nextSessions[tabId];
     sessionsByTabId.value = nextSessions;
+    const nextDrafts = { ...draftsByTabId.value };
+    const nextErrors = { ...errorsByTabId.value };
+    const nextRequests = { ...activeRequestsByTabId.value };
+    delete nextDrafts[tabId];
+    delete nextErrors[tabId];
+    delete nextRequests[tabId];
+    draftsByTabId.value = nextDrafts;
+    errorsByTabId.value = nextErrors;
+    activeRequestsByTabId.value = nextRequests;
+    for (const [requestId, streamState] of streamStatesByRequestId) {
+      if (streamState.tabId === tabId) streamStatesByRequestId.delete(requestId);
+    }
 
     if (activeTabId.value === tabId) {
       activeTabId.value = "";
     }
   }
 
-  // 注册本轮 agent loop 的三个流式事件监听器，返回 cleanup。
-  // 主进程每轮开始推送 message-start → 前端插入空占位；
-  // chunk 携带 messageId 累加到对应占位；命令卡片按 id upsert。
-  function attachAiStreamListeners(
-    tabId: string,
-    activeStreamIds: Set<string>,
-  ): () => void {
-    const ai = core.orbitSSHApi?.ai;
-
-    if (!ai?.onStreamMessageStart) {
-      return () => {};
-    }
-
-    const removeStart = ai.onStreamMessageStart(event => {
-      if (event.tabId !== tabId) return;
-      activeStreamIds.add(event.messageId);
-      appendMessages(tabId, [
-        {
-          id: event.messageId,
-          role: "assistant",
-          content: "",
-          createdAt: event.createdAt,
-        },
-      ]);
-    });
-    const removeChunk = ai.onStreamChunk(event => {
-      if (event.tabId !== tabId) return;
-      appendStreamChunk(tabId, event.messageId, event.chunk);
-    });
-    const removeCard = ai.onCommandCard(event => {
-      if (event.tabId !== tabId) return;
-      mergeCommandCards(tabId, [event.card]);
-    });
-
-    return () => {
-      removeStart();
-      removeChunk();
-      removeCard();
+  // Store 生命周期内只注册一次监听器，审批过期等异步事件也能更新原对话。
+  // 所有事件按 requestId + conversationId + tabId 路由，避免切换标签页后串流。
+  const ai = core.orbitSSHApi?.ai;
+  const removeStreamMessageStartListener = ai?.onStreamMessageStart(event => {
+    const streamState: AiStreamState = streamStatesByRequestId.get(event.requestId) ?? {
+      tabId: event.tabId,
+      requestId: event.requestId,
+      conversationId: event.conversationId,
+      messageIds: new Set<string>(),
     };
-  }
+    if (
+      streamState.tabId !== event.tabId ||
+      streamState.conversationId !== event.conversationId
+    ) return;
+    streamState.messageIds.add(event.messageId);
+    streamStatesByRequestId.set(event.requestId, streamState);
+    appendMessages(event.tabId, event.conversationId, [
+      {
+        id: event.messageId,
+        role: "assistant",
+        content: "",
+        createdAt: event.createdAt,
+      },
+    ]);
+  });
+  const removeStreamChunkListener = ai?.onStreamChunk(event => {
+    const streamState = streamStatesByRequestId.get(event.requestId);
+    if (
+      !streamState ||
+      streamState.tabId !== event.tabId ||
+      streamState.conversationId !== event.conversationId ||
+      !streamState.messageIds.has(event.messageId)
+    ) return;
+    appendStreamChunk(
+      event.tabId,
+      event.conversationId,
+      event.messageId,
+      event.chunk,
+    );
+  });
+  const removeCommandCardListener = ai?.onCommandCard(event => {
+    if (event.card.conversationId !== event.conversationId) return;
+    mergeCommandCards(event.tabId, [event.card], event.conversationId);
+  });
+  onScopeDispose(() => {
+    removeStreamMessageStartListener?.();
+    removeStreamChunkListener?.();
+    removeCommandCardListener?.();
+  });
 
   // 对账：移除本轮所有流式占位消息，再用主进程返回的最终消息整体替换，
   // 避免流式累积与最终结果重复或残留空占位。
   function reconcileStreamMessages(
     tabId: string,
-    activeStreamIds: Set<string>,
+    requestId: string,
+    conversationId: string,
     finalMessages: AiMessage[],
   ): void {
     const completedAt = Date.now();
@@ -368,64 +454,70 @@ export const useAiStore = defineStore("ai", () => {
           : message.completedAt,
     }));
 
-    for (const id of activeStreamIds) {
-      removeMessage(tabId, id);
+    const streamState = streamStatesByRequestId.get(requestId);
+    for (const id of streamState?.messageIds ?? []) {
+      removeMessage(tabId, conversationId, id);
     }
+    streamStatesByRequestId.delete(requestId);
     if (settledMessages.length > 0) {
-      appendMessages(tabId, settledMessages);
+      appendMessages(tabId, conversationId, settledMessages);
     }
   }
 
   async function sendMessage(context: AiContextInput): Promise<void> {
     const content = inputText.value.trim();
 
-    if (!content || isSending.value) {
+    if (!content || (context.tabId && getActiveRequest(context.tabId))) {
       return;
     }
 
     if (!context.tabId) {
-      error.value = "请先打开一个终端标签页，再使用服务器上下文 AI。";
+      setTabError("", "请先打开一个终端标签页，再使用服务器上下文 AI。");
       return;
     }
 
-    error.value = "";
-    inputText.value = "";
-    isSending.value = true;
+    const conversation = getActiveConversation(context.tabId);
+    const requestId = crypto.randomUUID();
+    const conversationId = conversation.id;
+    setTabError(context.tabId, "");
+    draftsByTabId.value = { ...draftsByTabId.value, [context.tabId]: "" };
+    setActiveRequest(context.tabId, { requestId, conversationId });
 
     const userMessage = createMessage("user", content);
-    const conversation = getActiveConversation(context.tabId);
     // 发送给主进程的历史只包含既有对话，避免把当前空占位回复传给模型。
     const requestHistory = toPlainAiHistory(
       conversation.messages.slice(-HISTORY_LIMIT),
     );
-    appendMessages(context.tabId, [userMessage]);
-
-    const activeStreamIds = new Set<string>();
-    const removeListeners = attachAiStreamListeners(
-      context.tabId,
-      activeStreamIds,
-    );
+    appendMessages(context.tabId, conversationId, [userMessage]);
 
     try {
       const plainContext = toPlainAiContext(context);
 
       const result = await core.orbitSSHApi.ai.chat({
         tabId: plainContext.tabId,
+        requestId,
+        conversationId,
         mode: mode.value,
         message: content,
         context: plainContext,
         history: requestHistory,
       });
 
-      reconcileStreamMessages(context.tabId, activeStreamIds, result.messages);
-      mergeCommandCards(context.tabId, result.commandCards);
+      reconcileStreamMessages(
+        context.tabId,
+        requestId,
+        conversationId,
+        result.messages,
+      );
+      mergeCommandCards(context.tabId, result.commandCards, conversationId);
     } catch (sendError) {
-      reconcileStreamMessages(context.tabId, activeStreamIds, []);
-      error.value =
-        sendError instanceof Error ? sendError.message : String(sendError);
+      reconcileStreamMessages(context.tabId, requestId, conversationId, []);
+      setTabError(
+        context.tabId,
+        sendError instanceof Error ? sendError.message : String(sendError),
+      );
     } finally {
-      removeListeners();
-      isSending.value = false;
+      clearActiveRequest(context.tabId, requestId);
     }
   }
 
@@ -435,31 +527,38 @@ export const useAiStore = defineStore("ai", () => {
     if (!approvalId) {
       return;
     }
+    if (getActiveRequest(card.tabId)) return;
 
-    isSending.value = true;
-
-    const activeStreamIds = new Set<string>();
-    const removeListeners = attachAiStreamListeners(card.tabId, activeStreamIds);
+    const requestId = crypto.randomUUID();
+    const conversationId = card.conversationId;
+    setTabError(card.tabId, "");
+    setActiveRequest(card.tabId, { requestId, conversationId });
 
     try {
       const result = await core.orbitSSHApi.ai.runApprovedCommand({
         tabId: card.tabId,
+        requestId,
+        conversationId,
         command: card.command,
         approvalId,
       });
 
-      reconcileStreamMessages(card.tabId, activeStreamIds, result.messages);
-      mergeCommandCards(card.tabId, result.commandCards);
+      reconcileStreamMessages(
+        card.tabId,
+        requestId,
+        conversationId,
+        result.messages,
+      );
+      mergeCommandCards(card.tabId, result.commandCards, conversationId);
     } catch (runError) {
-      reconcileStreamMessages(card.tabId, activeStreamIds, []);
+      reconcileStreamMessages(card.tabId, requestId, conversationId, []);
       updateCommandCard({
         ...card,
         status: "failed",
         error: runError instanceof Error ? runError.message : String(runError),
       });
     } finally {
-      removeListeners();
-      isSending.value = false;
+      clearActiveRequest(card.tabId, requestId);
     }
   }
 
@@ -472,6 +571,7 @@ export const useAiStore = defineStore("ai", () => {
     try {
       await core.orbitSSHApi.ai.rejectCommandApproval({
         tabId: card.tabId,
+        conversationId: card.conversationId,
         approvalId: card.approvalId,
       });
     } finally {
@@ -480,10 +580,15 @@ export const useAiStore = defineStore("ai", () => {
   }
 
   async function cancelMessage(context: AiContextInput): Promise<void> {
-    if (!context.tabId || !isSending.value) return;
+    if (!context.tabId) return;
+    const activeRequest = getActiveRequest(context.tabId);
+    if (!activeRequest) return;
 
     try {
-      await core.orbitSSHApi.ai.cancel({ tabId: context.tabId });
+      await core.orbitSSHApi.ai.cancel({
+        tabId: context.tabId,
+        requestId: activeRequest.requestId,
+      });
     } catch (cancelError) {
       core.writeRendererLog(
         "终止 AI 请求失败",
@@ -493,8 +598,6 @@ export const useAiStore = defineStore("ai", () => {
         },
         "warn",
       );
-    } finally {
-      isSending.value = false;
     }
   }
 

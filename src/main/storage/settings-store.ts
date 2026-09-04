@@ -1,6 +1,7 @@
 import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
+import { normalizeStoredAiMode } from '../../shared/ai.js'
 
 import {
   defaultAppSettings,
@@ -98,22 +99,6 @@ function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
   return value === 'low' || value === 'high' || value === 'xhigh' ? value : 'medium'
 }
 
-function normalizeAiMode(value: unknown): AiSettings['defaultMode'] {
-  if (value === 'ask' || value === 'full') {
-    return value
-  }
-
-  if (value === 'auto' || value === 'readonly') {
-    return 'full'
-  }
-
-  if (value === 'suggest' || value === 'approval') {
-    return 'ask'
-  }
-
-  return defaultAppSettings.ai.defaultMode
-}
-
 function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -189,7 +174,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     shareTerminalContext: value?.shareTerminalContext === true,
     activeConfigId,
     configs,
-    defaultMode: normalizeAiMode(mode)
+    defaultMode: normalizeStoredAiMode(mode)
   }
 }
 

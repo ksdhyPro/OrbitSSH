@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { access, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { CodexCliDetection } from "../../shared/settings.js";
-import type { ParsedAiCommand, ParsedAssistantResponse } from "./ai-response-parser.js";
+import type {
+  ParsedAiCommand,
+  ParsedAiSavedServerCommand,
+  ParsedAssistantResponse,
+} from "./ai-response-parser.js";
 
 const codexOutputSchema = {
   type: "object",
@@ -24,14 +29,30 @@ const codexOutputSchema = {
         additionalProperties: false,
       },
     },
+    savedServerCommands: {
+      type: "array",
+      maxItems: 1,
+      items: {
+        type: "object",
+        properties: {
+          serverName: { type: "string" },
+          command: { type: "string" },
+          reason: { type: "string" },
+          risk: { type: "string", enum: ["low", "medium", "high"] },
+        },
+        required: ["serverName", "command", "reason", "risk"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["reply", "commands"],
+  required: ["reply", "commands", "savedServerCommands"],
   additionalProperties: false,
 } as const;
 
 interface CodexCliOutput {
   reply?: unknown;
   commands?: unknown;
+  savedServerCommands?: unknown;
 }
 
 interface CommandResult {
@@ -139,14 +160,39 @@ function parseCommand(value: unknown): ParsedAiCommand | null {
   if (!command || !reason || !["low", "medium", "high"].includes(String(risk))) {
     return null;
   }
-  return { command, reason, risk: risk as ParsedAiCommand["risk"] };
+  return {
+    toolCallId: `codex-${randomUUID()}`,
+    command,
+    reason,
+    risk: risk as ParsedAiCommand["risk"],
+  };
 }
 
-function parseCodexOutput(text: string): ParsedAssistantResponse {
+function parseSavedServerCommand(value: unknown): ParsedAiSavedServerCommand | null {
+  const command = parseCommand(value);
+  if (!command || !value || typeof value !== "object") return null;
+  const serverName = typeof (value as Record<string, unknown>).serverName === "string"
+    ? String((value as Record<string, unknown>).serverName).trim()
+    : "";
+  if (!serverName) return null;
+  return { ...command, serverName };
+}
+
+export function parseCodexOutput(text: string): ParsedAssistantResponse {
   const payload = JSON.parse(text) as CodexCliOutput;
   const reply = typeof payload.reply === "string" ? payload.reply.trim() : "";
   const command = Array.isArray(payload.commands) ? parseCommand(payload.commands[0]) : null;
-  return { reply, commands: command ? [command] : [] };
+  const savedServerCommand = Array.isArray(payload.savedServerCommands)
+    ? parseSavedServerCommand(payload.savedServerCommands[0])
+    : null;
+  if (command && savedServerCommand) {
+    throw new Error("Codex CLI 单轮返回了多个工具动作");
+  }
+  return {
+    reply,
+    commands: command ? [command] : [],
+    savedServerCommands: savedServerCommand ? [savedServerCommand] : [],
+  };
 }
 
 /**

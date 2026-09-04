@@ -1,9 +1,11 @@
 import type { AiCommandResult } from '../../shared/ai.js'
 import type { ExecutedAiCommandContext } from './ai-context.js'
+import {
+  MAX_AI_COMMANDS_PER_TURN,
+  MAX_AI_TURN_ELAPSED_MS,
+} from './ai-limits.js'
 
 // 采用资源预算与进展检测控制 Agent，避免固定命令数误伤正常排障流程。
-const maxAgentElapsedMs = 10 * 60 * 1000
-const emergencyCommandCeiling = 80
 const maxRepeatedCommandCount = 2
 const maxConsecutiveNoProgressCount = 3
 
@@ -34,14 +36,16 @@ function getTrailingRepeatedCommandCount(executed: ExecutedAiCommandContext[]): 
 
 function getTrailingNoProgressCount(executed: ExecutedAiCommandContext[]): number {
   let count = 0
-  let previousFingerprint = ''
   for (let index = executed.length - 1; index >= 0; index -= 1) {
     const result = executed[index]!.result
     const fingerprint = getResultFingerprint(result)
-    const noProgress = !hasUsefulResult(result) || (previousFingerprint !== '' && previousFingerprint === fingerprint)
+    const previousResult = executed[index - 1]?.result
+    const noProgress = !hasUsefulResult(result) || (
+      previousResult !== undefined &&
+      getResultFingerprint(previousResult) === fingerprint
+    )
     if (!noProgress) break
     count += 1
-    previousFingerprint = fingerprint
   }
   return count
 }
@@ -50,12 +54,12 @@ export function getAiExecutionStopReason(
   executed: ExecutedAiCommandContext[],
   startedAt: number
 ): string | null {
-  if (Date.now() - startedAt >= maxAgentElapsedMs) {
+  if (Date.now() - startedAt >= MAX_AI_TURN_ELAPSED_MS) {
     return '本轮 AI 执行已达到 10 分钟时长预算，已停止以避免长时间占用连接。'
   }
 
-  if (executed.length >= emergencyCommandCeiling) {
-    return `本轮已执行 ${emergencyCommandCeiling} 条命令，触发紧急保护阈值。`
+  if (executed.length >= MAX_AI_COMMANDS_PER_TURN) {
+    return `本轮已执行 ${MAX_AI_COMMANDS_PER_TURN} 条命令，触发执行预算上限。`
   }
 
   if (getTrailingRepeatedCommandCount(executed) >= maxRepeatedCommandCount) {

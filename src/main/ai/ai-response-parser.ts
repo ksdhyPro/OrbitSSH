@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 export interface ParsedAssistantResponse {
   reply?: string;
   commands?: ParsedAiCommand[];
@@ -5,6 +7,7 @@ export interface ParsedAssistantResponse {
 }
 
 export interface ParsedAiCommand {
+  toolCallId: string;
   command: string;
   reason: string;
   risk: "low" | "medium" | "high";
@@ -60,6 +63,7 @@ function parseToolArguments(rawArgs: unknown): unknown {
 function createCommandFromRecord(
   record: Record<string, unknown>,
   fallbackReason = "执行命令",
+  toolCallId = `orbitssh-call-${randomUUID()}`,
 ): ParsedAiCommand | null {
   const commandKeys = ["command", "cmd", "shell", "script", "commandLine", "command_line"];
   const command = commandKeys
@@ -68,6 +72,7 @@ function createCommandFromRecord(
     ?.trim();
   if (!command) return null;
   return {
+    toolCallId,
     command,
     reason:
       typeof record.reason === "string" && record.reason.trim()
@@ -77,7 +82,10 @@ function createCommandFromRecord(
   };
 }
 
-function buildCommandsFromToolArguments(rawArgs: unknown): ParsedAiCommand[] {
+function buildCommandsFromToolArguments(
+  rawArgs: unknown,
+  toolCallId: string,
+): ParsedAiCommand[] {
   const args = parseToolArguments(rawArgs);
   if (!args || typeof args !== "object") return [];
   const record = args as Record<string, unknown>;
@@ -89,14 +97,23 @@ function buildCommandsFromToolArguments(rawArgs: unknown): ParsedAiCommand[] {
     return record.commands
       .map(item =>
         typeof item === "string"
-          ? createCommandFromRecord({ command: item, reason: fallbackReason, risk: record.risk })
+          ? createCommandFromRecord(
+              { command: item, reason: fallbackReason, risk: record.risk },
+              fallbackReason,
+              toolCallId,
+            )
           : item && typeof item === "object"
-            ? createCommandFromRecord(item as Record<string, unknown>, fallbackReason)
+            ? createCommandFromRecord(
+                item as Record<string, unknown>,
+                fallbackReason,
+                toolCallId,
+              )
             : null,
       )
-      .filter((item): item is ParsedAiCommand => item !== null);
+      .filter((item): item is ParsedAiCommand => item !== null)
+      .slice(0, 1);
   }
-  const command = createCommandFromRecord(record, fallbackReason);
+  const command = createCommandFromRecord(record, fallbackReason, toolCallId);
   return command ? [command] : [];
 }
 
@@ -104,17 +121,24 @@ export function parseRunShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCom
   return rawToolCalls.flatMap(toolCall =>
     toolCall.type !== "function" || toolCall.function?.name !== "run_shell_command"
       ? []
-      : buildCommandsFromToolArguments(toolCall.function.arguments),
+      : buildCommandsFromToolArguments(
+          toolCall.function.arguments,
+          toolCall.id || `orbitssh-call-${randomUUID()}`,
+        ),
   );
 }
 
 export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAiSavedServerCommand[] {
   return rawToolCalls.flatMap(toolCall => {
-    if (toolCall.type !== 'function' || toolCall.function?.name !== 'inspect_saved_server') return []
+    if (toolCall.type !== 'function' || toolCall.function?.name !== 'run_saved_server_command') return []
     const args = parseToolArguments(toolCall.function.arguments)
     if (!args || typeof args !== 'object') return []
     const record = args as Record<string, unknown>
-    const command = createCommandFromRecord(record, '查看已保存服务器')
+    const command = createCommandFromRecord(
+      record,
+      '在已保存服务器执行命令',
+      toolCall.id || `orbitssh-call-${randomUUID()}`,
+    )
     const serverName = typeof record.serverName === 'string' ? record.serverName.trim() : ''
     return command && serverName ? [{ ...command, serverName }] : []
   })

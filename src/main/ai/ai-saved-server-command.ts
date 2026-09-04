@@ -1,7 +1,9 @@
 import { getServerAuthConfig, listServers } from '../storage/server-store.js'
 import { executeSshTerminalCommand } from '../ssh/terminal-command.js'
 import { createSshClient } from '../sftp/sftp-transfer-common.js'
-import type { AiCommandResult } from '../../shared/ai.js'
+import type { AiCommandResult, AiMode } from '../../shared/ai.js'
+import { resolveAiCommandPermission } from './ai-permission-policy.js'
+import { evaluateAiCommand } from './command-policy.js'
 
 function normalizeServerReference(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '').replace(/服务器|server/g, '')
@@ -28,21 +30,44 @@ function resolveSavedServerId(serverReference: string): string {
   return matches[0]!.id
 }
 
-/**
- * 仅通过本地已保存的连接执行远端查询；模型永远不会接触认证信息，
- * 也不会借用当前终端作为跳板执行 ssh/scp。
- */
-export async function executeSavedServerReadonlyCommand(
-  serverReference: string,
-  command: string,
+interface ExecuteSavedServerCommandInput {
+  serverReference: string
+  command: string
+  mode: AiMode
+  risk: 'low' | 'medium' | 'high'
+  approvalGranted?: boolean
   signal?: AbortSignal
+}
+
+/**
+ * 仅通过本地已保存连接执行远端命令；模型不会接触认证信息，也不能借当前终端跳板。
+ * 适配器在连接前再次校验三档权限，防止未来编排改动绕过审批接口。
+ */
+export async function executeSavedServerCommand(
+  input: ExecuteSavedServerCommandInput
 ): Promise<{ serverName: string; result: AiCommandResult }> {
-  const serverId = resolveSavedServerId(serverReference)
+  const policy = evaluateAiCommand(input.command)
+  const permission = resolveAiCommandPermission(
+    input.mode,
+    input.risk,
+    policy,
+    input.approvalGranted ?? false
+  )
+  if (permission.decision !== 'execute') {
+    throw new Error(`跨服务器命令未获得执行权限：${permission.reason}`)
+  }
+
+  const serverId = resolveSavedServerId(input.serverReference)
   const server = getServerAuthConfig(serverId)
   const client = await createSshClient(server)
 
   try {
-    const result = await executeSshTerminalCommand(client, command, 20_000, signal)
+    const result = await executeSshTerminalCommand(
+      client,
+      input.command,
+      20_000,
+      input.signal
+    )
     return { serverName: server.name, result }
   } finally {
     client.end()

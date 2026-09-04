@@ -1,3 +1,5 @@
+import type { AiMode } from './ai.js'
+
 export interface TerminalSettings {
   fontSize: number
   lineHeight: number
@@ -68,7 +70,7 @@ export interface AiSettings {
   shareTerminalContext: boolean
   activeConfigId: string
   configs: AiModelConfig[]
-  defaultMode: 'ask' | 'full'
+  defaultMode: AiMode
 }
 
 export interface AppSettings {
@@ -135,6 +137,6 @@ export const defaultAppSettings: AppSettings = {
     shareTerminalContext: false,
     activeConfigId: '',
     configs: [],
-    defaultMode: 'full'
+    defaultMode: 'auto'
   }
 }

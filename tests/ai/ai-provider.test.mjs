@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   collectSseStream,
   parseRunShellToolCalls,
+  parseSavedServerToolCalls,
 } from "../../dist-electron/main/ai/ai-response-parser.js";
 
 test("SSE 支持无空格 data: 并累积工具参数分片", async () => {
@@ -38,4 +39,22 @@ test("只解析 run_shell_command 工具", () => {
     { type: "function", function: { name: "run_shell_command", arguments: '{"command":"pwd","reason":"检查路径","risk":"low"}' } },
   ]);
   assert.equal(allowed[0].command, "pwd");
+});
+
+test("已保存服务器工具接受三档权限所需的风险级别", () => {
+  const commands = parseSavedServerToolCalls([{
+    type: "function",
+    function: {
+      name: "run_saved_server_command",
+      arguments: JSON.stringify({
+        serverName: "backup",
+        command: "systemctl restart nginx",
+        reason: "重启备机服务",
+        risk: "medium",
+      }),
+    },
+  }]);
+
+  assert.equal(commands[0].serverName, "backup");
+  assert.equal(commands[0].risk, "medium");
 });

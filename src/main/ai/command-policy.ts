@@ -1,4 +1,5 @@
 import type { AiCommandPolicyResult } from "../../shared/ai.js";
+import { evaluateAiCommandDataExposure } from "./ai-data-policy.js";
 
 export interface ShellCommandSegment {
   command: string;
@@ -19,7 +20,7 @@ const DANGEROUS_TOKENS = [
 
 const MAX_AI_COMMAND_CHARS = 4_096;
 
-const DENIED_PREFIXES = [
+const CRITICAL_APPROVAL_PREFIXES = [
   "rm",
   "mkfs",
   "dd",
@@ -27,16 +28,7 @@ const DENIED_PREFIXES = [
   "reboot",
   "poweroff",
   "halt",
-];
-
-const MUST_APPROVE_PREFIXES = [
-  ...DENIED_PREFIXES,
-  "cp",
-  "ln",
-  "mkdir",
-  "mv",
   "rmdir",
-  "touch",
   "truncate",
   "unlink",
   "useradd",
@@ -48,9 +40,9 @@ const MUST_APPROVE_PREFIXES = [
 ];
 
 const MUST_APPROVE_PACKAGE_PATTERNS = [
-  /^(apt|apt-get|yum|dnf|pacman|zypper|brew)\s+(install|remove|erase|purge|upgrade|dist-upgrade|update|autoremove|clean|reinstall)\b/,
-  /^(npm|pnpm|yarn)\s+(install|add|remove|uninstall|update|upgrade|run|exec|create|init|publish|link|unlink)\b/,
-  /^(pip|pip3)\s+(install|uninstall|download|wheel)\b/,
+  /^(apt|apt-get|yum|dnf|pacman|zypper|brew)\s+(remove|erase|purge|upgrade|dist-upgrade|autoremove|clean)\b/,
+  /^(npm|pnpm|yarn)\s+(remove|uninstall|upgrade|publish|unlink)\b/,
+  /^(pip|pip3)\s+uninstall\b/,
 ];
 
 const MUST_APPROVE_DOCKER_PATTERNS = [
@@ -60,34 +52,25 @@ const MUST_APPROVE_DOCKER_PATTERNS = [
 ];
 
 const MUST_APPROVE_SERVICE_PATTERNS = [
-  /^(systemctl|service)\s+\S+\s+(stop|restart|reload|disable|enable|mask|unmask)\b/,
-  /^systemctl\s+(stop|restart|reload|disable|enable|mask|unmask|daemon-reload)\b/,
+  /^(systemctl|service)\s+\S+\s+(stop|disable|mask)\b/,
+  /^systemctl\s+(stop|disable|mask)\b/,
 ];
 
 const MUST_APPROVE_GENERAL_PATTERNS = [
   /(^|\s)(sudo|su|doas)(\s|$)/,
-  /(^|\s)(eval|source)\s+/,
-  /(^|\s)(sh|bash|zsh|fish)\s+-c\b/,
-  /(^|\s)(python|python3|perl|ruby|node|php)\s+-(c|e)\b/,
-  /\$\(/,
-  /`/,
   /\|\s*(sh|bash|zsh|fish)\b/,
   /(^|\s)(curl|wget)\b[^|;&]*\|\s*(sh|bash|zsh|fish)\b/,
-  /(^|\s)tee(\s|$)/,
   /\bof=/,
   /(^|\s)(crontab|at)\b/,
   /(^|\s)(kill|pkill|killall)\b/,
   /(^|\s)find\b.*\s-delete\b/,
   /(^|\s)find\b.*\s-exec\b/,
-  /(^|\s)sed\b.*\s-i\b/,
   /(^|\s)xargs\b.*\s(rm|mv|cp|chmod|chown|kill)\b/,
   /(^|\s)kubectl\s+(apply|delete|edit|exec|scale|rollout|patch|replace)\b/,
-  /(^|\s)git\s+(reset|clean|checkout|switch|merge|rebase|pull|push|commit|restore)\b/,
+  /(^|\s)git\s+(reset|clean|push)\b/,
   /^(curl|wget)\b.*(?:\s-X\s*(POST|PUT|PATCH|DELETE)|\s--request\s+(POST|PUT|PATCH|DELETE)|\s(?:-d|--data|--data-raw|--data-binary|-F|--form|-T|--upload-file)\b)/i,
   /^(redis-cli)\b.*\b(FLUSHALL|FLUSHDB|DEL|UNLINK|SHUTDOWN|CONFIG\s+SET|SCRIPT\s+FLUSH)\b/i,
   /^(mysql|mariadb|psql|sqlite3)\b.*\s(?:-e|-c|--execute)(?:\s|=)/i,
-  /^(python|python3|perl|ruby|node|php)\s+(?!--version\b|-version\b|-v\b|-V\b|version\b).+/,
-  /^(sh|bash|zsh|fish)\s+(?!--version\b|-version\b).+/,
 ];
 
 const SAFE_ARG = "[A-Za-z0-9_./:@%+=,~*?-]+";
@@ -406,25 +389,6 @@ function stripAllowedReadonlyRedirects(normalized: string): string {
     .trim();
 }
 
-function stripAllowedOutputMerges(normalized: string): string {
-  // full 模式下允许常见的 stderr/stdout 合并和 /dev/null 丢弃输出。
-  return stripAllowedReadonlyRedirects(normalized);
-}
-
-function hasWriteRedirect(normalized: string): boolean {
-  const withoutOutputMerge = stripAllowedOutputMerges(normalized);
-
-  return /(^|[^<])>>?[^&]/.test(withoutOutputMerge) || /<<-?/.test(withoutOutputMerge);
-}
-
-function hasBackgroundOperator(normalized: string): boolean {
-  const withoutOutputMerge = stripAllowedOutputMerges(normalized)
-    .replace(/&&/g, "")
-    .replace(/\|\|/g, "");
-
-  return withoutOutputMerge.includes("&");
-}
-
 export function splitAiShellCommands(command: string): ShellCommandSegment[] {
   const segments: ShellCommandSegment[] = [];
   let current = "";
@@ -584,28 +548,8 @@ function getMandatoryApprovalReason(
 
   const commandName = effective.commandName;
 
-  if (
-    normalized.includes("||") &&
-    !isReadonlyFallbackChain(normalized) &&
-    !isReadonlyCompoundCommand(normalized)
-  ) {
-    return "检测到高风险 Shell 条件控制符";
-  }
-
-  if (MUST_APPROVE_PREFIXES.includes(commandName)) {
+  if (CRITICAL_APPROVAL_PREFIXES.includes(commandName)) {
     return "命中高风险命令前缀";
-  }
-
-  if (hasWriteRedirect(normalized)) {
-    return "检测到写入重定向或 heredoc";
-  }
-
-  if (/(^|[^<])<($|[^<])/.test(normalized)) {
-    return "检测到输入重定向";
-  }
-
-  if (hasBackgroundOperator(normalized)) {
-    return "检测到后台执行或复杂 Shell 控制符";
   }
 
   if (
@@ -642,7 +586,7 @@ function isReadonlySingleCommand(normalized: string): boolean {
   const commandName = getCommandBasename(firstWord);
 
   // 只读推断不能覆盖高风险命令，即使它看起来像版本查询也交给审批层处理。
-  if (MUST_APPROVE_PREFIXES.includes(commandName)) {
+  if (CRITICAL_APPROVAL_PREFIXES.includes(commandName)) {
     return false;
   }
 
@@ -793,6 +737,15 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
     return { decision: "deny", reason: "命令为空" };
   }
 
+  // 只读不代表可安全外发，凭据源和敏感查询必须先经过独立的数据暴露策略。
+  const dataExposure = evaluateAiCommandDataExposure(command);
+  if (dataExposure.decision === "deny") {
+    return { decision: "deny", reason: dataExposure.reason };
+  }
+  if (dataExposure.decision === "requires_approval") {
+    return { decision: "requires_approval", reason: dataExposure.reason };
+  }
+
   const compoundSegments = splitAiShellCommands(command);
   if (compoundSegments.length > 1) {
     const decisions = compoundSegments.map(segment =>
@@ -805,16 +758,19 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
     );
     if (approval) return approval;
     return decisions.every(item => item.decision === "allow_readonly")
-      ? { decision: "allow_readonly", reason: "复合命令均命中只读白名单" }
+      ? {
+          decision: "allow_readonly",
+          reason: "复合命令均命中只读白名单",
+        }
       : {
-          decision: "allow_full",
-          reason: "复合命令未命中高风险黑名单，仅完全访问模式可自动执行",
+          decision: "allow_autonomous",
+          reason: "复合命令未命中高风险规则，可在自主执行模式运行",
         };
   }
 
   const effective = getEffectiveCommand(normalized);
 
-  if (DENIED_PREFIXES.includes(effective.commandName)) {
+  if (CRITICAL_APPROVAL_PREFIXES.includes(effective.commandName)) {
     return {
       decision: "requires_approval",
       reason: "检测到高危命令前缀，必须确认",
@@ -838,7 +794,7 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
   }
 
   return {
-    decision: "allow_full",
-    reason: "未命中本地高风险黑名单，仅完全访问模式可自动执行",
+    decision: "allow_autonomous",
+    reason: "命令未命中高风险规则，可在自主执行模式运行",
   };
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.0
+
+1. Added three AI command permission levels: Approve Every Command, Autonomous, and Full Access. Autonomous is now the default and only requests confirmation for high-risk actions such as deletion, Docker changes, privilege escalation, and sensitive-data access, while legacy permission settings are migrated safely.
+2. Upgraded the AI Agent execution flow with consistent permission decisions for the active server and saved servers. Cross-server operations can use locally saved connections, while direct SSH, SCP, or SFTP hops that bypass connection management remain blocked.
+3. Improved AI request and conversation isolation by routing replies, stream chunks, and command cards with tab, conversation, and request identities. New requests reliably cancel superseded work without mixing or cancelling sessions when switching terminals.
+4. Strengthened prompt, context, and sensitive-data protection by separating trusted rules from untrusted runtime data, applying consistent redaction to terminal output and command results, and bounding history, output, tool calls, elapsed time, and repeated no-progress actions.
+5. Improved OpenAI-compatible API and Codex CLI adapters with consistent tool-message handling, timeouts, recoverable retries, active-server and saved-server actions, and the actual working directory shown on command cards.
+
 ## v1.6.3
 
 1. Improved the right-side AI response panel: reply text now stays visible in the conversation, while consecutive commands are grouped by reply into collapsed execution sections that can be expanded to inspect commands, results, and errors.

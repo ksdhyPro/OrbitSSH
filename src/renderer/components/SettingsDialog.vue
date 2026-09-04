@@ -39,11 +39,22 @@ const emit = defineEmits<{
 
 const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
-const aiModeOptions: AiSettings["defaultMode"][] = ["ask", "full"];
+const aiModeOptions: AiSettings["defaultMode"][] = [
+  "ask",
+  "auto",
+  "full_access",
+];
 
 const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
-  ask: "每次询问",
-  full: "完全访问",
+  ask: "逐命令审批",
+  auto: "自主执行",
+  full_access: "完全访问",
+};
+
+const aiModeDescriptions: Record<AiSettings["defaultMode"], string> = {
+  ask: "每条有效命令执行前都需要确认。",
+  auto: "常规操作自动执行，仅高风险和敏感操作需要确认。",
+  full_access: "授权范围内的有效命令直接执行，不再弹出审批。",
 };
 
 const aiConfigDraft = ref<AiModelConfig[]>([]);
@@ -637,6 +648,7 @@ function removeAiConfig(configId: string): void {
           <div class="settings-field">
             <div>
               <h3>默认模式</h3>
+              <p>{{ aiModeDescriptions[appSettings.ai.defaultMode] }}</p>
             </div>
             <div class="theme-mode-control ai-mode-setting">
               <button
@@ -647,7 +659,7 @@ function removeAiConfig(configId: string): void {
                   'theme-mode-option',
                   {
                     active: appSettings.ai.defaultMode === item,
-                    'is-full-access': item === 'full',
+                    'is-full-access': item === 'full_access',
                   },
                 ]"
                 @click="emit('updateAiSetting', 'defaultMode', item)">

@@ -40,7 +40,7 @@
   font-weight: 550;
 }
 
-/* AI 设置的启用态复用“完全访问”的暖橙色，统一风险与启用提示。 */
+/* AI 设置的启用态使用暖橙色，完全访问选项持续保留风险提示。 */
 .ai-settings-content {
   --ai-active-color: var(--warning);
   --ai-active-hover: var(--warning);
@@ -97,8 +97,9 @@
 }
 
 .ai-mode-setting {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: 200px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 330px;
+  max-width: 100%;
 }
 
 .ai-settings-content .theme-mode-option.active:not(.is-full-access) {

@@ -964,7 +964,7 @@
   filter: brightness(1.12);
 }
 
-/* 完全访问具备自动执行能力，始终保留暖橙风险提示。 */
+/* 完全访问不再逐条审批，始终保留暖橙风险提示。 */
 .ai-mode-trigger.ai-mode-trigger-warning {
   color: var(--warning);
 }

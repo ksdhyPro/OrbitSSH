@@ -1,4 +1,22 @@
-export type AiMode = "ask" | "full";
+/** AI 命令权限：逐条审批、自主执行、完全访问。 */
+export type AiMode = "ask" | "auto" | "full_access";
+
+/** 归一化持久化权限值，并安全迁移旧版“自动只读”的 full。 */
+export function normalizeStoredAiMode(value: unknown): AiMode {
+  if (value === "ask" || value === "auto" || value === "full_access") {
+    return value;
+  }
+  if (value === "full" || value === "autonomous" || value === "readonly") {
+    return "auto";
+  }
+  if (value === "suggest" || value === "approval") {
+    return "ask";
+  }
+  if (value === "unrestricted" || value === "danger-full-access") {
+    return "full_access";
+  }
+  return "auto";
+}
 
 export type AiMessageRole = "user" | "assistant" | "system";
 
@@ -23,8 +41,11 @@ export interface AiMessage {
 export interface AiCommandCard {
   id: string;
   tabId: string;
+  conversationId: string;
   command: string;
   reason: string;
+  /** 命令实际绑定的执行目录；跨服务器查询未指定目录时为空。 */
+  workingDirectory?: string;
   risk: "low" | "medium" | "high";
   status: AiCommandStatus;
   createdAt: number;
@@ -42,7 +63,11 @@ export interface AiCommandResult {
 }
 
 export interface AiCommandPolicyResult {
-  decision: "allow_readonly" | "allow_full" | "requires_approval" | "deny";
+  decision:
+    | "allow_readonly"
+    | "allow_autonomous"
+    | "requires_approval"
+    | "deny";
   reason: string;
 }
 
@@ -56,6 +81,8 @@ export interface AiContextInput {
 
 export interface AiChatInput {
   tabId: string;
+  requestId: string;
+  conversationId: string;
   mode: AiMode;
   message: string;
   context: AiContextInput;
@@ -70,21 +97,27 @@ export interface AiChatResult {
 
 export interface AiApprovedCommandInput {
   tabId: string;
+  requestId: string;
+  conversationId: string;
   command: string;
   approvalId: string;
 }
 
 export interface AiRejectedCommandInput {
   tabId: string;
+  conversationId: string;
   approvalId: string;
 }
 
 export interface AiCancelInput {
   tabId: string;
+  requestId: string;
 }
 
 export interface AiStreamChunkEvent {
   tabId: string;
+  requestId: string;
+  conversationId: string;
   // 标识当前 chunk 属于哪条流式消息，前端据此把文本累加到对应占位消息。
   messageId: string;
   chunk: string;
@@ -94,6 +127,8 @@ export interface AiStreamChunkEvent {
 // 后续 AiStreamChunkEvent 携带相同 messageId 把文本累加到该占位上。
 export interface AiStreamMessageStartEvent {
   tabId: string;
+  requestId: string;
+  conversationId: string;
   messageId: string;
   createdAt: number;
 }
@@ -102,5 +137,7 @@ export interface AiStreamMessageStartEvent {
 // payload 是完整 AiCommandCard，前端按 id 做 upsert。
 export interface AiCommandCardEvent {
   tabId: string;
+  requestId: string;
+  conversationId: string;
   card: AiCommandCard;
 }

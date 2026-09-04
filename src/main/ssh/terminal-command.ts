@@ -12,6 +12,20 @@ function createCommandAbortError(): Error {
   return error;
 }
 
+/** 使用单引号生成不可被 Shell 重新解释的 POSIX 参数。 */
+export function quotePosixShellArgument(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+/** 为独立 SSH exec Channel 显式绑定目录，避免误用交互终端的隐式 cwd。 */
+export function buildSshCommandInWorkingDirectory(
+  command: string,
+  workingDirectory?: string,
+): string {
+  if (!workingDirectory) return command;
+  return `cd -- ${quotePosixShellArgument(workingDirectory)} && ${command}`;
+}
+
 /**
  * 在 SSH exec Channel 中执行 AI 命令，并在取消或超时时主动释放远端资源。
  */
@@ -20,6 +34,7 @@ export function executeSshTerminalCommand(
   command: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  workingDirectory?: string,
 ): Promise<AiCommandResult> {
   if (signal?.aborted) {
     return Promise.reject(createCommandAbortError());
@@ -102,7 +117,11 @@ export function executeSshTerminalCommand(
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    sshClient.exec(command, (error, openedStream) => {
+    const effectiveCommand = buildSshCommandInWorkingDirectory(
+      command,
+      workingDirectory,
+    );
+    sshClient.exec(effectiveCommand, (error, openedStream) => {
       if (error) {
         fail(error);
         return;

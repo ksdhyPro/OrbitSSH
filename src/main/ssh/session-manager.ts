@@ -1,5 +1,5 @@
 import type { WebContents } from "electron";
-import os from "node:os";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import * as pty from "@homebridge/node-pty-prebuilt-multiarch";
 import type { IPty } from "@homebridge/node-pty-prebuilt-multiarch";
@@ -26,6 +26,10 @@ import {
   executeSshTextCommand,
   executeSshTerminalCommand,
 } from "./terminal-command.js";
+import {
+  getDefaultLocalTerminalCwd,
+  getLocalTerminalShellConfig,
+} from "./local-terminal-config.js";
 import {
   clearRemoteSystemStatsCache,
   collectTerminalSystemStats,
@@ -119,7 +123,11 @@ export function getTerminalContextSnapshot(
 export function executeTerminalCommand(
   tabId: string,
   command: string,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    workingDirectory?: string;
+  } = {},
 ): Promise<AiCommandResult> {
   const timeoutMs = options.timeoutMs ?? 12_000;
   const signal = options.signal;
@@ -134,7 +142,24 @@ export function executeTerminalCommand(
   }
 
   if (session.kind === "local") {
-    return executeLocalTerminalCommand(session.cwd, command, timeoutMs, signal);
+    const requestedDirectory = options.workingDirectory?.trim();
+    if (requestedDirectory && !path.isAbsolute(requestedDirectory)) {
+      throw new Error("本地 AI 命令工作目录必须是绝对路径");
+    }
+    return executeLocalTerminalCommand(
+      requestedDirectory || session.cwd,
+      command,
+      timeoutMs,
+      signal,
+    );
+  }
+
+  const requestedDirectory = options.workingDirectory?.trim();
+  if (
+    requestedDirectory &&
+    (!requestedDirectory.startsWith("/") || requestedDirectory.includes("\0"))
+  ) {
+    throw new Error("SSH AI 命令工作目录必须是有效的绝对路径");
   }
 
   return executeSshTerminalCommand(
@@ -142,29 +167,8 @@ export function executeTerminalCommand(
     command,
     timeoutMs,
     signal,
+    requestedDirectory,
   );
-}
-
-function getDefaultLocalCwd(): string {
-  if (process.platform === "win32") {
-    return "C:\\";
-  }
-
-  return os.homedir() || process.cwd();
-}
-
-function getLocalShellConfig(): { shell: string; args: string[] } {
-  if (process.platform === "win32") {
-    return {
-      shell: process.env.ORBITSSH_LOCAL_SHELL || "powershell.exe",
-      args: ["-NoLogo"],
-    };
-  }
-
-  return {
-    shell: process.env.SHELL || "/bin/sh",
-    args: [],
-  };
 }
 
 function createLocalPtyEnv(): Record<string, string> {
@@ -494,8 +498,8 @@ function createLocalTerminalSession(
   outputBuffer = "",
 ): TerminalOpenResult {
   const startedAt = Date.now();
-  const cwd = getDefaultLocalCwd();
-  const { shell, args } = getLocalShellConfig();
+  const cwd = getDefaultLocalTerminalCwd();
+  const { shell, args } = getLocalTerminalShellConfig();
 
   writeAppLog({
     scope: "main.ssh",

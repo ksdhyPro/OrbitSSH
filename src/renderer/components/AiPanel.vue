@@ -14,6 +14,7 @@ import collapseIcon from "../assets/icons/collapse.svg";
 import aiAskIcon from "../assets/icons/ai-ask.svg";
 import aiAssistantIcon from "../assets/icons/ai-assistant.png";
 import aiFullIcon from "../assets/icons/ai-full.svg";
+import aiUnrestrictedIcon from "../assets/icons/ai-unrestricted.svg";
 import copyIcon from "../assets/icons/copy-ai.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { renderMarkdown } from "../utils/markdown";
@@ -81,8 +82,9 @@ const emit = defineEmits<{
 }>();
 
 const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
-  { value: "ask", label: "每次询问", icon: aiAskIcon },
-  { value: "full", label: "完全访问", icon: aiFullIcon },
+  { value: "ask", label: "逐命令审批", icon: aiAskIcon },
+  { value: "auto", label: "自主执行", icon: aiFullIcon },
+  { value: "full_access", label: "完全访问", icon: aiUnrestrictedIcon },
 ];
 
 const promptSuggestions = [
@@ -103,13 +105,14 @@ const modeMenuItems = computed<ContextMenuItem[]>(() =>
     label: opt.label,
     icon: opt.icon,
     desc: modeDescs[opt.value],
-    warning: opt.value === "full",
+    warning: opt.value === "full_access",
   })),
 );
 
 const modeDescs: Record<AiMode, string> = {
   ask: "所有命令均会询问确认",
-  full: "除高风险命令均自动执行",
+  auto: "自动执行常规操作，高风险命令需要确认",
+  full_access: "授权范围内的有效命令直接执行，不再询问",
 };
 
 const currentModeOption = computed(
@@ -780,6 +783,9 @@ function formatDuration(durationMs: number): string {
                   <span>{{ getProcessItemTitle(processItem) }}</span>
                 </header>
                 <code>{{ processItem.card.command }}</code>
+                <p v-if="processItem.card.workingDirectory">
+                  工作目录：{{ processItem.card.workingDirectory }}
+                </p>
                 <p>{{ processItem.card.reason }}</p>
                 <details
                   v-if="processItem.card.result || processItem.card.error"
@@ -832,6 +838,9 @@ function formatDuration(durationMs: number): string {
             <strong>{{ statusLabels[pendingApprovalCard.status] }}</strong>
           </header>
           <code>{{ pendingApprovalCard.command }}</code>
+          <p v-if="pendingApprovalCard.workingDirectory">
+            工作目录：{{ pendingApprovalCard.workingDirectory }}
+          </p>
           <p>{{ pendingApprovalCard.reason }}</p>
           <div class="ai-command-actions">
             <button
@@ -868,7 +877,7 @@ function formatDuration(durationMs: number): string {
             type="button"
             :class="[
               'ai-mode-trigger',
-              { 'ai-mode-trigger-warning': mode === 'full' },
+              { 'ai-mode-trigger-warning': mode === 'full_access' },
             ]"
             data-floating-menu-trigger
             :title="currentModeOption.label"

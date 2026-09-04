@@ -1,6 +1,5 @@
 import { ipcMain } from "electron";
 
-import type { AiCancelInput } from "../../shared/ai.js";
 import {
   cancelAiRequest,
   rejectAiCommandApproval,
@@ -9,21 +8,13 @@ import {
 } from "../ai/ai-agent.js";
 import {
   normalizeAiChatInput,
+  normalizeAiCancelInput,
   normalizeApprovedCommandInput,
   normalizeRejectedApprovalInput,
 } from "../ai/ai-input.js";
 import { detectLocalCodexCli } from "../ai/codex-cli-provider.js";
 import { getSettings } from "../storage/settings-store.js";
-import {
-  assertTabAccess,
-  requireNonEmptyString,
-  requireRecord,
-} from "./validation.js";
-
-function requireInputTabId(input: unknown, label: string): string {
-  const record = requireRecord(input, label);
-  return requireNonEmptyString(record.tabId, "终端标签页 ID");
-}
+import { assertTabAccess } from "./validation.js";
 
 export function registerAiIpc(): void {
   // 检测只查询系统 PATH 和 CLI 版本，不读取 Codex 登录凭据。
@@ -48,8 +39,8 @@ export function registerAiIpc(): void {
   });
 
   ipcMain.handle("ai:cancel", (event, input: unknown) => {
-    const tabId = requireInputTabId(input, "AI 取消参数");
-    assertTabAccess(event, tabId);
-    return cancelAiRequest({ tabId } satisfies AiCancelInput);
+    const normalizedInput = normalizeAiCancelInput(input);
+    assertTabAccess(event, normalizedInput.tabId);
+    return cancelAiRequest(normalizedInput);
   });
 }
