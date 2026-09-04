@@ -41,7 +41,9 @@ const emit = defineEmits<{
             </button>
           </header>
 
-          <slot />
+          <div class="app-dialog-body">
+            <slot />
+          </div>
         </section>
       </div>
     </Transition>

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.7.2
+
+1. Standardized dialog content layouts with default spacing provided by AppDialog, removing duplicated or missing outer padding across connection, file transfer, confirmation, update, automation, and AI configuration dialogs.
+
 ## v1.7.1
 
 1. Added server group management with create, rename, delete, and drag-to-group support; group assignments are persisted locally.

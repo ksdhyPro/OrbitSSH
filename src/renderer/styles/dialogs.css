@@ -22,6 +22,13 @@
   box-shadow: var(--shadow-dialog);
 }
 
+/* 弹窗内容边距由基础模块统一提供，业务弹窗只负责内部布局。 */
+.app-dialog-body {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px;
+}
+
 /* 自绘下拉菜单需要越过弹窗内容区显示，避免选项被裁切。 */
 .app-dialog:has(.app-select) {
   overflow: visible;
@@ -127,14 +134,12 @@
 .connection-form {
   display: grid;
   gap: 10px;
-  padding: 16px;
 }
 
 /* 常用命令弹窗沿用连接表单布局，命令内容支持多行编辑。 */
 .automation-task-form {
   display: grid;
   gap: 14px;
-  padding: 18px 20px 16px;
 }
 
 /* 标签与输入控件分开，避免命令表单阅读时视觉过于拥挤。 */
@@ -194,7 +199,6 @@
 .automation-run-dialog {
   display: grid;
   gap: 14px;
-  padding: 18px 20px 16px;
 }
 
 .automation-script-preview,
@@ -675,7 +679,6 @@
   /* 工具栏和检测状态保持紧凑，表格区独占剩余高度并内部滚动。 */
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
-  padding: 14px;
   min-height: 0;
   height: 100%;
 }
