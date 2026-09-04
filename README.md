@@ -1,311 +1,145 @@
-<p align="center">
-  <img src="build/icon.ico" width="96" alt="OrbitSSH Logo" />
-</p>
+# OrbitSSH
 
-<h1 align="center">OrbitSSH</h1>
+Electron + Vue 3 桌面 SSH / SFTP 客户端，内置受控执行的 AI 运维助手。
 
-<p align="center">
-  <strong>现代化 · 高性能 · 跨平台</strong>
-</p>
+当前版本：`1.6.3` · [English](README.en.md) · [更新记录](docs/update.md)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue" alt="Platform" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
-  <img src="https://img.shields.io/badge/version-1.6.1-orange" alt="Version" />
-  <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
-  <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
-  <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
-  <img src="https://img.shields.io/badge/node-22.17.1-yellow" alt="Node.js" />
-</p>
+## 概览
 
-<p align="center">
-  简体中文 | <a href="README.en.md">English</a>
-</p>
+OrbitSSH 将 SSH 终端、SFTP 文件管理、服务器间传输、常用自动化任务和 AI 辅助诊断整合到一个桌面应用中。Electron 主进程管理 SSH、SFTP、文件和 AI 命令执行；Vue Renderer 只负责界面与交互。
 
----
+仓库提供 Windows 安装包与 macOS 打包脚本。开发环境需要 Node.js 22 或更高版本。
 
-## 简介
+## 功能
 
-OrbitSSH 是一款基于 **Electron + Vue 3** 构建的**桌面端 SSH / SFTP 客户端**。它将强大的远程连接能力、多标签页终端管理、可视化文件浏览与传输、AI 服务器诊断助手集成在一个简洁的界面中，面向运维工程师、开发者以及一切需要频繁与远程 Linux 服务器交互的用户。
+### SSH 终端
 
-> 设计目标：在本地获得**接近原生终端的响应速度**，同时拥有现代图形界面的**效率与便利**。
+- 远程 SSH 与本地终端，多标签页并行会话。
+- xterm.js 终端渲染、自动调整尺寸、终端搜索、选中复制和右键粘贴。
+- 断线重连，以及可配置的 SSH/SFTP keepalive 与空闲断开时间。
+- 终端路径会同步给文件面板和 AI 上下文；路径未知时 AI 在登录默认目录执行。
 
-查看版本更新内容：[中文更新日志](docs/update.md) | [English Changelog](docs/update.en.md)
+### SFTP 与文件传输
 
----
+- 本地与远程文件浏览，支持新建、重命名、删除、图片预览和远程文本文件编辑。
+- 文件及文件夹上传、下载，支持拖拽、进度、暂停、继续与取消。
+- 本地目录与远程目录同步，可选择要传输的差异项。
+- 服务器间文件传输通过本地应用中转，不要求服务器之间互相 SSH。
+- 对稳定且 SHA-256 一致的大文件可跳过重复传输；临时文件与续传逻辑降低中断影响。
 
-## 功能亮点
+### 服务器与自动化任务
 
-### 🔌 SSH 终端
+- 保存密码或私钥认证的连接配置，常用服务器可置顶。
+- 密码和私钥口令使用 Electron `safeStorage` 加密保存；私钥内容不写入应用配置，仅在连接时读取指定私钥文件。
+- 每台服务器可保存常用脚本，通过独立 SSH 连接运行，支持实时 stdout/stderr 与手动取消。
 
-- 基于 [xterm.js](https://xtermjs.org/) 的高性能终端仿真，支持 256 色、光标样式、窗口自适应
-- 多标签页会话管理，一键切换不同服务器上下文
-- 终端内容搜索（内置 [xterm-addon-search](https://github.com/xtermjs/xterm.js/tree/master/addons/addon-search)）
-- 系统剪贴板集成，支持选中复制与右键粘贴
-- 支持断线后快速重连，并在重连成功后恢复主 SFTP 会话
+### AI 运维助手
 
-### 📁 SFTP 文件管理
+- 每个终端标签页维护独立 AI 会话，不混用不同服务器的上下文。
+- 支持 OpenAI 兼容接口，以及本机 Codex CLI 作为只读规划提供商。
+- 支持流式回复、Markdown 渲染和命令卡片状态：等待审批、执行中、完成、失败、拒绝或取消。
+- 模型只能请求在当前终端执行命令，或在用户明确点名的已保存服务器执行命令；禁止经当前服务器再次 `ssh`、`scp` 或 `sftp` 跳转。
+- 三种权限模式：
+  - `ask`：每条命令均需人工确认。
+  - `auto`：已识别的高风险或敏感读取需确认；低中风险命令可自动执行。
+  - `full_access`：格式有效的命令直接执行，不产生审批。
+- 主进程检查命令格式、复合命令、敏感数据源和高风险操作；用户批准也不能绕过格式无效的拒绝结果。
+- 终端输出、工具结果和常见凭据会脱敏并限制长度。最近终端输出默认不发送给在线模型，需由用户显式开启。
+- 单轮执行受命令数、总时长、重复命令和连续无进展检测约束；请求与正在运行的命令均可取消。
 
-- 双栏布局，本地 ⇄ 远程文件浏览一目了然
-- 拖拽上传 / 下载，批量操作不阻塞终端
-- 远程文件原位编辑，保存自动回传
-- 图片在线预览
-- 目录间文件同步（双向对比 + 选择性传输）
-- 完整的文件 CRUD 操作：新建、重命名、删除
+### 应用行为
 
-### 🤖 AI 助手
+- 深色 / 浅色主题，以及终端字体大小、行高和选区颜色设置。
+- 左侧服务器、自动化任务和远程文件面板支持排序、折叠与调整高度。
+- 系统托盘、单实例启动、Windows 启动诊断，以及基于 `electron-updater` 的更新检查和下载进度。
 
-- 内置 AI 助手面板，按终端标签页隔离对话，避免不同服务器上下文混杂
-- 自动结合当前服务器、终端路径、SFTP 路径和连接状态进行问答；近期终端输出默认不发送，可显式开启脱敏共享
-- 支持 OpenAI 兼容模型，提供流式回复、Markdown 实时渲染和命令执行过程卡片
-- 支持“每次询问 / 完全访问”两种权限模式，命令执行经过本地只读白名单、高风险黑名单、复合命令审查和审批校验
-- 支持请求与命令终止、5 分钟审批有效期、上下文脱敏和长度预算，减少失控执行与敏感信息泄露风险
-- 支持多模型配置、当前模型切换和默认模式设置，API Key 使用本地安全存储并在界面中脱敏展示
+## 架构
 
-### ⚙️ 服务器管理
-
-- 连接配置本地持久化，支持增删改查与分组整理
-- 支持常用服务器置顶，置顶连接自动排列在列表前方
-- 密码 / 私钥等敏感信息使用系统级安全存储加密保存
-- 一键连接、快速重连
-
-### 🎨 主题与外观
-
-- 自定义主题色，终端配色与全局 UI 统一可控
-- 自定义窗口标题栏（无原生框架），沉浸式深色默认风格
-- 字体大小、行高、光标样式等终端细节可调
-
-### 🔄 版本更新
-
-- 内置 `electron-updater` 自动检查更新，支持 generic 服务器分发
-- 更新提示弹窗内下载进度可见，安装一键完成
-
----
-
-## 界面预览
-
-| 终端主页 | SFTP 文件传输 | 设置面板 |
-|:---:|:---:|:---:|
-| ![终端主页](docs/home.png) | ![文件传输](docs/transfer.png) | ![设置](docs/setting.png) |
-
----
-
-## 技术架构
-
-```
-┌──────────────────────────────────────────────┐
-│                  Renderer                     │
-│          Vue 3 + Pinia + TypeScript           │
-│   ┌──────────┬──────────┬──────────┬──────┐  │
-│   │ Terminal │  SFTP    │ Settings │  AI  │  │
-│   │  Panel   │  Panel   │  Dialog  │Panel │  │
-│   └──────────┴──────────┴──────────┴──────┘  │
-├──────────────────────────────────────────────┤
-│                 Preload                       │
-│        contextBridge (安全隔离)               │
-├──────────────────────────────────────────────┤
-│               Main Process                    │
-│         Electron + Node.js                    │
-│   ┌──────┬──────┬──────┬──────┬──────┬─────┐ │
-│   │ SSH  │ SFTP │ AI   │Store │Update│Log  │ │
-│   │Mgr   │Mgr   │Agent │      │      │     │ │
-│   └──────┴──────┴──────┴──────┴──────┴─────┘ │
-└──────────────────────────────────────────────┘
+```text
+Renderer：Vue 3 + Pinia
+Terminal / SFTP / Automation / Settings / AI UI
+                │ contextBridge IPC
+Preload：按需暴露的受限 API
+                │
+Main Process：SSH · SFTP · 传输队列 · 自动化任务
+              AI Agent · 命令策略 · 审批 · 存储 · 更新 · 日志
 ```
 
-关键设计原则：
-
-- **进程隔离**：启用 `contextIsolation` + `sandbox`，Renderer 无权直接访问 Node.js —— 所有系统能力通过 `ipcMain` / `ipcRenderer` 按需暴露
-- **连接复用**：SSH 会话在 Main 进程内持久化，窗口关闭时自动清理
-- **安全优先**：`nodeIntegration: false`，preload 脚本是 Renderer 与系统之间的唯一桥梁；AI 命令执行经过策略校验、审批和会话归属校验
-
----
+- `contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；Renderer 无法直接访问 Node.js 或 SSH 连接。
+- SSH/SFTP 状态、文件读写和 AI 工具执行均由主进程校验 IPC 输入和会话归属后处理。
+- AI 模型负责提出回复或结构化工具请求；本地代码负责权限决策和实际执行。
 
 ## 技术栈
 
 | 层级 | 技术 |
-|:---|:---|
-| 桌面框架 | Electron 37 |
-| 前端框架 | Vue 3 (Composition API) |
-| 状态管理 | Pinia |
-| 终端模拟 | xterm.js 5 + Canvas 渲染 |
-| SSH 协议 | ssh2 |
-| SFTP 协议 | ssh2-sftp-client |
-| 代码编辑器 | CodeMirror 6 |
-| Markdown 渲染 | markdown-it + DOMPurify |
-| 本地持久化 | electron-store |
-| 自动更新 | electron-updater |
-| 构建工具 | Vite + electron-builder |
-| 语言 | TypeScript (strict) |
-
----
+| --- | --- |
+| 桌面应用 | Electron 37、TypeScript |
+| 界面 | Vue 3、Pinia、Vite |
+| 终端 | xterm.js、Canvas addon、node-pty |
+| SSH / SFTP | ssh2、ssh2-sftp-client |
+| 编辑与 Markdown | CodeMirror 6、markdown-it、DOMPurify |
+| 本地存储 | electron-store、Electron safeStorage |
+| 打包与更新 | electron-builder、electron-updater |
 
 ## 快速开始
 
-### 环境要求
-
-- **Node.js** ≥ 22
-- **npm** ≥ 9
-- Windows / macOS / Linux
-
-### 克隆项目
+环境要求：Node.js 22+、npm 9+。
 
 ```bash
 git clone https://gitee.com/ksdhy/orbit-ssh
 cd orbitssh
-```
-
-### 安装依赖
-
-```bash
 npm install
-```
-
-### 开发模式
-
-启动 Vite 开发服务器 + Electron 窗口（支持 HMR）：
-
-```bash
 npm run dev:electron
 ```
 
-### 构建与打包
-
 ```bash
-# 仅构建输出到 dist / dist-electron
+# Vue 类型检查、构建 Renderer、编译 Electron 主进程并同步 Preload
 npm run build
 
-# 构建并打 Windows 安装包（输出到 release/）
-npm run dist
-```
-
-Windows 打包会生成 OrbitSSH 深色自绘安装器及供 `electron-updater` 使用的 `latest.yml`。
-
-### 质量检查
-
-```bash
-# AI 命令策略、审批、上下文、输入校验和 SSE 解析专项测试
+# AI、SFTP、Renderer 测试
 npm run test:ai
+npm run test:sftp
+npm run test:renderer
 
-# Vue、Electron TypeScript 检查与生产构建
-npm run build
+# Windows 安装包 / macOS 打包
+npm run dist
+npm run dist-mac
 ```
-
----
-
-## 项目结构
-
-```
-orbitssh/
-├── src/
-│   ├── main/                         # Electron 主进程
-│   │   ├── bootstrap.ts              # 启动引导与主进程初始化
-│   │   ├── index.ts                  # 主窗口、托盘及应用生命周期
-│   │   ├── startup-diagnostics.ts    # Windows 启动诊断
-│   │   ├── ipc/                      # AI、SSH、SFTP、设置、窗口等 IPC
-│   │   ├── ai/                       # AI Agent、Codex、审批与命令策略
-│   │   ├── automation/               # 服务器自动化任务执行
-│   │   ├── local-files/              # 本地文件浏览能力
-│   │   ├── sftp/                     # SFTP 会话、上传、下载与远程传输
-│   │   ├── ssh/                      # SSH 会话、终端命令与系统状态
-│   │   ├── storage/                  # 服务器与设置持久化
-│   │   ├── update/                   # electron-updater 更新模块
-│   │   └── logger.ts                 # 应用日志
-│   ├── preload/                      # contextBridge 安全 API
-│   ├── renderer/                     # Vue 渲染进程
-│   │   ├── components/               # 终端、文件、AI 与设置组件
-│   │   ├── composables/              # 远程文件等交互编排
-│   │   ├── config/                   # 渲染进程配置
-│   │   ├── stores/                   # Pinia 状态管理
-│   │   ├── styles/                   # 主题、终端、文件与弹窗样式
-│   │   ├── utils/                    # 渲染进程通用工具
-│   │   └── App.vue                   # 根组件
-│   ├── shared/                       # 主进程 ⇄ 渲染进程共享类型
-│   └── types/                        # Preload 全局类型声明
-├── packaging/windows/                # Windows 自绘安装器
-│   ├── assets/                       # 图标及安装器品牌资源
-│   ├── scripts/                      # NSIS 安装与卸载逻辑
-│   ├── skin/                         # 深色 UI 与高 DPI 皮肤资源
-│   └── runtime/                      # 7-Zip、NSIS 与 OrbitSSHSkin
-├── scripts/                          # 构建、版本同步与资源生成脚本
-├── tests/                            # AI、主进程、SFTP、SSH 与安装器测试
-├── docs/                             # 文档、更新日志与截图
-├── build/                            # 应用图标及通用构建资源
-├── vite.config.ts
-├── tsconfig.json
-├── tsconfig.electron.json
-├── package.json
-└── README.md
-```
-
----
 
 ## 使用说明
 
-### 连接管理
+### 连接和文件
 
-1. 点击左侧栏 **+** 按钮打开连接对话框
-2. 填写主机地址、端口、认证方式（密码 / 私钥）
-3. 保存后点击服务器条目即可建立连接
-4. 使用服务器条目右侧的图钉按钮置顶常用连接，右键可查看更多操作
+1. 在左侧服务器面板添加名称、主机、端口、用户名及密码或私钥认证。
+2. 保存后点击服务器建立 SSH 终端；标签页可关闭或重连。
+3. 打开 SFTP 面板浏览文件，在本地和远程面板间拖放文件或文件夹开始传输。
+4. 双击支持的远程文本文件可编辑并保存回服务器；同步功能可比较目录差异后选择性传输。
 
-### 终端操作
+### 使用 AI
 
-- 点击标签页切换不同会话，支持横向滚动
-- `Ctrl+F` / `Cmd+F` 搜索终端输出
-- 选中文本自动复制，右键粘贴
-- 标签页右键可关闭或重新连接
+1. 在“设置 → AI”启用 AI，添加 OpenAI 兼容配置，或检测并配置本机 Codex CLI。
+2. 选择适合服务器风险的权限模式；生产环境建议使用 `ask`。
+3. 在已连接终端右侧打开 AI 面板，描述现象或目标。
+4. 对需要审批的命令，确认目标服务器、工作目录、命令内容和风险说明后再批准。
+5. 如需让模型参考最近终端输出，在设置中开启共享；发送前会执行脱敏和截断。
 
-### AI 助手
+## 项目结构
 
-1. 在 **设置 → AI** 中启用 AI，并添加 OpenAI 兼容模型的 Base URL、模型名和 API Key
-2. 选择默认权限模式：每次询问或完全访问；重要服务器建议使用“每次询问”
-3. 打开 SSH 终端后，在右侧 AI 面板输入诊断问题
-4. 对需要审批的命令，确认命令内容、风险说明和执行原因后再批准
-5. 如需让模型读取最近终端输出，在设置中显式开启“发送最近终端输出”；发送前会自动脱敏
+```text
+src/main/       Electron 主进程：SSH、SFTP、AI、IPC、存储、更新和日志
+src/preload/    contextBridge API
+src/renderer/   Vue 组件、Pinia 状态、样式与交互逻辑
+src/shared/     主进程与 Renderer 共享类型
+tests/          AI、SSH/SFTP、Renderer、启动与安装器测试
+docs/           架构说明、更新记录和截图
+scripts/        开发、打包、资源和版本同步脚本
+packaging/      Windows 安装器资源与脚本
+```
 
-### 文件传输
+## 贡献
 
-- 连接成功后可通过**分屏视图**或**侧边栏**打开 SFTP 面板
-- 拖拽文件/文件夹到对侧面板完成上传/下载
-- 双击远程文本文件触发原位编辑
-- 点击**同步路径**按钮启动目录同步
-
----
-
-## 配置
-
-应用配置通过 `electron-store` 持久化到本地用户数据目录，支持：
-
-| 分类 | 可配置项 |
-|:---|:---|
-| 主题 | 主题色、终端配色、终端背景色 |
-| 终端 | 字体大小、字体族、行高、光标样式 |
-| 行为 | 窗口状态记忆、确认对话框偏好 |
-| AI | 启用状态、模型配置、当前模型、默认权限模式、终端上下文共享 |
-| 更新 | 更新服务器地址、自动检查开关 |
-
----
-
-## 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 基于 `master` 创建功能分支：`git checkout -b feat/my-feature`
-3. 提交更改并附上清晰的 commit message
-4. 推送分支并发起 Pull Request
-
-> 提交前请确保通过类型检查：`npm run build`
-
----
+欢迎提交 Issue 和 Pull Request。提交前请至少运行与改动相关的测试；涉及 Renderer 与主进程接口时，请同步更新 Preload 类型与实现。
 
 ## 许可证
 
-本项目基于 [MIT License](LICENSE) 发布。
-
----
-
-<p align="center">
-  <sub>Made with ❤️ by ksdhy</sub>
-</p>
+[MIT License](LICENSE)
