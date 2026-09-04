@@ -69,6 +69,7 @@ import type {
   AiStreamMessageStartEvent,
 } from "../shared/ai";
 import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation";
+import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput, PortForwardRuntime, PortForwardStatusEvent } from "../shared/port-forward";
 
 declare global {
   interface Window {
@@ -114,6 +115,16 @@ declare global {
         run: (taskId: string) => Promise<AutomationTaskRunResult>;
         cancel: (runId: string) => Promise<boolean>;
         onRunEvent: (callback: (event: AutomationTaskRunEvent) => void) => () => void;
+      };
+      portForwards: {
+        list: (serverId: string) => Promise<PortForwardRule[]>;
+        listRuntimes: (serverId: string) => Promise<PortForwardRuntime[]>;
+        create: (input: PortForwardRuleInput) => Promise<PortForwardRule>;
+        update: (input: PortForwardRuleUpdateInput) => Promise<PortForwardRule>;
+        start: (ruleId: string) => Promise<boolean>;
+        stop: (ruleId: string) => Promise<boolean>;
+        delete: (ruleId: string) => Promise<boolean>;
+        onStatus: (callback: (event: PortForwardStatusEvent) => void) => () => void;
       };
       settings: {
         get: () => Promise<AppSettings>;

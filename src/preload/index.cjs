@@ -48,6 +48,21 @@ const orbitSSHApi = {
       return () => ipcRenderer.removeListener("automation:run-event", listener);
     },
   },
+  // 端口转发独立暴露，Renderer 不能直接接触 Node 网络与 SSH 客户端。
+  portForwards: {
+    list: serverId => ipcRenderer.invoke("port-forward:list", serverId),
+    listRuntimes: serverId => ipcRenderer.invoke("port-forward:runtimes", serverId),
+    create: input => ipcRenderer.invoke("port-forward:create", input),
+    update: input => ipcRenderer.invoke("port-forward:update", input),
+    start: ruleId => ipcRenderer.invoke("port-forward:start", ruleId),
+    stop: ruleId => ipcRenderer.invoke("port-forward:stop", ruleId),
+    delete: ruleId => ipcRenderer.invoke("port-forward:delete", ruleId),
+    onStatus: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("port-forward:status", listener);
+      return () => ipcRenderer.removeListener("port-forward:status", listener);
+    },
+  },
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     save: settings => ipcRenderer.invoke("settings:save", settings),

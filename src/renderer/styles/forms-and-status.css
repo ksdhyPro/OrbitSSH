@@ -327,7 +327,8 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
+  /* 滚动交由可框选的列表本身处理，避免两者坐标系不一致。 */
+  overflow: hidden;
   padding: 4px;
   background: transparent;
 }
@@ -337,7 +338,10 @@
   flex: 1 1 auto;
   align-content: start;
   gap: 0;
-  min-height: 100%;
+  min-height: 0;
+  /* 左右传输面板共用该列表，预留右侧空白区域用于框选多文件。 */
+  padding-right: 30px;
+  overflow: auto;
 }
 
 .transfer-state {
@@ -915,3 +919,28 @@
   color: var(--text-secondary);
   font-size: 12px;
 }
+
+/* 端口转发规则管理：列表保留在大弹窗内滚动，编辑表单使用独立 AppDialog。 */
+.port-forward-dialog { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; height: 100%; min-height: 0; }
+.port-forward-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.port-forward-toolbar p { margin: 0; color: var(--text-tertiary); font-size: 12px; }
+.port-forward-table-wrap { overflow: auto; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-elevated-2); }
+.port-forward-table { width: 100%; min-width: 760px; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.port-forward-table th, .port-forward-table td { padding: 9px 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); text-align: left; overflow-wrap: anywhere; vertical-align: top; }
+.port-forward-table th { color: var(--text-primary); font-weight: 600; background: var(--bg-elevated-3); }
+.port-forward-table tr:last-child td { border-bottom: 0; }
+.port-forward-empty { height: 72px; text-align: center; color: var(--text-tertiary); }
+.port-forward-status { display: inline-flex; font-weight: 600; }
+.port-forward-status.is-running { color: var(--success); }
+.port-forward-status.is-error { color: var(--danger); }
+.port-forward-status.is-starting { color: var(--accent-bright); }
+.port-forward-table small { display: block; max-width: 180px; margin-top: 4px; color: var(--danger); line-height: 1.35; }
+.port-forward-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.port-forward-actions .ai-config-mini-button { min-width: 48px; height: 28px; padding: 0 9px; }
+.port-forward-form { display: grid; gap: 12px; }
+.port-forward-form label { display: grid; gap: 6px; }
+.port-forward-form label > span { color: var(--text-secondary); font-size: 12px; font-weight: 550; }
+.port-forward-form input, .port-forward-form select { height: 34px; border: 1px solid var(--border-input); border-radius: 8px; padding: 0 10px; outline: none; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: 13px; }
+.port-forward-form input:focus, .port-forward-form select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--focus-ring); }
+.port-forward-warning { margin: 0; color: var(--warning, #d89b35); font-size: 12px; line-height: 1.5; }
+.port-forward-hint { margin: -2px 0 0; color: var(--text-tertiary); font-size: 12px; line-height: 1.5; }

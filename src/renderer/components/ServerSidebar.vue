@@ -7,6 +7,7 @@ import serverAddIcon from "../assets/icons/server-add.svg";
 import groupAddIcon from "../assets/icons/server-group-add.svg";
 import ColorPickerDialog from "./ColorPickerDialog.vue";
 import ContextMenu from "./ContextMenu.vue";
+import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import ServerGroupDialog from "./ServerGroupDialog.vue";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import type { ServerConfig, ServerGroup } from "../../shared/server";
@@ -21,6 +22,8 @@ const menuTarget = ref<ServerConfig | ServerGroup | null>(null);
 const menuTargetType = ref<"server" | "group">("server");
 const groupDialog = reactive<{ open: boolean; editing: ServerGroup | null; name: string }>({ open: false, editing: null, name: "" });
 const colorDialog = reactive<{ open: boolean; target: ServerConfig | ServerGroup | null; type: "server" | "group" }>({ open: false, target: null, type: "server" });
+// 分组删除同样使用应用内确认框，避免原生对话框残留焦点阻塞。
+const groupDeleteDialog = reactive<{ open: boolean; group: ServerGroup | null }>({ open: false, group: null });
 const ungroupedServers = computed(() => props.servers.filter(server => !server.groupId));
 const menuItems = computed<ContextMenuItem[]>(() => menuTargetType.value === "group"
   ? [{ key: "rename", label: "重命名" }, { key: "color", label: "修改颜色" }, { key: "delete", label: "删除分组", group: "danger", danger: true }]
@@ -36,7 +39,9 @@ function closeMenu(): void { menu.open = false; menuTarget.value = null; }
 function openColorDialog(target: ServerConfig | ServerGroup, type: "server" | "group"): void { colorDialog.target = target; colorDialog.type = type; colorDialog.open = true; }
 function closeColorDialog(): void { colorDialog.open = false; colorDialog.target = null; }
 function saveColor(color?: string): void { const target = colorDialog.target; if (!target) return; if (colorDialog.type === "server") emit("setServerColor", target as ServerConfig, color); else { const group = target as ServerGroup; emit("updateGroup", group, { name: group.name, color }); } }
-function selectMenuItem(item: ContextMenuItem): void { const target = menuTarget.value; if (!target) return; const type = menuTargetType.value; closeMenu(); if (item.key === "color") return openColorDialog(target, type); if (type === "group") { const group = target as ServerGroup; if (item.key === "rename") openGroupDialog(group); if (item.key === "delete" && window.confirm(`确认删除分组“${group.name}”？其中的连接会保留在未分组列表中。`)) emit("deleteGroup", group.id); return; } const server = target as ServerConfig; if (item.key === "pin") emit("setServerPinned", server); if (item.key === "edit") emit("editServer", server); if (item.key === "delete") emit("deleteServer", server.id); }
+function selectMenuItem(item: ContextMenuItem): void { const target = menuTarget.value; if (!target) return; const type = menuTargetType.value; closeMenu(); if (item.key === "color") return openColorDialog(target, type); if (type === "group") { const group = target as ServerGroup; if (item.key === "rename") openGroupDialog(group); if (item.key === "delete") { groupDeleteDialog.group = group; groupDeleteDialog.open = true; } return; } const server = target as ServerConfig; if (item.key === "pin") emit("setServerPinned", server); if (item.key === "edit") emit("editServer", server); if (item.key === "delete") emit("deleteServer", server.id); }
+function closeGroupDeleteDialog(): void { groupDeleteDialog.open = false; groupDeleteDialog.group = null; }
+function confirmGroupDelete(): void { const group = groupDeleteDialog.group; if (!group) return; emit("deleteGroup", group.id); closeGroupDeleteDialog(); }
 function startServerDrag(event: DragEvent, server: ServerConfig): void { draggedServerId.value = server.id; event.dataTransfer?.setData("text/plain", server.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = "move"; }
 function finishServerDrag(groupId?: string): void { const server = props.servers.find(item => item.id === draggedServerId.value); if (server && server.groupId !== groupId) emit("moveServerToGroup", server, groupId); draggedServerId.value = null; }
 </script>
@@ -51,5 +56,6 @@ function finishServerDrag(groupId?: string): void { const server = props.servers
     <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" @close="closeMenu" />
     <ServerGroupDialog :open="groupDialog.open" :name="groupDialog.name" :editing="Boolean(groupDialog.editing)" @update-name="groupDialog.name = $event" @submit="submitGroup" @close="closeGroupDialog" />
     <ColorPickerDialog :open="colorDialog.open" :title="colorDialog.type === 'group' ? '分组颜色' : '连接颜色'" :color="colorDialog.target?.color" @select="saveColor" @clear="saveColor(undefined); closeColorDialog()" @close="closeColorDialog" />
+    <DeleteConfirmDialog :open="groupDeleteDialog.open" title="删除分组" :message="`确认删除分组“${groupDeleteDialog.group?.name ?? ''}”？其中的连接会保留在未分组列表中。`" confirm-label="删除" :danger="true" @cancel="closeGroupDeleteDialog" @confirm="confirmGroupDelete" />
   </section>
 </template>

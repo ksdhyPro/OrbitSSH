@@ -179,9 +179,9 @@ export const useServersStore = defineStore("servers", () => {
 
   async function deleteServer(
     serverId: string,
-    shouldDelete: () => boolean,
+    shouldDelete: () => Promise<boolean>,
   ): Promise<void> {
-    if (!shouldDelete()) {
+    if (!(await shouldDelete())) {
       return;
     }
 

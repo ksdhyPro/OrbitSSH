@@ -43,6 +43,7 @@ const emit = defineEmits<{
     action: "pause" | "resume" | "cancel",
   ];
   openDataTransfer: [];
+  openPortForwards: [];
   openSettings: [];
   openUpdate: [];
   openAbout: [];
@@ -66,6 +67,10 @@ const headerMenuItems = computed<ContextMenuItem[]>(() => {
       {
         key: "data-transfer",
         label: "文件传输",
+      },
+      {
+        key: "port-forwards",
+        label: "端口转发",
       },
     ];
   }
@@ -153,6 +158,11 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
 
   if (item.key === "data-transfer") {
     emit("openDataTransfer");
+    return;
+  }
+
+  if (item.key === "port-forwards") {
+    emit("openPortForwards");
     return;
   }
 

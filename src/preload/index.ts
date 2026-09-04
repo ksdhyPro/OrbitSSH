@@ -69,6 +69,7 @@ import type {
   AiStreamMessageStartEvent,
 } from "../shared/ai.js";
 import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation.js";
+import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput, PortForwardRuntime, PortForwardStatusEvent } from "../shared/port-forward.js";
 
 const orbitSSHApi = {
   about: {
@@ -133,6 +134,20 @@ const orbitSSHApi = {
       const listener = (_event: Electron.IpcRendererEvent, payload: AutomationTaskRunEvent) => callback(payload);
       ipcRenderer.on("automation:run-event", listener);
       return () => ipcRenderer.removeListener("automation:run-event", listener);
+    },
+  },
+  portForwards: {
+    list: (serverId: string) => ipcRenderer.invoke("port-forward:list", serverId) as Promise<PortForwardRule[]>,
+    listRuntimes: (serverId: string) => ipcRenderer.invoke("port-forward:runtimes", serverId) as Promise<PortForwardRuntime[]>,
+    create: (input: PortForwardRuleInput) => ipcRenderer.invoke("port-forward:create", input) as Promise<PortForwardRule>,
+    update: (input: PortForwardRuleUpdateInput) => ipcRenderer.invoke("port-forward:update", input) as Promise<PortForwardRule>,
+    start: (ruleId: string) => ipcRenderer.invoke("port-forward:start", ruleId) as Promise<boolean>,
+    stop: (ruleId: string) => ipcRenderer.invoke("port-forward:stop", ruleId) as Promise<boolean>,
+    delete: (ruleId: string) => ipcRenderer.invoke("port-forward:delete", ruleId) as Promise<boolean>,
+    onStatus: (callback: (event: PortForwardStatusEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: PortForwardStatusEvent) => callback(payload)
+      ipcRenderer.on("port-forward:status", listener)
+      return () => ipcRenderer.removeListener("port-forward:status", listener)
     },
   },
   settings: {

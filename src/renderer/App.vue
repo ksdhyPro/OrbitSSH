@@ -15,6 +15,7 @@ import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
+import PortForwardDialog from "./components/PortForwardDialog.vue";
 import AutomationSidebar from "./components/AutomationSidebar.vue";
 import SettingsDialog from "./components/SettingsDialog.vue";
 import UpdateDialog from "./components/UpdateDialog.vue";
@@ -59,6 +60,7 @@ const deleteConfirmDialog = reactive({
 const deleteConfirmResolver = ref<((confirmed: boolean) => void) | null>(null);
 const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
+const isPortForwardDialogOpen = ref(false);
 const isUpdateDialogOpen = ref(false);
 const contentShellElement = ref<HTMLElement | null>(null);
 const sidebarPanelsElement = ref<HTMLElement | null>(null);
@@ -679,6 +681,10 @@ function closeDataTransferDialog(): void {
   isDataTransferDialogOpen.value = false;
 }
 
+function openPortForwardDialog(): void {
+  isPortForwardDialogOpen.value = true;
+}
+
 async function showAboutDialog(): Promise<void> {
   try {
     await orbitSSHApi.value?.about.show();
@@ -719,15 +725,23 @@ function handleAppMenuAction(action: AppMenuAction): void {
     return;
   }
 
+  if (action === "open-port-forwards") {
+    openPortForwardDialog();
+    return;
+  }
+
   if (action === "open-update") {
     isUpdateDialogOpen.value = true;
   }
 }
 
 async function deleteServer(serverId: string): Promise<void> {
-  await serversStore.deleteServer(serverId, () =>
-    window.confirm("确认删除该服务器配置？"),
-  );
+  await serversStore.deleteServer(serverId, () => requestConfirm({
+    title: "删除服务器",
+    message: "确认删除该服务器配置？",
+    confirmLabel: "删除",
+    danger: true,
+  }));
 }
 
 // 左侧服务器列表的置顶操作由 store 统一处理并持久化。
@@ -907,12 +921,18 @@ onUnmounted(() => {
       @update-task-list-open="isTaskListOpen = $event"
       @control-download-task="controlDownloadTask"
       @open-data-transfer="openDataTransferDialog"
+      @open-port-forwards="openPortForwardDialog"
       @open-settings="openSettingsDialog"
       @open-update="isUpdateDialogOpen = true"
       @open-about="showAboutDialog"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />
+
+    <PortForwardDialog
+      :open="isPortForwardDialogOpen"
+      :servers="servers"
+      @close="isPortForwardDialogOpen = false" />
 
     <div
       ref="contentShellElement"

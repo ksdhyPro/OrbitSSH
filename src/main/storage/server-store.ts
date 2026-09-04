@@ -3,12 +3,14 @@ import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
 import type { ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
+import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
 
 interface ServerStoreSchema {
   servers: ServerConfig[]
   groups: ServerGroup[]
   passwords: Record<string, string>
   automationTasks: Record<string, ServerAutomationTask[]>
+  portForwardRules: Record<string, PortForwardRule[]>
 }
 
 const store = new Store<ServerStoreSchema>({
@@ -17,7 +19,8 @@ const store = new Store<ServerStoreSchema>({
     servers: [],
     groups: [],
     passwords: {},
-    automationTasks: {}
+    automationTasks: {},
+    portForwardRules: {}
   }
 })
 
@@ -126,6 +129,76 @@ function getAutomationTasks(): Record<string, ServerAutomationTask[]> {
 
 function saveAutomationTasks(tasks: Record<string, ServerAutomationTask[]>): void {
   store.set('automationTasks', tasks)
+}
+
+function getPortForwardRules(): Record<string, PortForwardRule[]> {
+  return store.get('portForwardRules', {})
+}
+
+function savePortForwardRules(rules: Record<string, PortForwardRule[]>): void {
+  store.set('portForwardRules', rules)
+}
+
+/** 统一校验端口转发规则，避免不安全或不可执行的监听参数进入存储。 */
+function normalizePortForwardInput(input: PortForwardRuleInput): PortForwardRuleInput {
+  const serverId = typeof input.serverId === 'string' ? input.serverId.trim() : ''
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const targetHost = typeof input.targetHost === 'string' ? input.targetHost.trim() : ''
+  const listenPort = Number(input.listenPort)
+  const targetPort = Number(input.targetPort)
+  const direction = input.direction === 'remote' ? 'remote' : 'local'
+  const listenScope = input.listenScope === 'lan' ? 'lan' : 'loopback'
+
+  if (!serverId || !getServers().some(server => server.id === serverId)) throw new Error('服务器不存在')
+  if (!name || name.length > 100) throw new Error('规则名称不能为空且不能超过 100 个字符')
+  if (!targetHost || targetHost.includes('\0')) throw new Error('目标主机无效')
+  if (!Number.isInteger(listenPort) || listenPort < 1 || listenPort > 65535) throw new Error('监听端口需要在 1 到 65535 之间')
+  if (!Number.isInteger(targetPort) || targetPort < 1 || targetPort > 65535) throw new Error('目标端口需要在 1 到 65535 之间')
+
+  return { serverId, name, direction, listenScope, listenPort, targetHost, targetPort }
+}
+
+export function listPortForwardRules(serverId: string): PortForwardRule[] {
+  if (typeof serverId !== 'string' || !serverId.trim()) throw new Error('服务器 ID 无效')
+  return [...(getPortForwardRules()[serverId] ?? [])]
+}
+
+export function getPortForwardRule(ruleId: string): PortForwardRule {
+  for (const rules of Object.values(getPortForwardRules())) {
+    const rule = rules.find(item => item.id === ruleId)
+    if (rule) return rule
+  }
+  throw new Error('端口转发规则不存在')
+}
+
+export function createPortForwardRule(input: PortForwardRuleInput): PortForwardRule {
+  const normalized = normalizePortForwardInput(input)
+  const now = Date.now()
+  const rule: PortForwardRule = { id: crypto.randomUUID(), ...normalized, createdAt: now, updatedAt: now }
+  const rules = getPortForwardRules()
+  rules[rule.serverId] = [...(rules[rule.serverId] ?? []), rule]
+  savePortForwardRules(rules)
+  return rule
+}
+
+export function updatePortForwardRule(input: PortForwardRuleUpdateInput): PortForwardRule {
+  if (typeof input.id !== 'string' || !input.id.trim()) throw new Error('规则 ID 无效')
+  const normalized = normalizePortForwardInput(input)
+  const rules = getPortForwardRules()
+  const current = getPortForwardRule(input.id)
+  const updated = { ...current, ...normalized, updatedAt: Date.now() }
+  // 编辑时允许切换服务器，因此需要从旧服务器的规则集合迁移到新集合。
+  rules[current.serverId] = (rules[current.serverId] ?? []).filter(rule => rule.id !== input.id)
+  rules[updated.serverId] = [...(rules[updated.serverId] ?? []), updated]
+  savePortForwardRules(rules)
+  return updated
+}
+
+export function deletePortForwardRule(ruleId: string): void {
+  const rule = getPortForwardRule(ruleId)
+  const rules = getPortForwardRules()
+  rules[rule.serverId] = (rules[rule.serverId] ?? []).filter(item => item.id !== ruleId)
+  savePortForwardRules(rules)
 }
 
 export function listServers(): ServerConfig[] {
@@ -425,6 +498,10 @@ export function deleteServer(serverId: string): void {
   const tasks = getAutomationTasks()
   delete tasks[serverId]
   saveAutomationTasks(tasks)
+
+  const portForwardRules = getPortForwardRules()
+  delete portForwardRules[serverId]
+  savePortForwardRules(portForwardRules)
 }
 
 // 更新置顶状态时只改动目标服务器，避免影响已保存的连接认证信息。

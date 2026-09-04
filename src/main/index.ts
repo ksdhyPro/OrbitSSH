@@ -21,6 +21,7 @@ import { writeAppLog } from "./logger.js";
 import { writeStartupDiagnostic } from "./startup-diagnostics.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
+import { closeAllPortForwards } from "./ssh/port-forward-manager.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +57,7 @@ function cleanupConnections(): void {
     message: "应用退出，开始清理连接",
   });
   closeAllTerminalSessions();
+  closeAllPortForwards();
   void closeAllSftpSessions();
 }
 
@@ -180,6 +182,10 @@ function registerMacApplicationMenu(mainWindow: BrowserWindow): void {
         {
           label: "文件传输",
           click: () => sendAppMenuAction(mainWindow, "open-data-transfer"),
+        },
+        {
+          label: "端口转发",
+          click: () => sendAppMenuAction(mainWindow, "open-port-forwards"),
         },
       ],
     },

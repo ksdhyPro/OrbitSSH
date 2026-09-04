@@ -57,7 +57,10 @@ const emit = defineEmits<{
 
 const renameInputRef = ref<HTMLInputElement | null>(null);
 const rootElement = ref<HTMLElement | null>(null);
+const marqueeAutoScrollEdge = 36;
+const marqueeAutoScrollMaxStep = 18;
 let renameFocusFrame = 0;
+let marqueeAutoScrollFrame = 0;
 const marquee = reactive({
   active: false,
   visible: false,
@@ -65,8 +68,15 @@ const marquee = reactive({
   startClientY: 0,
   currentClientX: 0,
   currentClientY: 0,
-  startScrollLeft: 0,
-  startScrollTop: 0,
+  startContentX: 0,
+  startContentY: 0,
+  currentContentX: 0,
+  currentContentY: 0,
+  maxScrollTop: 0,
+  viewportLeft: 0,
+  viewportTop: 0,
+  viewportWidth: 0,
+  viewportHeight: 0,
   left: 0,
   top: 0,
   width: 0,
@@ -136,15 +146,30 @@ function stopMarqueeSelection(): void {
   window.removeEventListener("pointermove", handleMarqueePointerMove);
   window.removeEventListener("pointerup", handleMarqueePointerUp);
   window.removeEventListener("pointercancel", handleMarqueePointerUp);
+  if (marqueeAutoScrollFrame) {
+    cancelAnimationFrame(marqueeAutoScrollFrame);
+    marqueeAutoScrollFrame = 0;
+  }
   marquee.active = false;
   marquee.visible = false;
 }
 
 function getMarqueeSelectionRect(): DOMRect {
-  const left = Math.min(marquee.startClientX, marquee.currentClientX);
-  const top = Math.min(marquee.startClientY, marquee.currentClientY);
-  const right = Math.max(marquee.startClientX, marquee.currentClientX);
-  const bottom = Math.max(marquee.startClientY, marquee.currentClientY);
+  const root = rootElement.value;
+
+  if (!root) {
+    return new DOMRect();
+  }
+
+  const rootRect = root.getBoundingClientRect();
+  // 选区起点随列表滚动回推到当前视口，保证滚出视口的文件仍属于选区。
+  const startClientX =
+    rootRect.left + marquee.startContentX - root.scrollLeft;
+  const startClientY = rootRect.top + marquee.startContentY - root.scrollTop;
+  const left = Math.min(startClientX, marquee.currentClientX);
+  const top = Math.min(startClientY, marquee.currentClientY);
+  const right = Math.max(startClientX, marquee.currentClientX);
+  const bottom = Math.max(startClientY, marquee.currentClientY);
 
   return new DOMRect(left, top, right - left, bottom - top);
 }
@@ -183,7 +208,7 @@ function getMarqueeSelectedPaths(): string[] {
   return paths;
 }
 
-function updateMarquee(event: PointerEvent): void {
+function updateMarquee(clientX: number, clientY: number): void {
   const root = rootElement.value;
 
   if (!root) {
@@ -191,17 +216,82 @@ function updateMarquee(event: PointerEvent): void {
   }
 
   const rootRect = root.getBoundingClientRect();
-  const startX = marquee.startClientX - rootRect.left + marquee.startScrollLeft;
-  const startY = marquee.startClientY - rootRect.top + marquee.startScrollTop;
-  const currentX = event.clientX - rootRect.left + root.scrollLeft;
-  const currentY = event.clientY - rootRect.top + root.scrollTop;
+  marquee.currentClientX = clientX;
+  marquee.currentClientY = clientY;
+  marquee.currentContentX = clientX - rootRect.left + root.scrollLeft;
+  marquee.currentContentY = clientY - rootRect.top + root.scrollTop;
+  marquee.viewportLeft = rootRect.left;
+  marquee.viewportTop = rootRect.top;
+  marquee.viewportWidth = rootRect.width;
+  marquee.viewportHeight = rootRect.height;
+  // 选框相对独立遮罩层定位：既不撑高列表，又能被列表边界裁剪。
+  marquee.left = Math.min(
+    marquee.startContentX - root.scrollLeft,
+    marquee.currentContentX - root.scrollLeft,
+  );
+  marquee.top = Math.min(
+    marquee.startContentY - root.scrollTop,
+    marquee.currentContentY - root.scrollTop,
+  );
+  marquee.width = Math.abs(marquee.currentContentX - marquee.startContentX);
+  marquee.height = Math.abs(marquee.currentContentY - marquee.startContentY);
+}
 
-  marquee.currentClientX = event.clientX;
-  marquee.currentClientY = event.clientY;
-  marquee.left = Math.min(startX, currentX);
-  marquee.top = Math.min(startY, currentY);
-  marquee.width = Math.abs(currentX - startX);
-  marquee.height = Math.abs(currentY - startY);
+// 框选停在列表上下边缘时，按距离边缘的远近持续滚动，保持 Windows 文件管理器的交互习惯。
+function getMarqueeAutoScrollDelta(): number {
+  const root = rootElement.value;
+
+  if (!root) {
+    return 0;
+  }
+
+  const rect = root.getBoundingClientRect();
+  const topDistance = marquee.currentClientY - rect.top;
+  const bottomDistance = rect.bottom - marquee.currentClientY;
+
+  if (topDistance < marqueeAutoScrollEdge) {
+    const ratio = 1 - Math.max(topDistance, 0) / marqueeAutoScrollEdge;
+    return -Math.max(1, Math.ceil(ratio * marqueeAutoScrollMaxStep));
+  }
+
+  if (bottomDistance < marqueeAutoScrollEdge) {
+    const ratio = 1 - Math.max(bottomDistance, 0) / marqueeAutoScrollEdge;
+    return Math.max(1, Math.ceil(ratio * marqueeAutoScrollMaxStep));
+  }
+
+  return 0;
+}
+
+function continueMarqueeAutoScroll(): void {
+  marqueeAutoScrollFrame = 0;
+
+  const root = rootElement.value;
+  const delta = getMarqueeAutoScrollDelta();
+
+  if (!marquee.active || !marquee.visible || !root || !delta) {
+    return;
+  }
+
+  const previousScrollTop = root.scrollTop;
+  // 框选矩形可能超出内容边界，不能让它增加可滚动范围。
+  root.scrollTop = Math.min(
+    marquee.maxScrollTop,
+    Math.max(0, previousScrollTop + delta),
+  );
+
+  if (root.scrollTop === previousScrollTop) {
+    return;
+  }
+
+  updateMarquee(marquee.currentClientX, marquee.currentClientY);
+  emit("marqueeSelect", getMarqueeSelectedPaths());
+  marqueeAutoScrollFrame = requestAnimationFrame(continueMarqueeAutoScroll);
+}
+
+function scheduleMarqueeAutoScroll(): void {
+  if (!marqueeAutoScrollFrame) {
+    marqueeAutoScrollFrame = requestAnimationFrame(continueMarqueeAutoScroll);
+  }
 }
 
 function handleListPointerDown(event: PointerEvent): void {
@@ -221,10 +311,19 @@ function handleListPointerDown(event: PointerEvent): void {
   marquee.startClientY = event.clientY;
   marquee.currentClientX = event.clientX;
   marquee.currentClientY = event.clientY;
-  marquee.startScrollLeft = root.scrollLeft;
-  marquee.startScrollTop = root.scrollTop;
-  marquee.left = event.clientX - root.getBoundingClientRect().left + root.scrollLeft;
-  marquee.top = event.clientY - root.getBoundingClientRect().top + root.scrollTop;
+  const rootRect = root.getBoundingClientRect();
+  marquee.startContentX = event.clientX - rootRect.left + root.scrollLeft;
+  marquee.startContentY = event.clientY - rootRect.top + root.scrollTop;
+  marquee.currentContentX = marquee.startContentX;
+  marquee.currentContentY = marquee.startContentY;
+  marquee.viewportLeft = rootRect.left;
+  marquee.viewportTop = rootRect.top;
+  marquee.viewportWidth = rootRect.width;
+  marquee.viewportHeight = rootRect.height;
+  // 在框选矩形显示前记录真实文件内容的底部，防止矩形撑高滚动区域。
+  marquee.maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+  marquee.left = marquee.startContentX - root.scrollLeft;
+  marquee.top = marquee.startContentY - root.scrollTop;
   marquee.width = 0;
   marquee.height = 0;
 
@@ -248,8 +347,9 @@ function handleMarqueePointerMove(event: PointerEvent): void {
 
   event.preventDefault();
   marquee.visible = true;
-  updateMarquee(event);
+  updateMarquee(event.clientX, event.clientY);
   emit("marqueeSelect", getMarqueeSelectedPaths());
+  scheduleMarqueeAutoScroll();
 }
 
 function handleMarqueePointerUp(event: PointerEvent): void {
@@ -264,7 +364,7 @@ function handleMarqueePointerUp(event: PointerEvent): void {
     return;
   }
 
-  updateMarquee(event);
+  updateMarquee(event.clientX, event.clientY);
   emit("marqueeSelect", getMarqueeSelectedPaths());
   stopMarqueeSelection();
 }
@@ -298,16 +398,6 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
         $event.key.toLowerCase() === 'a' &&
         ($event.preventDefault(), emit('selectAll'))
     ">
-    <li
-      v-if="marquee.visible"
-      class="remote-file-marquee"
-      aria-hidden="true"
-      :style="{
-        left: `${marquee.left}px`,
-        top: `${marquee.top}px`,
-        width: `${marquee.width}px`,
-        height: `${marquee.height}px`,
-      }"></li>
     <li
       v-for="node in nodes"
       :key="node.path"
@@ -367,4 +457,25 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
       <small>{{ node.modifyTime ? formatModifyTime(node.modifyTime) : "" }}</small>
     </li>
   </ul>
+  <Teleport to="body">
+    <div
+      v-if="marquee.visible"
+      class="remote-file-marquee-viewport"
+      aria-hidden="true"
+      :style="{
+        left: `${marquee.viewportLeft}px`,
+        top: `${marquee.viewportTop}px`,
+        width: `${marquee.viewportWidth}px`,
+        height: `${marquee.viewportHeight}px`,
+      }">
+      <div
+        class="remote-file-marquee"
+        :style="{
+          left: `${marquee.left}px`,
+          top: `${marquee.top}px`,
+          width: `${marquee.width}px`,
+          height: `${marquee.height}px`,
+        }"></div>
+    </div>
+  </Teleport>
 </template>

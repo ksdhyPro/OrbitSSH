@@ -4,4 +4,5 @@ export type AppMenuAction =
   | "open-about"
   | "open-settings"
   | "open-data-transfer"
+  | "open-port-forwards"
   | "open-update";

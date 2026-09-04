@@ -5,7 +5,7 @@
 <p align="center"><strong>Modern · Performant · Controlled AI Operations</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.3-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.8.1-orange" alt="Version" />
   <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
   <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
   <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />

@@ -85,7 +85,8 @@
   grid-template-columns: minmax(0, 1fr) minmax(62px, auto) 82px;
   align-items: center;
   min-height: 26px;
-  padding: 0 16px 0 36px;
+  /* 与文件行的右侧框选留白对齐。 */
+  padding: 0 46px 0 36px;
   border-top: 1px solid var(--line-translucent-strong);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-faint);
@@ -142,12 +143,20 @@
 
 .remote-file-marquee {
   position: absolute;
-  z-index: 2;
   pointer-events: none;
   border: 1px solid var(--accent-bright);
   border-radius: 4px;
   background: color-mix(in srgb, var(--accent-bright) 18%, transparent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg-deep) 35%, transparent);
+}
+
+/* 选框挂在独立遮罩层，既不影响列表滚动范围，也不会超出列表可视区域。 */
+.remote-file-marquee-viewport {
+  position: fixed;
+  /* 弹窗遮罩层为 10000，选框需位于其上方才能显示。 */
+  z-index: 10001;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .remote-file-empty {
@@ -163,9 +172,10 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
-  width: calc(100% - 12px);
+  /* 文件行右侧固定留白，便于从空白区域开始框选多个文件。 */
+  width: calc(100% - 42px);
   height: 30px;
-  margin: 1px 6px;
+  margin: 1px 36px 1px 6px;
   padding-right: 10px;
   border-radius: 6px;
   color: var(--text-muted);

@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.8.1
+
+1. Improved SFTP marquee selection: both the main SFTP panel and the transfer dialog support multi-selecting from the right-side blank area beside file rows.
+2. Added edge auto-scroll for marquee selection. Dragging to the top or bottom keeps scrolling and expands the selection, then stops reliably at the real content boundary.
+3. Fixed scroll-position rebound, marquee overflow beyond the list, and lost selections while marquee-selecting long file lists.
+
+## v1.8.0
+
+1. Added SSH TCP port-forwarding management for local-to-remote (`-L`) and remote-to-local (`-R`) access. Rules are persisted per server and can be created, edited, started, and disconnected centrally from Tools → Port Forwarding.
+2. Port forwarding now runs through dedicated background SSH connections with live starting, running, and failure status; closing a terminal no longer interrupts an active forward.
+3. Replaced native confirmation prompts for port-forward rules, servers, and server groups with custom in-app confirmation dialogs to prevent subsequent input issues.
+
 ## v1.7.2
 
 1. Standardized dialog content layouts with default spacing provided by AppDialog, removing duplicated or missing outer padding across connection, file transfer, confirmation, update, automation, and AI configuration dialogs.
