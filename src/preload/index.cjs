@@ -28,6 +28,11 @@ const orbitSSHApi = {
     create: input => ipcRenderer.invoke("server:create", input),
     update: input => ipcRenderer.invoke("server:update", input),
     setPinned: input => ipcRenderer.invoke("server:set-pinned", input),
+    setAppearance: input => ipcRenderer.invoke("server:set-appearance", input),
+    listGroups: () => ipcRenderer.invoke("server:groups:list"),
+    createGroup: input => ipcRenderer.invoke("server:groups:create", input),
+    updateGroup: input => ipcRenderer.invoke("server:groups:update", input),
+    deleteGroup: groupId => ipcRenderer.invoke("server:groups:delete", groupId),
     listAutomationTasks: serverId =>
       ipcRenderer.invoke("server:automation-tasks:list", serverId),
     createAutomationTask: input =>

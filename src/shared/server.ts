@@ -11,6 +11,10 @@ export interface ServerConfig {
   privateKeyPath?: string
   passphraseKey?: string
   isPinned?: boolean
+  /** 所属分组，未分组时为空。 */
+  groupId?: string
+  /** 列表条目的自定义背景色，未设置时使用默认背景。 */
+  color?: string
   createdAt: number
   updatedAt: number
 }
@@ -33,6 +37,29 @@ export interface ServerUpdateInput extends ServerInput {
 export interface ServerPinInput {
   id: string
   isPinned: boolean
+}
+
+export interface ServerAppearanceInput {
+  id: string
+  groupId?: string
+  color?: string
+}
+
+export interface ServerGroup {
+  id: string
+  name: string
+  color?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ServerGroupInput {
+  name: string
+  color?: string
+}
+
+export interface ServerGroupUpdateInput extends ServerGroupInput {
+  id: string
 }
 
 /** 绑定到单台服务器的终端常用命令。 */

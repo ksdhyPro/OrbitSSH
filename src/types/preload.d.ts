@@ -9,9 +9,13 @@ import type {
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
+  ServerAppearanceInput,
   ServerAutomationTask,
   ServerAutomationTaskInput,
   ServerInput,
+  ServerGroup,
+  ServerGroupInput,
+  ServerGroupUpdateInput,
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server";
@@ -97,6 +101,11 @@ declare global {
         create: (input: ServerInput) => Promise<ServerConfig>;
         update: (input: ServerUpdateInput) => Promise<ServerConfig>;
         setPinned: (input: ServerPinInput) => Promise<ServerConfig>;
+        setAppearance: (input: ServerAppearanceInput) => Promise<ServerConfig>;
+        listGroups: () => Promise<ServerGroup[]>;
+        createGroup: (input: ServerGroupInput) => Promise<ServerGroup>;
+        updateGroup: (input: ServerGroupUpdateInput) => Promise<ServerGroup>;
+        deleteGroup: (groupId: string) => Promise<boolean>;
         listAutomationTasks: (serverId: string) => Promise<ServerAutomationTask[]>;
         createAutomationTask: (input: ServerAutomationTaskInput) => Promise<ServerAutomationTask>;
         delete: (serverId: string) => Promise<boolean>;

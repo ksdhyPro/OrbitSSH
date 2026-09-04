@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.1
+
+1. Added server group management with create, rename, delete, and drag-to-group support; group assignments are persisted locally.
+2. Added background color settings for individual server and group entries. Entries are uncolored by default, and a custom color picker is available from the unified menu.
+3. Improved server sidebar interactions with theme-aware custom icons for adding servers and groups, and removed drag borders from groups.
+4. Fixed SSH connection timeouts still showing a green status indicator; failed connections now display the failure status correctly.
+5. Fixed the global drag restriction blocking left-sidebar divider resizing, restoring panel-height resizing during connections.
+
 ## v1.7.0
 
 1. Added three AI command permission levels: Approve Every Command, Autonomous, and Full Access. Autonomous is now the default and only requests confirmation for high-risk actions such as deletion, Docker changes, privilege escalation, and sensitive-data access, while legacy permission settings are migrated safely.

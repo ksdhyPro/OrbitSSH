@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from "vue";
 import { defineStore } from "pinia";
-import type { ServerAuthType, ServerConfig, ServerInput } from "../../shared/server";
+import type { ServerAuthType, ServerConfig, ServerGroup, ServerInput } from "../../shared/server";
 import { useCoreStore } from "./useCoreStore";
 
 // 服务器域 store：管理服务器列表、连接表单和增删改查，页面只负责确认弹窗与打开终端。
@@ -8,6 +8,7 @@ export const useServersStore = defineStore("servers", () => {
   const core = useCoreStore();
 
   const servers = ref<ServerConfig[]>([]);
+  const groups = ref<ServerGroup[]>([]);
   const isConnectionDialogOpen = ref(false);
   const formError = ref("");
   const listError = ref("");
@@ -217,6 +218,64 @@ export const useServersStore = defineStore("servers", () => {
     }
   }
 
+  function replaceServer(updatedServer: ServerConfig): void {
+    servers.value = sortServers(servers.value.map(server =>
+      server.id === updatedServer.id ? updatedServer : server,
+    ));
+  }
+
+  async function setServerColor(server: ServerConfig, color?: string): Promise<void> {
+    listError.value = "";
+    try {
+      if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
+      replaceServer(await core.orbitSSHApi.servers.setAppearance({ id: server.id, groupId: server.groupId, color }));
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "更新服务器颜色失败";
+    }
+  }
+
+  async function moveServerToGroup(server: ServerConfig, groupId?: string): Promise<void> {
+    listError.value = "";
+    try {
+      if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
+      replaceServer(await core.orbitSSHApi.servers.setAppearance({ id: server.id, groupId, color: server.color }));
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "移动服务器分组失败";
+    }
+  }
+
+  async function createGroup(name: string): Promise<void> {
+    const normalizedName = name.trim();
+    if (!normalizedName) return;
+    try {
+      if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
+      groups.value = [...groups.value, await core.orbitSSHApi.servers.createGroup({ name: normalizedName })];
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "创建分组失败";
+    }
+  }
+
+  async function updateGroup(group: ServerGroup, input: Pick<ServerGroup, "name" | "color">): Promise<void> {
+    try {
+      if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
+      const updatedGroup = await core.orbitSSHApi.servers.updateGroup({ id: group.id, ...input });
+      groups.value = groups.value.map(item => item.id === updatedGroup.id ? updatedGroup : item);
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "更新分组失败";
+    }
+  }
+
+  async function deleteGroup(groupId: string): Promise<void> {
+    try {
+      if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
+      await core.orbitSSHApi.servers.deleteGroup(groupId);
+      groups.value = groups.value.filter(group => group.id !== groupId);
+      servers.value = servers.value.map(server => server.groupId === groupId ? { ...server, groupId: undefined } : server);
+    } catch (error) {
+      listError.value = error instanceof Error ? error.message : "删除分组失败";
+    }
+  }
+
   // 启动时从主进程读取服务器配置，Renderer 不直接接触本地文件。
   async function loadServers(): Promise<void> {
     isServerListLoading.value = true;
@@ -231,7 +290,12 @@ export const useServersStore = defineStore("servers", () => {
         return;
       }
 
-      servers.value = sortServers(await core.orbitSSHApi.servers.list());
+      const [savedServers, savedGroups] = await Promise.all([
+        core.orbitSSHApi.servers.list(),
+        core.orbitSSHApi.servers.listGroups(),
+      ]);
+      servers.value = sortServers(savedServers);
+      groups.value = savedGroups;
       core.writeRendererLog("服务器列表加载完成", {
         serverCount: servers.value.length,
       });
@@ -245,6 +309,7 @@ export const useServersStore = defineStore("servers", () => {
 
   return {
     servers,
+    groups,
     isConnectionDialogOpen,
     formError,
     listError,
@@ -263,6 +328,11 @@ export const useServersStore = defineStore("servers", () => {
     editServer,
     deleteServer,
     setServerPinned,
+    setServerColor,
+    moveServerToGroup,
+    createGroup,
+    updateGroup,
+    deleteGroup,
     loadServers,
   };
 });

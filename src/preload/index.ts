@@ -7,9 +7,13 @@ import type {
 } from "../shared/local-files.js";
 import type {
   ServerConfig,
+  ServerAppearanceInput,
   ServerAutomationTask,
   ServerAutomationTaskInput,
   ServerInput,
+  ServerGroup,
+  ServerGroupInput,
+  ServerGroupUpdateInput,
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server.js";
@@ -106,6 +110,15 @@ const orbitSSHApi = {
       ipcRenderer.invoke("server:update", input) as Promise<ServerConfig>,
     setPinned: (input: ServerPinInput) =>
       ipcRenderer.invoke("server:set-pinned", input) as Promise<ServerConfig>,
+    setAppearance: (input: ServerAppearanceInput) =>
+      ipcRenderer.invoke("server:set-appearance", input) as Promise<ServerConfig>,
+    listGroups: () => ipcRenderer.invoke("server:groups:list") as Promise<ServerGroup[]>,
+    createGroup: (input: ServerGroupInput) =>
+      ipcRenderer.invoke("server:groups:create", input) as Promise<ServerGroup>,
+    updateGroup: (input: ServerGroupUpdateInput) =>
+      ipcRenderer.invoke("server:groups:update", input) as Promise<ServerGroup>,
+    deleteGroup: (groupId: string) =>
+      ipcRenderer.invoke("server:groups:delete", groupId) as Promise<boolean>,
     listAutomationTasks: (serverId: string) =>
       ipcRenderer.invoke("server:automation-tasks:list", serverId) as Promise<ServerAutomationTask[]>,
     createAutomationTask: (input: ServerAutomationTaskInput) =>

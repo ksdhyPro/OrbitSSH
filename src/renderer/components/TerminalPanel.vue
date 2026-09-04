@@ -328,7 +328,7 @@ watch(
           @keydown.space.prevent="emit('activateTab', tab.id)">
           <span>{{ tab.title }}</span>
           <small
-            :class="{ 'status-disconnected': tab.status === 'disconnected' }"
+            :class="{ 'status-disconnected': tab.status === 'disconnected' || tab.status === 'error' }"
             >{{ getStatusText(tab.status) }}</small
           >
           <button

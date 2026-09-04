@@ -70,13 +70,15 @@ let resizingSidebarPanel: SidebarPanel | null = null;
 let resizingPanelStartHeight = 0;
 let resizingAdjacentSidebarPanel: SidebarPanel | null = null;
 let resizingAdjacentPanelStartHeight = 0;
+let sidebarPanelResizePointerId: number | null = null;
+let sidebarPanelResizeElement: HTMLElement | null = null;
 let sidebarPanelsResizeObserver: ResizeObserver | null = null;
 let stopAppMenuListener: (() => void) | null = null;
 
 const SIDEBAR_PANEL_HEADER_HEIGHT = 34;
 const SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28;
 const SIDEBAR_PANEL_MIN_HEIGHT = 160;
-const SIDEBAR_PANEL_RESIZER_HEIGHT = 6;
+const SIDEBAR_PANEL_RESIZER_HEIGHT = 10;
 
 /** 返回 AI 分隔条拖拽时应使用的内容区右边界。 */
 function getContentShellRightBoundary(): number {
@@ -225,7 +227,7 @@ function isResizingSidebarPanel(panel: SidebarPanel): boolean {
   return isResizingSidebarPanels.value && resizingSidebarPanel === panel;
 }
 
-function handleSidebarPanelResizeMove(event: MouseEvent): void {
+function handleSidebarPanelResizeMove(event: PointerEvent): void {
   if (!isResizingSidebarPanels.value) {
     return;
   }
@@ -267,15 +269,27 @@ function stopSidebarPanelResize(): void {
   resizingSidebarPanel = null;
   resizingAdjacentSidebarPanel = null;
   resizingAdjacentPanelStartHeight = 0;
+  if (sidebarPanelResizeElement && sidebarPanelResizePointerId !== null) {
+    sidebarPanelResizeElement.releasePointerCapture?.(sidebarPanelResizePointerId);
+  }
+  sidebarPanelResizeElement = null;
+  sidebarPanelResizePointerId = null;
   document.body.style.cursor = "";
   document.body.style.userSelect = "";
-  window.removeEventListener("mousemove", handleSidebarPanelResizeMove);
-  window.removeEventListener("mouseup", stopSidebarPanelResize);
+  window.removeEventListener("pointermove", handleSidebarPanelResizeMove, true);
+  window.removeEventListener("pointerup", stopSidebarPanelResize, true);
   persistSidebarLayout();
 }
 
-function startSidebarPanelResize(event: MouseEvent, panel: SidebarPanel): void {
+function startSidebarPanelResize(event: PointerEvent, panel: SidebarPanel): void {
   event.preventDefault();
+  const target = event.currentTarget;
+  if (target instanceof HTMLElement) {
+    // 指针捕获让分隔条在鼠标移入 SSH 终端画布后仍持续收到移动事件。
+    target.setPointerCapture(event.pointerId);
+    sidebarPanelResizeElement = target;
+    sidebarPanelResizePointerId = event.pointerId;
+  }
   sidebarPanelResizeStartY = event.clientY;
   resizingSidebarPanel = panel;
   resizingPanelStartHeight = getSidebarPanelDisplayHeight(
@@ -297,8 +311,9 @@ function startSidebarPanelResize(event: MouseEvent, panel: SidebarPanel): void {
   isResizingSidebarPanels.value = true;
   document.body.style.cursor = "row-resize";
   document.body.style.userSelect = "none";
-  window.addEventListener("mousemove", handleSidebarPanelResizeMove);
-  window.addEventListener("mouseup", stopSidebarPanelResize);
+  // 使用捕获阶段监听，避免 SSH 终端画布拦截指针事件后分隔条无法继续拖动。
+  window.addEventListener("pointermove", handleSidebarPanelResizeMove, true);
+  window.addEventListener("pointerup", stopSidebarPanelResize, true);
 }
 
 /** 记录被拖动的面板，拖放完成后统一写入持久化排序。 */
@@ -411,6 +426,7 @@ const {
 
 const {
   servers,
+  groups,
   isConnectionDialogOpen,
   formError,
   listError,
@@ -428,6 +444,11 @@ const {
   submitConnectionForm,
   selectPrivateKeyFile,
   editServer,
+  createGroup,
+  updateGroup,
+  deleteGroup,
+  moveServerToGroup,
+  setServerColor,
   loadServers,
   setListError,
 } = serversStore;
@@ -928,6 +949,7 @@ onUnmounted(() => {
             <ServerSidebar
               v-if="panel === 'servers'"
               :servers="servers"
+              :groups="groups"
               :runtime-error="runtimeError"
               :is-server-list-loading="isServerListLoading"
               :list-error="listError"
@@ -937,6 +959,11 @@ onUnmounted(() => {
               @open-connection-dialog="openConnectionDialog"
               @open-server-terminal="openServerTerminal"
               @edit-server="editServer"
+              @create-group="createGroup"
+              @update-group="updateGroup"
+              @delete-group="deleteGroup"
+              @move-server-to-group="moveServerToGroup"
+              @set-server-color="setServerColor"
               @set-server-pinned="setServerPinned"
               @delete-server="deleteServer"
               @toggle-collapsed="toggleSidebarPanel('servers')" />
@@ -1010,7 +1037,7 @@ onUnmounted(() => {
             aria-orientation="horizontal"
             :aria-disabled="appSettings.sidebar[panel].collapsed"
             :aria-label="`调整${panel === 'servers' ? '服务器' : panel === 'automation' ? '自定义指令' : '远程文件'}面板高度`"
-            @mousedown="!appSettings.sidebar[panel].collapsed && startSidebarPanelResize($event, panel)"></div>
+            @pointerdown="!appSettings.sidebar[panel].collapsed && startSidebarPanelResize($event, panel)"></div>
         </template>
       </aside>
 

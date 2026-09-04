@@ -2,10 +2,11 @@ import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
-import type { ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
+import type { ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 
 interface ServerStoreSchema {
   servers: ServerConfig[]
+  groups: ServerGroup[]
   passwords: Record<string, string>
   automationTasks: Record<string, ServerAutomationTask[]>
 }
@@ -14,6 +15,7 @@ const store = new Store<ServerStoreSchema>({
   name: 'servers',
   defaults: {
     servers: [],
+    groups: [],
     passwords: {},
     automationTasks: {}
   }
@@ -94,6 +96,30 @@ function savePasswords(passwords: Record<string, string>): void {
   store.set('passwords', passwords)
 }
 
+function getGroups(): ServerGroup[] {
+  return store.get('groups', [])
+}
+
+function saveGroups(groups: ServerGroup[]): void {
+  store.set('groups', groups)
+}
+
+// 颜色只接受 HTML 色板输出的十六进制值，避免把非法 CSS 写入列表样式。
+function normalizeColor(color: unknown): string | undefined {
+  if (color === undefined || color === null || color === '') return undefined
+  if (typeof color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+    throw new Error('颜色格式无效')
+  }
+  return color.toLowerCase()
+}
+
+function normalizeGroupInput(input: ServerGroupInput): ServerGroupInput {
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  if (!name) throw new Error('请填写分组名称')
+  if (name.length > 100) throw new Error('分组名称不能超过 100 个字符')
+  return { name, color: normalizeColor(input.color) }
+}
+
 function getAutomationTasks(): Record<string, ServerAutomationTask[]> {
   return store.get('automationTasks', {})
 }
@@ -105,6 +131,41 @@ function saveAutomationTasks(tasks: Record<string, ServerAutomationTask[]>): voi
 export function listServers(): ServerConfig[] {
   // 已置顶的服务器始终显示在列表前方，其余项目保持原有顺序。
   return getServers().sort((left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)))
+}
+
+export function listServerGroups(): ServerGroup[] {
+  return [...getGroups()]
+}
+
+export function createServerGroup(input: ServerGroupInput): ServerGroup {
+  const normalizedInput = normalizeGroupInput(input)
+  const now = Date.now()
+  const group: ServerGroup = { id: crypto.randomUUID(), ...normalizedInput, createdAt: now, updatedAt: now }
+  saveGroups([...getGroups(), group])
+  return group
+}
+
+export function updateServerGroup(input: ServerGroupUpdateInput): ServerGroup {
+  if (typeof input.id !== 'string' || !input.id.trim()) throw new Error('分组 ID 无效')
+  const normalizedInput = normalizeGroupInput(input)
+  const groups = getGroups()
+  const index = groups.findIndex(group => group.id === input.id)
+  if (index === -1) throw new Error('分组不存在')
+  const group: ServerGroup = { ...groups[index], ...normalizedInput, updatedAt: Date.now() }
+  groups[index] = group
+  saveGroups(groups)
+  return group
+}
+
+export function deleteServerGroup(groupId: string): void {
+  if (typeof groupId !== 'string' || !groupId.trim()) throw new Error('分组 ID 无效')
+  if (!getGroups().some(group => group.id === groupId)) return
+
+  saveGroups(getGroups().filter(group => group.id !== groupId))
+  // 删除分组时保留连接，并将其恢复为未分组状态。
+  saveServers(getServers().map(server => server.groupId === groupId
+    ? { ...server, groupId: undefined, updatedAt: Date.now() }
+    : server))
 }
 
 // 常用命令按 serverId 分区保存，保证不同服务器间不会相互混用。
@@ -389,4 +450,18 @@ export function setServerPinned(input: ServerPinInput): ServerConfig {
   saveServers(servers)
 
   return updatedServer
+}
+
+export function updateServerAppearance(input: ServerAppearanceInput): ServerConfig {
+  if (typeof input.id !== 'string' || !input.id.trim()) throw new Error('服务器 ID 无效')
+  const groupId = typeof input.groupId === 'string' && input.groupId.trim() ? input.groupId.trim() : undefined
+  if (groupId && !getGroups().some(group => group.id === groupId)) throw new Error('目标分组不存在')
+
+  const servers = getServers()
+  const index = servers.findIndex(server => server.id === input.id)
+  if (index === -1) throw new Error('服务器不存在')
+  const server: ServerConfig = { ...servers[index], groupId, color: normalizeColor(input.color), updatedAt: Date.now() }
+  servers[index] = server
+  saveServers(servers)
+  return server
 }
