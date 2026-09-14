@@ -618,6 +618,12 @@
   white-space: pre-wrap;
 }
 
+/* 长命令仅在审批代码区内滚动，避免把批准按钮和输入框撑出窗口。 */
+.ai-approval-popover code {
+  max-height: min(45vh, 420px);
+  overflow-y: auto;
+}
+
 .ai-process-item p,
 .ai-approval-popover p {
   margin: 0;

@@ -62,6 +62,16 @@ test('AI 面板头部和输入操作区允许内容随面板收缩', async () =>
   assert.match(modelTriggerRule ?? '', /flex:\s*0\s+1\s+160px/)
 })
 
+test('待批准的长命令限制显示高度并支持鼠标纵向滚动', async () => {
+  const aiStyle = await readFile(aiStyleUrl, 'utf8')
+  const approvalCommandRule = [
+    ...aiStyle.matchAll(/\.ai-approval-popover code\s*\{[\s\S]*?\n\}/g),
+  ].at(-1)?.[0]
+
+  assert.match(approvalCommandRule ?? '', /max-height:\s*min\(/)
+  assert.match(approvalCommandRule ?? '', /overflow-y:\s*auto/)
+})
+
 test('AI 头部与终端标签栏等高且当前连接使用 Tag 展示', async () => {
   const [componentSource, aiStyle] = await Promise.all([
     readFile(
