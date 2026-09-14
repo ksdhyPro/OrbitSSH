@@ -348,16 +348,22 @@ const timelineItems = computed<DisplayTimelineItem[]>(() => {
 
 const copiedMessageId = ref<string | null>(null);
 let copiedMessageTimer: ReturnType<typeof setTimeout> | null = null;
+let copiedCodeButton: HTMLButtonElement | null = null;
+let copiedCodeTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function writeClipboardText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+  } else if (!copyTextByFallback(text)) {
+    throw new Error("复制失败");
+  }
+}
 
 async function copyMessage(message: AiPanelMessage): Promise<void> {
   if (!message.content) return;
 
   try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(message.content);
-    } else if (!copyTextByFallback(message.content)) {
-      throw new Error("复制失败");
-    }
+    await writeClipboardText(message.content);
 
     copiedMessageId.value = message.id;
     if (copiedMessageTimer) {
@@ -370,6 +376,45 @@ async function copyMessage(message: AiPanelMessage): Promise<void> {
   } catch {
     // 剪贴板权限被拒绝时不打断对话，仅恢复按钮状态。
     copiedMessageId.value = null;
+  }
+}
+
+async function copyCodeBlock(event: MouseEvent): Promise<void> {
+  const container = event.currentTarget as HTMLElement | null;
+  const target = event.target as Element | null;
+  const button = target?.closest<HTMLButtonElement>("[data-ai-code-copy]");
+
+  if (!container || !button || !container.contains(button)) return;
+
+  const code = button.closest(".ai-code-block")?.querySelector("pre code");
+  if (!code?.textContent) return;
+
+  try {
+    await writeClipboardText(code.textContent);
+
+    // 同一时间只保留一个代码块的成功反馈，避免多个计时器修改过期节点。
+    if (copiedCodeTimer) {
+      clearTimeout(copiedCodeTimer);
+    }
+    if (copiedCodeButton && copiedCodeButton !== button) {
+      delete copiedCodeButton.dataset.copied;
+      copiedCodeButton.title = "复制代码";
+      copiedCodeButton.setAttribute("aria-label", "复制代码");
+    }
+
+    copiedCodeButton = button;
+    button.dataset.copied = "true";
+    button.title = "代码已复制";
+    button.setAttribute("aria-label", "代码已复制");
+    copiedCodeTimer = setTimeout(() => {
+      delete button.dataset.copied;
+      button.title = "复制代码";
+      button.setAttribute("aria-label", "复制代码");
+      copiedCodeButton = null;
+      copiedCodeTimer = null;
+    }, 1500);
+  } catch {
+    // 剪贴板权限被拒绝时不打断对话，保留按钮原始状态。
   }
 }
 
@@ -553,6 +598,10 @@ onBeforeUnmount(() => {
 
   if (copiedMessageTimer) {
     clearTimeout(copiedMessageTimer);
+  }
+
+  if (copiedCodeTimer) {
+    clearTimeout(copiedCodeTimer);
   }
 });
 
@@ -752,6 +801,7 @@ function formatDuration(durationMs: number): string {
             <div
               v-if="item.message.role === 'assistant'"
               class="ai-markdown"
+              @click="copyCodeBlock"
               v-html="renderMarkdown(item.message.content)"></div>
             <p v-else>{{ item.message.content }}</p>
           </article>
