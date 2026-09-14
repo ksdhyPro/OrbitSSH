@@ -157,12 +157,8 @@ const modelMenu = reactive({
 const modelMenuItems = computed<ContextMenuItem[]>(() =>
   props.configs.map(config => ({
     key: config.id,
-    label:
-      config.spec === "codex-cli" ? `Codex · ${config.model}` : config.model,
-    desc:
-      config.spec === "codex-cli"
-        ? `思考强度：${config.codexReasoningEffort ?? "medium"}`
-        : config.baseUrl,
+    label: config.model,
+    desc: config.baseUrl,
   })),
 );
 
@@ -171,9 +167,7 @@ const currentModelLabel = computed(() => {
     config => config.id === props.activeConfigId,
   );
   if (!active) return "选择模型";
-  return active.spec === "codex-cli"
-    ? `Codex · ${active.model} · ${active.codexReasoningEffort ?? "medium"}`
-    : active.model;
+  return active.model;
 });
 
 function closeModelMenu(): void {

@@ -5,7 +5,7 @@
 <p align="center"><strong>现代化 · 高性能 · 受控 AI 运维</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.1-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.8.2-orange" alt="Version" />
   <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
   <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
   <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
@@ -52,7 +52,7 @@ OrbitSSH 将 SSH 终端、SFTP 文件管理、服务器间传输、常用自动�
 ### AI 运维助手
 
 - 每个终端标签页维护独立 AI 会话，不混用不同服务器的上下文。
-- 支持 OpenAI 兼容接口，以及本机 Codex CLI 作为只读规划提供商。
+- 支持 DeepSeek、GLM 及其他 OpenAI 兼容接口。
 - 支持流式回复、Markdown 渲染和命令卡片状态：等待审批、执行中、完成、失败、拒绝或取消。
 - 模型只能请求在当前终端执行命令，或在用户明确点名的已保存服务器执行命令；禁止经当前服务器再次 `ssh`、`scp` 或 `sftp` 跳转。
 - 三种权限模式：
@@ -133,7 +133,7 @@ npm run dist-mac
 
 ### 使用 AI
 
-1. 在“设置 → AI”启用 AI，添加 OpenAI 兼容配置，或检测并配置本机 Codex CLI。
+1. 在“设置 → AI”启用 AI，并添加 OpenAI 兼容模型配置。
 2. 选择适合服务器风险的权限模式；生产环境建议使用 `ask`。
 3. 在已连接终端右侧打开 AI 面板，描述现象或目标。
 4. 对需要审批的命令，确认目标服务器、工作目录、命令内容和风险说明后再批准。

@@ -5,8 +5,6 @@ import type {
   AiSettings,
   AppSettings,
   AppThemeMode,
-  CodexCliDetection,
-  CodexReasoningEffort,
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
@@ -64,26 +62,6 @@ const isAiConfigDialogOpen = ref(false);
 const isAiConfigFormDialogOpen = ref(false);
 const editingAiConfigId = ref<string | null>(null);
 const aiConfigMessage = ref("");
-const codexDetection = ref<CodexCliDetection | null>(null);
-const isDetectingCodex = ref(false);
-const isCodexConfigFormDialogOpen = ref(false);
-const codexModel = ref("");
-// 检测失败时允许用户手动指定 Codex CLI 可执行文件地址。
-const codexExecutablePath = ref("");
-const codexReasoningEffort = ref<CodexReasoningEffort>("medium");
-const codexModelOptions: AppSelectOption[] = [
-  { value: "", label: "默认模型" },
-  { value: "gpt-5.6-terra", label: "gpt-5.6-terra" },
-  { value: "gpt-5.6-sol", label: "gpt-5.6-sol" },
-  { value: "gpt-5.5", label: "gpt-5.5" },
-  { value: "gpt-5.4", label: "gpt-5.4" },
-];
-const codexReasoningOptions: AppSelectOption[] = [
-  { value: "low", label: "低", detail: "low" },
-  { value: "medium", label: "中", detail: "medium" },
-  { value: "high", label: "高", detail: "high" },
-  { value: "xhigh", label: "极高", detail: "xhigh" },
-];
 const aiConfigForm = ref({
   model: "",
   baseUrl: "",
@@ -213,85 +191,7 @@ function closeAiConfigDialog(): void {
   isAiConfigDialogOpen.value = false;
   resetAiConfigForm();
   isAiConfigFormDialogOpen.value = false;
-  isCodexConfigFormDialogOpen.value = false;
   aiConfigMessage.value = "";
-  codexModel.value = "";
-  codexExecutablePath.value = "";
-  codexReasoningEffort.value = "medium";
-  codexDetection.value = null;
-}
-
-async function detectLocalCodex(): Promise<void> {
-  if (isDetectingCodex.value) return;
-  isDetectingCodex.value = true;
-  aiConfigMessage.value = "";
-  try {
-    const result = await window.orbitSSH.ai.detectLocalCodex();
-    codexDetection.value = result;
-    if (result.available && result.executablePath) {
-      // 检测成功后直接进入配置，不在列表弹窗中暴露本地可执行文件路径。
-      openCodexConfigForm();
-      return;
-    }
-
-    openCodexConfigForm();
-    aiConfigMessage.value = "未检测到本地 Codex CLI，请手动输入可执行文件地址。";
-  } catch {
-    codexDetection.value = { available: false };
-    openCodexConfigForm();
-    aiConfigMessage.value = "未检测到本地 Codex CLI，请手动输入可执行文件地址。";
-  } finally {
-    isDetectingCodex.value = false;
-  }
-}
-
-function openCodexConfigForm(): void {
-  codexModel.value = "";
-  codexExecutablePath.value = codexDetection.value?.executablePath ?? "";
-  codexReasoningEffort.value = "medium";
-  isCodexConfigFormDialogOpen.value = true;
-}
-
-/** AppSelect 的值为字符串，在这里收窄为 Codex 支持的思考强度。 */
-function updateCodexReasoningEffort(value: string): void {
-  codexReasoningEffort.value = value as CodexReasoningEffort;
-}
-
-function addDetectedCodexCli(): void {
-  const executablePath = codexExecutablePath.value.trim();
-  if (!executablePath) {
-    aiConfigMessage.value = "请输入 Codex CLI 可执行文件地址。";
-    return;
-  }
-  // 留空时明确表示使用本机 Codex 配置的默认模型。
-  const selectedModel = codexModel.value.trim() || "默认模型";
-  const existing = aiConfigDraft.value.find(
-    config =>
-      config.spec === "codex-cli" &&
-      config.codexExecutablePath === executablePath &&
-      config.model === selectedModel &&
-      config.codexReasoningEffort === codexReasoningEffort.value,
-  );
-  if (existing) {
-    selectAiConfig(existing.id);
-    aiConfigMessage.value = "Codex CLI 配置已存在，已切换为当前模型。";
-    return;
-  }
-  const config: AiModelConfig = {
-    id: `ai-${crypto.randomUUID()}`,
-    name: `Codex · ${selectedModel} · ${codexReasoningEffort.value}`,
-    spec: "codex-cli",
-    provider: "codex",
-    baseUrl: "",
-    apiKey: "",
-    model: selectedModel,
-    codexExecutablePath: executablePath,
-    codexReasoningEffort: codexReasoningEffort.value,
-  };
-  const configs = [...aiConfigDraft.value, config];
-  persistAiConfigs(configs, config.id);
-  isCodexConfigFormDialogOpen.value = false;
-  aiConfigMessage.value = "Codex 交接模型已添加并设为当前模型。";
 }
 
 // 关闭新增/编辑子弹窗并清空表单。
@@ -356,7 +256,6 @@ function saveAiConfigForm(): void {
   const normalizedConfig: AiModelConfig = {
     id: editingAiConfigId.value ?? `ai-${crypto.randomUUID()}`,
     name: aiConfigForm.value.model.trim(),
-    spec: "openai",
     provider: "other",
     baseUrl: normalizeBaseUrl(aiConfigForm.value.baseUrl),
     apiKey: aiConfigForm.value.apiKey.trim(),
@@ -712,15 +611,8 @@ function removeAiConfig(configId: string): void {
     @close="closeAiConfigDialog">
     <div class="ai-config-dialog">
       <div class="ai-config-toolbar">
-        <p>API Key 仅本地保存；Codex 使用当前系统已登录的命令行账号。</p>
+        <p>API Key 仅加密保存在本机。</p>
         <div class="ai-config-actions">
-          <button
-            type="button"
-            class="ai-config-mini-button"
-            :disabled="isDetectingCodex"
-            @click="detectLocalCodex">
-            {{ isDetectingCodex ? "检测中..." : "检测本地 Codex" }}
-          </button>
           <button
             type="button"
             class="settings-primary-button"
@@ -761,21 +653,13 @@ function removeAiConfig(configId: string): void {
                   config.id === appSettings.ai.activeConfigId,
               }">
               <td>
-                {{
-                  config.spec === "codex-cli"
-                    ? `Codex · ${config.model}`
-                    : config.model
-                }}
+                {{ config.model }}
               </td>
               <td>
-                {{ config.spec === "codex-cli" ? "Codex 交接" : "OpenAI 兼容" }}
+                OpenAI 兼容
               </td>
               <td>
-                {{
-                  config.spec === "codex-cli"
-                    ? `思考强度：${config.codexReasoningEffort ?? "medium"}`
-                    : maskApiKey(config.apiKey)
-                }}
+                {{ maskApiKey(config.apiKey) }}
               </td>
               <td>
                 <span
@@ -796,7 +680,6 @@ function removeAiConfig(configId: string): void {
                   <button
                     type="button"
                     class="ai-config-mini-button"
-                    :disabled="config.spec === 'codex-cli'"
                     @click="startEditAiConfig(config)">
                     编辑
                   </button>
@@ -813,57 +696,6 @@ function removeAiConfig(configId: string): void {
         </table>
       </div>
     </div>
-  </AppDialog>
-
-  <AppDialog
-    v-if="isCodexConfigFormDialogOpen"
-    title="配置 Codex 交接"
-    width="medium"
-    @close="isCodexConfigFormDialogOpen = false">
-    <form class="ai-config-form" @submit.prevent="addDetectedCodexCli">
-      <p class="ai-config-form-tip">
-        请选择要使用的模型；默认模型会使用本机 Codex 默认模型。
-      </p>
-
-      <label>
-        <span>Codex CLI 地址</span>
-        <input
-          v-model="codexExecutablePath"
-          class="settings-text-input"
-          type="text"
-          placeholder="例如：C:\\Users\\用户名\\AppData\\Roaming\\npm\\codex.cmd"
-          autocomplete="off" />
-      </label>
-
-      <label>
-        <span>模型</span>
-        <AppSelect
-          v-model="codexModel"
-          :options="codexModelOptions"
-          ariaLabel="推荐模型" />
-      </label>
-
-      <label>
-        <span>思考强度</span>
-        <AppSelect
-          :model-value="codexReasoningEffort"
-          :options="codexReasoningOptions"
-          ariaLabel="思考强度"
-          @update:model-value="updateCodexReasoningEffort" />
-      </label>
-
-      <div class="ai-config-form-actions">
-        <button
-          type="button"
-          class="ai-config-mini-button"
-          @click="isCodexConfigFormDialogOpen = false">
-          取消
-        </button>
-        <button type="submit" class="settings-primary-button">
-          添加到对话模型
-        </button>
-      </div>
-    </form>
   </AppDialog>
 
   <!-- 新增/编辑模型：独立子弹窗，避免常驻表单撑高列表弹窗 -->

@@ -5,7 +5,7 @@
 <p align="center"><strong>Modern · Performant · Controlled AI Operations</strong></p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.1-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.8.2-orange" alt="Version" />
   <img src="https://img.shields.io/badge/electron-37.2.0-9feaf9" alt="Electron" />
   <img src="https://img.shields.io/badge/vue-3.5.17-42b883" alt="Vue" />
   <img src="https://img.shields.io/badge/ssh2-1.17.0-red" alt="SSH2" />
@@ -52,7 +52,7 @@ The repository provides a Windows installer and macOS packaging script. Developm
 ### AI operations assistant
 
 - A separate AI conversation for every terminal tab keeps server contexts isolated.
-- OpenAI-compatible providers and the local Codex CLI are supported; Codex CLI acts only as a read-only planning provider.
+- DeepSeek, GLM, and other OpenAI-compatible providers are supported.
 - Streaming replies, Markdown rendering, and command-card states: approval required, running, completed, failed, rejected, or cancelled.
 - The model can request only a command in the current terminal or on a saved server explicitly named by the user. SSH/SCP/SFTP hopping through the current terminal is blocked.
 - Permission modes:
@@ -133,7 +133,7 @@ npm run dist-mac
 
 ### AI
 
-1. In **Settings → AI**, enable AI and add an OpenAI-compatible configuration, or detect and configure the local Codex CLI.
+1. In **Settings → AI**, enable AI and add an OpenAI-compatible model configuration.
 2. Choose a permission mode suited to the server's risk level; `ask` is recommended for production servers.
 3. Open the AI panel next to a connected terminal and describe the symptom or goal.
 4. When approval is required, review the target server, working directory, command, and risk explanation before approving.

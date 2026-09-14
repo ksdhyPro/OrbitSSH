@@ -21,7 +21,6 @@ import type {
 } from "../shared/server";
 import type {
   AppSettings,
-  CodexCliDetection,
   UpdateStatusInfo,
 } from "../shared/settings";
 import type {
@@ -131,7 +130,6 @@ declare global {
         save: (settings: AppSettings) => Promise<AppSettings>;
       };
       ai: {
-        detectLocalCodex: () => Promise<CodexCliDetection>;
         chat: (input: AiChatInput) => Promise<AiChatResult>;
         runApprovedCommand: (
           input: AiApprovedCommandInput,

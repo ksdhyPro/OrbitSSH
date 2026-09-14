@@ -19,7 +19,6 @@ import type {
 } from "../shared/server.js";
 import type {
   AppSettings,
-  CodexCliDetection,
   UpdateStatusInfo,
 } from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
@@ -156,8 +155,6 @@ const orbitSSHApi = {
       ipcRenderer.invoke("settings:save", settings) as Promise<AppSettings>,
   },
   ai: {
-    detectLocalCodex: () =>
-      ipcRenderer.invoke("ai:detect-local-codex") as Promise<CodexCliDetection>,
     chat: (input: AiChatInput) =>
       ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
     runApprovedCommand: (input: AiApprovedCommandInput) =>

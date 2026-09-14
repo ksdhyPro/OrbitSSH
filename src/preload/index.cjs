@@ -68,7 +68,6 @@ const orbitSSHApi = {
     save: settings => ipcRenderer.invoke("settings:save", settings),
   },
   ai: {
-    detectLocalCodex: () => ipcRenderer.invoke("ai:detect-local-codex"),
     chat: input => ipcRenderer.invoke("ai:chat", input),
     runApprovedCommand: input =>
       ipcRenderer.invoke("ai:run-approved-command", input),

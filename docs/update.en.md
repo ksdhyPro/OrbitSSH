@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.8.2
+
+1. Removed the local Codex CLI integration, detection, configuration, and UI entry points. AI models now use OpenAI-compatible endpoints consistently.
+2. Refactored the AI Agent into focused modules for request and approval lifecycle, the Agent loop, action execution, and Electron event delivery, reducing future extension and maintenance costs.
+3. Improved continuous AI diagnostics by increasing the per-turn command limit from 12 to 20 while retaining elapsed-time and repeated-no-progress safeguards.
+
 ## v1.8.1
 
 1. Improved SFTP marquee selection: both the main SFTP panel and the transfer dialog support multi-selecting from the right-side blank area beside file rows.

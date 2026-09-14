@@ -1,5 +1,5 @@
 /** 单次用户请求最多执行的命令数，避免失控循环和不可预期费用。 */
-export const MAX_AI_COMMANDS_PER_TURN = 12;
+export const MAX_AI_COMMANDS_PER_TURN = 20;
 
 /** 单次用户请求的总运行时长上限。 */
 export const MAX_AI_TURN_ELAPSED_MS = 10 * 60 * 1000;

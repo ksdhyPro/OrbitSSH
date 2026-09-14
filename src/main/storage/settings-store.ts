@@ -9,8 +9,6 @@ import {
   type AiModelConfig,
   type AiSettings,
   type AiProvider,
-  type AiApiSpec,
-  type CodexReasoningEffort,
   type AppThemeMode,
   type SidebarPanelSettings,
   type SidebarSettings
@@ -52,13 +50,9 @@ function normalizeIdleDisconnectMinutes(value: unknown): number {
 }
 
 function normalizeAiProvider(value: unknown): AiProvider {
-  return value === 'deepseek' || value === 'glm' || value === 'codex' || value === 'other'
+  return value === 'deepseek' || value === 'glm' || value === 'other'
     ? value
     : 'other'
-}
-
-function normalizeAiSpec(value: unknown): AiApiSpec {
-  return value === 'codex-cli' ? value : 'openai'
 }
 
 function normalizeSidebarPanelSettings(
@@ -93,10 +87,6 @@ function normalizeSidebarSettings(value: Partial<SidebarSettings> | undefined): 
     remoteFiles: normalizeSidebarPanelSettings(value?.remoteFiles, defaultAppSettings.sidebar.remoteFiles),
     panelOrder
   }
-}
-
-function normalizeCodexReasoningEffort(value: unknown): CodexReasoningEffort {
-  return value === 'low' || value === 'high' || value === 'xhigh' ? value : 'medium'
 }
 
 function normalizeString(value: unknown): string {
@@ -138,31 +128,24 @@ function normalizeAiModelConfig(
   const model = normalizeString(value?.model)
   const name = normalizeString(value?.name) || model || `模型 ${index + 1}`
   const baseUrl = normalizeString(value?.baseUrl)
-  const spec = normalizeAiSpec(value?.spec)
-  // 兼容早期版本：当时错误地把 CLI 路径保存到了 model 字段。
-  const legacyExecutablePath = spec === 'codex-cli' && /codex(?:\.exe)?$/i.test(model)
-    ? model
-    : ''
-  const codexExecutablePath = normalizeString(value?.codexExecutablePath) || legacyExecutablePath
-  const normalizedModel = legacyExecutablePath ? '默认模型' : model
 
   return {
     id,
     name,
-    spec,
     provider,
     baseUrl,
     apiKey: normalizeString(value?.apiKey),
-    model: normalizedModel,
-    codexExecutablePath,
-    codexReasoningEffort: normalizeCodexReasoningEffort(value?.codexReasoningEffort)
+    model
   }
 }
 
 function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings {
   const mode = (value as { defaultMode?: unknown } | undefined)?.defaultMode
   const usedIds = new Set<string>()
-  const rawConfigs = Array.isArray(value?.configs) ? value.configs : []
+  const rawConfigs = Array.isArray(value?.configs)
+    // 仅保留当前支持的在线模型配置，升级时自动清理已失效的本地配置。
+    ? value.configs.filter(config => Boolean(normalizeString(config?.baseUrl)))
+    : []
   const configs = rawConfigs.map((item, index) => normalizeAiModelConfig(item, index, usedIds))
   const requestedActiveConfigId = normalizeString(value?.activeConfigId)
   const activeConfigId = configs.some(config => config.id === requestedActiveConfigId)
