@@ -11,7 +11,12 @@ export interface ConnectionSettings {
   keepaliveIntervalSeconds: number
   /** Disconnect idle terminal and main SFTP sessions after this many minutes. 0 disables idle disconnect. */
   idleDisconnectMinutes: number
+  /** 上传、下载和服务器间传输共享的全局并发任务数。 */
+  sftpMaxConcurrentTransfers: number
 }
+
+export const SFTP_TRANSFER_CONCURRENCY_MIN = 1
+export const SFTP_TRANSFER_CONCURRENCY_MAX = 5
 
 export type AppThemeMode = 'dark' | 'light'
 
@@ -107,7 +112,8 @@ export const defaultAppSettings: AppSettings = {
   },
   connection: {
     keepaliveIntervalSeconds: 10,
-    idleDisconnectMinutes: 5
+    idleDisconnectMinutes: 5,
+    sftpMaxConcurrentTransfers: 3
   },
   terminal: {
     fontSize: 13,

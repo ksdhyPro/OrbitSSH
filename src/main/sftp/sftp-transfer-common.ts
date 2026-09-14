@@ -8,6 +8,10 @@ import { createServerConnectOptions } from '../ssh/auth-options.js'
 import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
 import { appConfig } from '../../shared/config.js'
 import type { ServerAuthConfig } from '../../shared/server.js'
+import {
+  SFTP_TRANSFER_CONCURRENCY_MAX,
+  SFTP_TRANSFER_CONCURRENCY_MIN
+} from '../../shared/settings.js'
 import type { FileFingerprintReader } from './file-fingerprint.js'
 
 export interface RawSftpClient {
@@ -45,41 +49,53 @@ interface TransferQueueItem<T> {
 
 const transferQueue: TransferQueueItem<unknown>[] = []
 let activeTransferCount = 0
+let maxConcurrentTransferTasks: number = appConfig.sftp.transfer.maxConcurrentTasks
 
 function getMaxConcurrentTransferTasks(): number {
-  return Math.max(1, appConfig.sftp.transfer.maxConcurrentTasks)
+  return maxConcurrentTransferTasks
 }
 
 function runNextQueuedTransfer(): void {
-  if (activeTransferCount >= getMaxConcurrentTransferTasks()) {
-    return
-  }
+  // 一次补满全部空闲槽位，确保调高并发数后排队任务可以立即生效。
+  while (activeTransferCount < getMaxConcurrentTransferTasks()) {
+    const item = transferQueue.shift()
 
-  const item = transferQueue.shift()
-
-  if (!item) {
-    return
-  }
-
-  activeTransferCount += 1
-  writeAppLog({
-    scope: 'main.sftp',
-    message: '传输任务开始执行',
-    data: {
-      taskId: item.taskId,
-      activeTransferCount,
-      queuedTransferCount: transferQueue.length,
-      maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
+    if (!item) {
+      return
     }
-  })
 
-  void item.run()
-    .then(item.resolve)
-    .catch(item.reject)
-    .finally(() => {
-      activeTransferCount = Math.max(activeTransferCount - 1, 0)
-      runNextQueuedTransfer()
+    activeTransferCount += 1
+    writeAppLog({
+      scope: 'main.sftp',
+      message: '传输任务开始执行',
+      data: {
+        taskId: item.taskId,
+        activeTransferCount,
+        queuedTransferCount: transferQueue.length,
+        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
+      }
     })
+
+    void item.run()
+      .then(item.resolve)
+      .catch(item.reject)
+      .finally(() => {
+        activeTransferCount = Math.max(activeTransferCount - 1, 0)
+        runNextQueuedTransfer()
+      })
+  }
+}
+
+export function setMaxConcurrentTransferTasks(value: number): void {
+  const normalizedValue = Number.isFinite(value)
+    ? Math.min(
+        Math.max(Math.trunc(value), SFTP_TRANSFER_CONCURRENCY_MIN),
+        SFTP_TRANSFER_CONCURRENCY_MAX
+      )
+    : appConfig.sftp.transfer.maxConcurrentTasks
+
+  maxConcurrentTransferTasks = normalizedValue
+  runNextQueuedTransfer()
 }
 
 export function enqueueTransferTask<T>(taskId: string, run: () => Promise<T>): Promise<T> {

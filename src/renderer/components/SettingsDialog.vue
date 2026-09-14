@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type {
-  AiModelConfig,
-  AiSettings,
-  AppSettings,
-  AppThemeMode,
+import {
+  SFTP_TRANSFER_CONCURRENCY_MAX,
+  SFTP_TRANSFER_CONCURRENCY_MIN,
+  type AiModelConfig,
+  type AiSettings,
+  type AppSettings,
+  type AppThemeMode,
 } from "../../shared/settings";
 import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   stepTerminalNumberSetting: [key: "fontSize" | "lineHeight", delta: number];
   updateKeepaliveIntervalSeconds: [value: number];
   updateIdleDisconnectMinutes: [value: number];
+  updateSftpMaxConcurrentTransfers: [value: number];
   updateAiSetting: [key: keyof AiSettings, value: AiSettings[keyof AiSettings]];
   updateAiSettings: [value: AiSettings];
   updateThemeMode: [mode: AppThemeMode];
@@ -36,6 +39,17 @@ const emit = defineEmits<{
 }>();
 
 const shortcutSections = computed(() => getShortcutSections(props.isMac));
+
+const sftpTransferConcurrencyOptions: AppSelectOption[] = Array.from(
+  {
+    length:
+      SFTP_TRANSFER_CONCURRENCY_MAX - SFTP_TRANSFER_CONCURRENCY_MIN + 1,
+  },
+  (_, index) => ({
+    value: String(index + SFTP_TRANSFER_CONCURRENCY_MIN),
+    label: `${index + SFTP_TRANSFER_CONCURRENCY_MIN} 个任务`,
+  }),
+);
 
 const aiModeOptions: AiSettings["defaultMode"][] = [
   "ask",
@@ -480,6 +494,20 @@ function removeAiConfig(configId: string): void {
               placeholder="0"
               @update:model-value="
                 emit('updateIdleDisconnectMinutes', $event)
+              " />
+          </div>
+
+          <div class="settings-field">
+            <div>
+              <h3>SFTP 同时传输数量</h3>
+              <p>上传、下载和服务器间传输共享该并发数量。</p>
+            </div>
+            <AppSelect
+              :model-value="String(appSettings.connection.sftpMaxConcurrentTransfers)"
+              :options="sftpTransferConcurrencyOptions"
+              ariaLabel="SFTP 同时传输数量"
+              @update:model-value="
+                emit('updateSftpMaxConcurrentTransfers', Number($event))
               " />
           </div>
         </section>

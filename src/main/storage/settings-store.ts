@@ -11,7 +11,9 @@ import {
   type AiProvider,
   type AppThemeMode,
   type SidebarPanelSettings,
-  type SidebarSettings
+  type SidebarSettings,
+  SFTP_TRANSFER_CONCURRENCY_MAX,
+  SFTP_TRANSFER_CONCURRENCY_MIN
 } from '../../shared/settings.js'
 
 interface SettingsStoreSchema {
@@ -53,6 +55,18 @@ function normalizeAiProvider(value: unknown): AiProvider {
   return value === 'deepseek' || value === 'glm' || value === 'other'
     ? value
     : 'other'
+}
+
+function normalizeSftpMaxConcurrentTransfers(value: unknown): number {
+  const numericValue = Number(value)
+
+  return Number.isFinite(numericValue)
+    ? clampNumber(
+        Math.trunc(numericValue),
+        SFTP_TRANSFER_CONCURRENCY_MIN,
+        SFTP_TRANSFER_CONCURRENCY_MAX
+      )
+    : defaultAppSettings.connection.sftpMaxConcurrentTransfers
 }
 
 function normalizeSidebarPanelSettings(
@@ -175,7 +189,10 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
     sidebar: normalizeSidebarSettings(sidebarSettings),
     connection: {
       keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(connectionSettings.keepaliveIntervalSeconds),
-      idleDisconnectMinutes: normalizeIdleDisconnectMinutes(connectionSettings.idleDisconnectMinutes)
+      idleDisconnectMinutes: normalizeIdleDisconnectMinutes(connectionSettings.idleDisconnectMinutes),
+      sftpMaxConcurrentTransfers: normalizeSftpMaxConcurrentTransfers(
+        connectionSettings.sftpMaxConcurrentTransfers
+      )
     },
     terminal: {
       fontSize: clampNumber(Number(terminalSettings.fontSize), 10, 24),

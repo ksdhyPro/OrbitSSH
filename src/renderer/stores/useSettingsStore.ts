@@ -42,6 +42,8 @@ export const useSettingsStore = defineStore("settings", () => {
         keepaliveIntervalSeconds:
           appSettings.connection.keepaliveIntervalSeconds,
         idleDisconnectMinutes: appSettings.connection.idleDisconnectMinutes,
+        sftpMaxConcurrentTransfers:
+          appSettings.connection.sftpMaxConcurrentTransfers,
       },
       terminal: {
         fontSize: appSettings.terminal.fontSize,
@@ -111,6 +113,11 @@ export const useSettingsStore = defineStore("settings", () => {
 
   async function updateIdleDisconnectMinutes(value: number): Promise<void> {
     appSettings.connection.idleDisconnectMinutes = value;
+    await saveAppSettings();
+  }
+
+  async function updateSftpMaxConcurrentTransfers(value: number): Promise<void> {
+    appSettings.connection.sftpMaxConcurrentTransfers = value;
     await saveAppSettings();
   }
 
@@ -211,6 +218,7 @@ export const useSettingsStore = defineStore("settings", () => {
     updateTerminalSetting,
     updateKeepaliveIntervalSeconds,
     updateIdleDisconnectMinutes,
+    updateSftpMaxConcurrentTransfers,
     updateAiSetting,
     updateAiSettings,
     updateThemeMode,

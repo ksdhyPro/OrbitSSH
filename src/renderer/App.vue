@@ -378,6 +378,7 @@ const {
   stepTerminalNumberSetting,
   updateKeepaliveIntervalSeconds,
   updateIdleDisconnectMinutes,
+  updateSftpMaxConcurrentTransfers,
   updateAiSetting,
   updateAiSettings,
   updateThemeMode,
@@ -1214,6 +1215,7 @@ onUnmounted(() => {
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
+      @update-sftp-max-concurrent-transfers="updateSftpMaxConcurrentTransfers"
       @update-ai-setting="updateAiSetting"
       @update-ai-settings="updateAiSettings"
       @update-theme-mode="updateThemeMode"

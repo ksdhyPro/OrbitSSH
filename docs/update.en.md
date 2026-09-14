@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.8.3
+
+1. Added an SFTP concurrent transfer setting with a range of 1 to 5 tasks. The global upload, download, and server-to-server transfer queue now runs 3 tasks concurrently by default and applies changes immediately.
+
 ## v1.8.2
 
 1. Removed the local Codex CLI integration, detection, configuration, and UI entry points. AI models now use OpenAI-compatible endpoints consistently.
