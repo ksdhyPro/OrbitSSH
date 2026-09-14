@@ -59,7 +59,7 @@
 
 .ai-panel-header h2 {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 100;
 }
 
 /* 标题与当前连接保持单行，头部高度与终端标签栏一致。 */
@@ -131,7 +131,7 @@
   padding: 0 9px;
   color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 100;
   white-space: nowrap;
 }
 
@@ -364,7 +364,7 @@
 .ai-command-card strong {
   color: var(--text-heading);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 100;
 }
 
 .ai-message p,

@@ -1,7 +1,4 @@
-import type {
-  AiCommandPolicyResult,
-  AiMode,
-} from "../../shared/ai.js";
+import type { AiCommandPolicyResult, AiMode } from "../../shared/ai.js";
 
 export interface AiCommandPermissionResult {
   decision: "execute" | "requires_approval" | "deny";
@@ -33,7 +30,7 @@ export function resolveAiCommandPermission(
   if (mode === "ask") {
     return {
       decision: "requires_approval",
-      reason: "逐命令审批模式要求确认每条命令",
+      reason: "请求批准模式要求确认每条命令",
     };
   }
 

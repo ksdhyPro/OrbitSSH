@@ -13,7 +13,7 @@ function decide(mode, command, risk = "medium", approvalGranted = false) {
   ).decision;
 }
 
-test("逐命令审批模式要求确认所有格式有效的命令", () => {
+test("请求批准模式要求确认所有格式有效的命令", () => {
   assert.equal(decide("ask", "pwd", "low"), "requires_approval");
   assert.equal(decide("ask", "mkdir -p /tmp/demo"), "requires_approval");
 });

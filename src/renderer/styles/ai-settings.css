@@ -26,7 +26,7 @@
   gap: 6px;
   color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 100;
 }
 
 .settings-toggle {
@@ -36,7 +36,7 @@
   gap: 10px;
   color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 550;
+  font-weight: 100;
 }
 
 /* AI 设置的启用态使用暖橙色，完全访问选项持续保留风险提示。 */

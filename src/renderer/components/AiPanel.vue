@@ -82,7 +82,7 @@ const emit = defineEmits<{
 }>();
 
 const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
-  { value: "ask", label: "逐命令审批", icon: aiAskIcon },
+  { value: "ask", label: "请求批准", icon: aiAskIcon },
   { value: "auto", label: "自主执行", icon: aiFullIcon },
   { value: "full_access", label: "完全访问", icon: aiUnrestrictedIcon },
 ];

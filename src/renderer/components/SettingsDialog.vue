@@ -42,8 +42,7 @@ const shortcutSections = computed(() => getShortcutSections(props.isMac));
 
 const sftpTransferConcurrencyOptions: AppSelectOption[] = Array.from(
   {
-    length:
-      SFTP_TRANSFER_CONCURRENCY_MAX - SFTP_TRANSFER_CONCURRENCY_MIN + 1,
+    length: SFTP_TRANSFER_CONCURRENCY_MAX - SFTP_TRANSFER_CONCURRENCY_MIN + 1,
   },
   (_, index) => ({
     value: String(index + SFTP_TRANSFER_CONCURRENCY_MIN),
@@ -58,7 +57,7 @@ const aiModeOptions: AiSettings["defaultMode"][] = [
 ];
 
 const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
-  ask: "逐命令审批",
+  ask: "请求批准",
   auto: "自主执行",
   full_access: "完全访问",
 };
@@ -361,7 +360,7 @@ function removeAiConfig(configId: string): void {
           <header class="settings-content-heading">
             <h1>通用</h1>
           </header>
-        <div class="settings-field">
+          <div class="settings-field">
             <div>
               <h3>主题</h3>
             </div>
@@ -503,7 +502,9 @@ function removeAiConfig(configId: string): void {
               <p>上传、下载和服务器间传输共享该并发数量。</p>
             </div>
             <AppSelect
-              :model-value="String(appSettings.connection.sftpMaxConcurrentTransfers)"
+              :model-value="
+                String(appSettings.connection.sftpMaxConcurrentTransfers)
+              "
               :options="sftpTransferConcurrencyOptions"
               ariaLabel="SFTP 同时传输数量"
               @update:model-value="
@@ -548,9 +549,9 @@ function removeAiConfig(configId: string): void {
               <h3>模型配置</h3>
               <p>{{ aiConfigSummary }}</p>
             </div>
-          <span class="settings-row-arrow" aria-hidden="true">
-            <img :src="chevronRightIcon" alt="" />
-          </span>
+            <span class="settings-row-arrow" aria-hidden="true">
+              <img :src="chevronRightIcon" alt="" />
+            </span>
           </div>
 
           <div class="settings-field">
@@ -645,7 +646,7 @@ function removeAiConfig(configId: string): void {
             type="button"
             class="settings-primary-button"
             @click="startAddAiConfig">
-            新增在线模型
+            新增模型
           </button>
         </div>
       </div>
@@ -683,9 +684,7 @@ function removeAiConfig(configId: string): void {
               <td>
                 {{ config.model }}
               </td>
-              <td>
-                OpenAI 兼容
-              </td>
+              <td>OpenAI 兼容</td>
               <td>
                 {{ maskApiKey(config.apiKey) }}
               </td>

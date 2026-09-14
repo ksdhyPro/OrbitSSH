@@ -58,7 +58,11 @@ onBeforeUnmount(() => {
       <img :class="{ open: isOpen }" :src="chevronRightIcon" alt="" />
     </button>
 
-    <div v-if="isOpen" class="app-select-options" role="listbox" :aria-label="ariaLabel">
+    <div
+      v-if="isOpen"
+      class="app-select-options"
+      role="listbox"
+      :aria-label="ariaLabel">
       <button
         v-for="option in options"
         :key="option.value"
@@ -95,7 +99,7 @@ onBeforeUnmount(() => {
 
 .app-select-value,
 .app-select-options span {
-  font-weight: 600;
+  font-weight: 100;
 }
 
 .app-select-trigger small,

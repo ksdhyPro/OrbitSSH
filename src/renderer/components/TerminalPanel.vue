@@ -43,6 +43,7 @@ const emit = defineEmits<{
   closeSearch: [];
   activateTab: [tabId: string];
   closeTab: [tabId: string];
+  closeTabs: [tabIds: string[]];
   openConnectionDialog: [];
 }>();
 
@@ -58,6 +59,12 @@ const terminalContextMenu = reactive({
   y: 0,
   canCopy: false,
   canPaste: false,
+});
+const tabContextMenu = reactive({
+  open: false,
+  x: 0,
+  y: 0,
+  targetTabId: "",
 });
 const savedAutomationTasks = ref<ServerAutomationTask[]>([]);
 const automationTaskDialog = reactive({
@@ -114,6 +121,22 @@ const terminalContextMenuItems = computed<ContextMenuItem[]>(() => [
     ],
   },
 ]);
+
+const tabContextMenuItems = computed<ContextMenuItem[]>(() => {
+  const targetIndex = props.tabs.findIndex(tab => tab.id === tabContextMenu.targetTabId);
+
+  return [
+    {
+      key: "close-all",
+      label: "关闭全部",
+    },
+    {
+      key: "close-right",
+      label: "关闭右侧终端",
+      disabled: targetIndex < 0 || targetIndex >= props.tabs.length - 1,
+    },
+  ];
+});
 
 function getActiveTerminalTab(): TerminalTab | undefined {
   return props.tabs.find(tab => tab.id === props.activeTabId);
@@ -237,6 +260,42 @@ function closeTerminalContextMenu(): void {
   terminalContextMenu.open = false;
 }
 
+function closeTabContextMenu(): void {
+  tabContextMenu.open = false;
+  tabContextMenu.targetTabId = "";
+}
+
+// 标签右键菜单以当前标签为操作基准，并复用通用菜单的边界定位能力。
+function openTabContextMenu(event: MouseEvent, tabId: string): void {
+  event.preventDefault();
+  event.stopPropagation();
+
+  closeFloatingMenus();
+  tabContextMenu.targetTabId = tabId;
+  tabContextMenu.open = true;
+  const placement = resolveMenuPlacement(
+    { x: event.clientX, y: event.clientY },
+    tabContextMenuItems.value.length,
+  );
+  tabContextMenu.x = placement.x;
+  tabContextMenu.y = placement.y;
+}
+
+function selectTabContextMenuItem(item: ContextMenuItem): void {
+  const targetTabId = tabContextMenu.targetTabId;
+  const targetIndex = props.tabs.findIndex(tab => tab.id === targetTabId);
+  closeTabContextMenu();
+
+  if (item.key === "close-all") {
+    emit("closeTabs", props.tabs.map(tab => tab.id));
+    return;
+  }
+
+  if (item.key === "close-right" && targetIndex >= 0) {
+    emit("closeTabs", props.tabs.slice(targetIndex + 1).map(tab => tab.id));
+  }
+}
+
 // 打开菜单时同步当前终端选区和剪贴板文本状态，用于禁用无效操作。
 async function openTerminalContextMenu(event: MouseEvent): Promise<void> {
   event.preventDefault();
@@ -324,6 +383,7 @@ watch(
           :aria-selected="tab.id === activeTabId"
           tabindex="0"
           @click="emit('activateTab', tab.id)"
+          @contextmenu="openTabContextMenu($event, tab.id)"
           @keydown.enter.prevent="emit('activateTab', tab.id)"
           @keydown.space.prevent="emit('activateTab', tab.id)">
           <span>{{ tab.title }}</span>
@@ -426,6 +486,11 @@ watch(
           @contextmenu="void openTerminalContextMenu($event)"></div>
       </div>
 
+      <ContextMenu
+        :menu="tabContextMenu"
+        :items="tabContextMenuItems"
+        @select="selectTabContextMenuItem"
+        @close="closeTabContextMenu" />
       <ContextMenu
         :menu="terminalContextMenu"
         :items="terminalContextMenuItems"

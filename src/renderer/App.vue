@@ -785,6 +785,21 @@ async function closeTerminalTab(tabId: string): Promise<void> {
   });
 }
 
+// 批量操作按标签顺序逐个关闭，避免多个会话同时清理时相互覆盖激活状态。
+async function closeTerminalTabs(tabIds: string[]): Promise<void> {
+  for (const tabId of tabIds) {
+    try {
+      await closeTerminalTab(tabId);
+    } catch (error) {
+      coreStore.writeRendererLog(
+        "批量关闭终端失败",
+        { tabId, error: error instanceof Error ? error.message : String(error) },
+        "warn",
+      );
+    }
+  }
+}
+
 // 窗口尺寸变化（含最大化/还原）后重新 fit 终端。
 function handleWindowResize(): void {
   refreshSidebarPanelsHeight();
@@ -1083,6 +1098,7 @@ onUnmounted(() => {
         :paste-clipboard-text-to-active-terminal="pasteClipboardTextToActiveTerminal"
         @activate-tab="activateTerminalTab"
         @close-tab="closeTerminalTab"
+        @close-tabs="closeTerminalTabs"
         @update:terminal-search-keyword="terminalSearchKeyword = $event"
         @search="searchActiveTerminal"
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"
