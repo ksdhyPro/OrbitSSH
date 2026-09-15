@@ -56,6 +56,7 @@ export const useSettingsStore = defineStore("settings", () => {
       ai: {
         enabled: appSettings.ai.enabled,
         shareTerminalContext: appSettings.ai.shareTerminalContext,
+        presetPrompt: appSettings.ai.presetPrompt,
         activeConfigId: appSettings.ai.activeConfigId,
         configs: appSettings.ai.configs.map(config => ({ ...config })),
         defaultMode: appSettings.ai.defaultMode,
@@ -134,6 +135,7 @@ export const useSettingsStore = defineStore("settings", () => {
     Object.assign(appSettings.ai, {
       enabled: value.enabled,
       shareTerminalContext: value.shareTerminalContext,
+      presetPrompt: value.presetPrompt,
       activeConfigId: value.activeConfigId,
       configs: value.configs.map(config => ({ ...config })),
       defaultMode: value.defaultMode,

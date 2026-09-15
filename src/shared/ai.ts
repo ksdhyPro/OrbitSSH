@@ -84,6 +84,8 @@ export interface AiChatInput {
   requestId: string;
   conversationId: string;
   mode: AiMode;
+  /** 创建对话时固定的预提示词快照，后续轮次与压缩续接保持不变。 */
+  presetPrompt: string;
   message: string;
   context: AiContextInput;
   history: AiMessage[];

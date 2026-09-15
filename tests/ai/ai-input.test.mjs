@@ -13,6 +13,7 @@ const validInput = {
   requestId: "request-1",
   conversationId: "conversation-1",
   mode: "auto",
+  presetPrompt: "使用简洁中文回答",
   message: "检查磁盘",
   context: { tabId: "tab-1", serverName: "demo" },
   history: [],
@@ -22,6 +23,7 @@ test("AI 输入会归一化并拒绝标签页不匹配", () => {
   const normalized = normalizeAiChatInput(validInput);
   assert.equal(normalized.tabId, validInput.tabId);
   assert.equal(normalized.context.serverName, "demo");
+  assert.equal(normalized.presetPrompt, validInput.presetPrompt);
   assert.throws(
     () => normalizeAiChatInput({ ...validInput, context: { tabId: "tab-2" } }),
     /标签页与当前标签页不匹配/,
@@ -62,6 +64,14 @@ test("批准、拒绝和取消输入必须携带请求身份", () => {
   );
   assert.throws(() => normalizeRejectedApprovalInput({ approvalId: "a" }), /标签页/);
   assert.throws(() => normalizeAiCancelInput({ tabId: "tab-1" }), /请求 ID/);
+});
+
+test("AI 预提示词允许为空并限制最大长度", () => {
+  assert.equal(normalizeAiChatInput({ ...validInput, presetPrompt: "" }).presetPrompt, "");
+  assert.throws(
+    () => normalizeAiChatInput({ ...validInput, presetPrompt: "x".repeat(8_001) }),
+    /预提示词不能超过/,
+  );
 });
 
 test("AI 输入接受三档权限模式", () => {

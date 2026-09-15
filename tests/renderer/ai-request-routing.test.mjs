@@ -41,3 +41,14 @@ test('AI 事件监听器只在 Store 生命周期注册一次', async () => {
   assert.equal(source.match(/onCommandCard\(/g)?.length, 1)
   assert.match(source, /onScopeDispose\(\(\)\s*=>/)
 })
+
+test('预提示词按对话创建时的快照发送', async () => {
+  const source = await readFile(storeSourceUrl, 'utf8')
+
+  assert.match(source, /presetPrompt:\s*string/)
+  assert.match(
+    source,
+    /createConversation\(settingsStore\.appSettings\.ai\.presetPrompt\)/,
+  )
+  assert.match(source, /presetPrompt:\s*conversation\.presetPrompt/)
+})

@@ -81,11 +81,14 @@ export function calculateSummaryMaxTokens(
     estimatedSummaryPromptTokens +
     estimateTokenCount(memory.summary) +
     normalHistoryTokens;
-  const newContextFixedTokens = estimatedFixedRequestTokens + estimateTokenCount({
-    commands: memory.commands,
-    message: input.message,
-    context: input.context,
-  });
+  const newContextFixedTokens =
+    estimatedFixedRequestTokens +
+    estimateTokenCount({
+      commands: memory.commands,
+      message: input.message,
+      context: input.context,
+      presetPrompt: input.presetPrompt ?? "",
+    });
   const summaryMaxTokens = Math.floor(Math.min(
     normalHistoryTokens * summaryHistoryRatio,
     totalTokens * compressionRequestSafetyThreshold - compressionPromptTokens,
@@ -139,6 +142,7 @@ export class AiConversationContextManager {
       history: this.getSegmentHistory(input),
       message: input.message,
       context: input.context,
+      presetPrompt: input.presetPrompt ?? "",
     });
 
     return isContextBudgetReached(

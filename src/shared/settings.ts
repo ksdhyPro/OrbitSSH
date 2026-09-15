@@ -45,6 +45,9 @@ export interface UpdateSettings {
 
 export type AiProvider = 'deepseek' | 'glm' | 'other'
 
+/** 用户预提示词最大长度，避免设置项无限占用模型上下文。 */
+export const AI_PRESET_PROMPT_MAX_CHARS = 8_000
+
 export interface AiModelConfig {
   id: string
   name: string
@@ -60,6 +63,8 @@ export interface AiSettings {
   enabled: boolean
   /** 是否允许把脱敏后的最近终端输出发送给在线模型。 */
   shareTerminalContext: boolean
+  /** 每次 AI 对话请求都会附带的用户自定义预提示词。 */
+  presetPrompt: string
   activeConfigId: string
   configs: AiModelConfig[]
   defaultMode: AiMode
@@ -128,6 +133,7 @@ export const defaultAppSettings: AppSettings = {
   ai: {
     enabled: false,
     shareTerminalContext: false,
+    presetPrompt: '',
     activeConfigId: '',
     configs: [],
     defaultMode: 'auto'

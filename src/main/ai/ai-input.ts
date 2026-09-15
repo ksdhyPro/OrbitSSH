@@ -5,6 +5,7 @@ import type {
   AiMessage,
   AiRejectedCommandInput,
 } from "../../shared/ai.js";
+import { AI_PRESET_PROMPT_MAX_CHARS } from "../../shared/settings.js";
 
 const maxMessageChars = 8_000;
 const maxHistoryCount = 500;
@@ -33,6 +34,11 @@ function normalizeOptionalBoundedString(
   maxChars: number,
 ): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
+  return requireBoundedString(value, label, maxChars);
+}
+
+function normalizeBoundedString(value: unknown, label: string, maxChars: number): string {
+  if (value === undefined || value === null || value === "") return "";
   return requireBoundedString(value, label, maxChars);
 }
 
@@ -95,6 +101,11 @@ export function normalizeAiChatInput(input: unknown): AiChatInput {
       record.mode,
       "AI 模式",
       ["ask", "auto", "full_access"] as const,
+    ),
+    presetPrompt: normalizeBoundedString(
+      record.presetPrompt,
+      "AI 预提示词",
+      AI_PRESET_PROMPT_MAX_CHARS,
     ),
     message: requireBoundedString(record.message, "AI 消息", maxMessageChars),
     context: {

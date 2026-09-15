@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { normalizeStoredAiMode } from '../../shared/ai.js'
 
 import {
+  AI_PRESET_PROMPT_MAX_CHARS,
   defaultAppSettings,
   type AppSettings,
   type AiModelConfig,
@@ -107,6 +108,13 @@ function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normalizeAiPresetPrompt(value: unknown): string {
+  if (typeof value !== 'string') return defaultAppSettings.ai.presetPrompt
+
+  // 保留用户编写的换行与段落，只限制总长度并移除首尾空白。
+  return value.trim().slice(0, AI_PRESET_PROMPT_MAX_CHARS)
+}
+
 function normalizeContextTokenLimitK(value: unknown): number {
   const numericValue = Number(value)
 
@@ -177,6 +185,7 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
   return {
     enabled: Boolean(value?.enabled),
     shareTerminalContext: value?.shareTerminalContext === true,
+    presetPrompt: normalizeAiPresetPrompt(value?.presetPrompt),
     activeConfigId,
     configs,
     defaultMode: normalizeStoredAiMode(mode)

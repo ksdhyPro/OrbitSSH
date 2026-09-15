@@ -79,7 +79,11 @@ async function compressConversation(
     const contextTokenLimitK =
       getActiveContextConfig(settings)?.contextTokenLimitK ?? 0;
     const summaryMaxTokens = contextTokenLimitK > 0
-      ? calculateSummaryMaxTokens(compressionInput, memory, contextTokenLimitK)
+      ? calculateSummaryMaxTokens(
+          compressionInput,
+          memory,
+          contextTokenLimitK,
+        )
       : undefined;
     if (contextTokenLimitK > 0 && !summaryMaxTokens) {
       throw new Error("上下文剩余空间不足，无法生成安全的续接摘要");
@@ -132,7 +136,13 @@ async function runLoopWithContext(
   let retriedAfterCompression = false;
   let compressedDuringRun = false;
 
-  if (conversationContexts.shouldCompress(input, contextTokenLimitK, configId)) {
+  if (
+    conversationContexts.shouldCompress(
+      input,
+      contextTokenLimitK,
+      configId,
+    )
+  ) {
     await compressConversation(input, settings, leadingMessages, signal);
     compressedDuringRun = true;
   }

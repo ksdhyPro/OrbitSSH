@@ -111,6 +111,54 @@
   max-width: 100%;
 }
 
+.ai-preset-prompt-field {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.ai-preset-prompt-input {
+  display: block;
+  width: 100%;
+  height: 108px;
+  min-height: 72px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  text-align: left;
+  line-height: 1.5;
+}
+
+.ai-preset-prompt-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.ai-preset-prompt-input::placeholder {
+  color: var(--text-placeholder);
+}
+
+.ai-preset-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-preset-prompt-actions span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-preset-prompt-actions .settings-primary-button {
+  min-width: 72px;
+  padding: 0 18px;
+}
+
 .ai-settings-content .theme-mode-option.active:not(.is-full-access) {
   border-color: var(--ai-active-color);
   background: var(--ai-active-color);

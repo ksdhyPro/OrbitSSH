@@ -14,6 +14,8 @@ import { useSettingsStore } from "./useSettingsStore";
 interface AiConversationState {
   id: string;
   title: string;
+  /** 对话创建时锁定，设置变更只会影响之后新建的对话。 */
+  presetPrompt: string;
   messages: AiMessage[];
   commandCards: AiCommandCard[];
   contextUsage?: AiContextUsage;
@@ -50,12 +52,16 @@ function createMessage(role: AiMessage["role"], content: string): AiMessage {
   };
 }
 
-function createConversation(title = "新对话"): AiConversationState {
+function createConversation(
+  presetPrompt: string,
+  title = "新对话",
+): AiConversationState {
   const now = Date.now();
 
   return {
     id: crypto.randomUUID(),
     title,
+    presetPrompt,
     messages: [],
     commandCards: [],
     createdAt: now,
@@ -188,7 +194,7 @@ export const useAiStore = defineStore("ai", () => {
       return existing;
     }
 
-    const conversation = createConversation();
+    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
     const session = {
       activeConversationId: conversation.id,
       conversations: [conversation],
@@ -213,7 +219,7 @@ export const useAiStore = defineStore("ai", () => {
       return active;
     }
 
-    const conversation = createConversation();
+    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
     session.activeConversationId = conversation.id;
     session.conversations = [conversation];
 
@@ -366,7 +372,7 @@ export const useAiStore = defineStore("ai", () => {
     }
 
     const session = getTabSession(tabId);
-    const conversation = createConversation();
+    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
 
     sessionsByTabId.value = {
       ...sessionsByTabId.value,
@@ -515,6 +521,7 @@ export const useAiStore = defineStore("ai", () => {
         requestId,
         conversationId,
         mode: mode.value,
+        presetPrompt: conversation.presetPrompt,
         message: content,
         context: plainContext,
         history: requestHistory,

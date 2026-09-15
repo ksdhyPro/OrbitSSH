@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import {
+  AI_PRESET_PROMPT_MAX_CHARS,
   SFTP_TRANSFER_CONCURRENCY_MAX,
   SFTP_TRANSFER_CONCURRENCY_MIN,
   type AiModelConfig,
@@ -81,6 +82,10 @@ const aiConfigForm = ref({
   apiKey: "",
   contextTokenLimitK: 0,
 });
+const aiPresetPromptDraft = ref("");
+const isAiPresetPromptDirty = computed(
+  () => aiPresetPromptDraft.value !== props.appSettings.ai.presetPrompt,
+);
 
 const activeAiConfig = computed(() =>
   props.appSettings.ai.configs.find(
@@ -121,6 +126,7 @@ watch(
   open => {
     if (open) {
       resetAiConfigDraft();
+      resetAiPresetPromptDraft();
     }
   },
   { immediate: true },
@@ -194,6 +200,18 @@ function validateAiConfigForm(
   }
 
   return "";
+}
+
+// 预提示词只在点击保存后写入全局设置，编辑过程保持为本地草稿。
+function resetAiPresetPromptDraft(): void {
+  aiPresetPromptDraft.value = props.appSettings.ai.presetPrompt;
+}
+
+function saveAiPresetPrompt(): void {
+  if (!isAiPresetPromptDirty.value) return;
+
+  aiPresetPromptDraft.value = aiPresetPromptDraft.value.trim();
+  emit("updateAiSetting", "presetPrompt", aiPresetPromptDraft.value);
 }
 
 function resetAiConfigForm(): void {
@@ -586,6 +604,29 @@ function removeAiConfig(configId: string): void {
                   )
                 " />
             </label>
+          </div>
+
+          <div class="settings-field ai-preset-prompt-field">
+            <div>
+              <h3>预提示词</h3>
+              <p>保存后仅对新建对话生效，已有对话继续使用创建时的内容。</p>
+            </div>
+            <textarea
+              v-model="aiPresetPromptDraft"
+              class="settings-text-input ai-preset-prompt-input"
+              :maxlength="AI_PRESET_PROMPT_MAX_CHARS"
+              placeholder="例如：回答前先说明判断依据，命令优先兼容 Debian。"
+              aria-label="AI 预提示词" />
+            <div class="ai-preset-prompt-actions">
+              <span>{{ aiPresetPromptDraft.length }} / {{ AI_PRESET_PROMPT_MAX_CHARS }}</span>
+              <button
+                type="button"
+                class="settings-primary-button"
+                :disabled="!isAiPresetPromptDirty"
+                @click="saveAiPresetPrompt">
+                保存
+              </button>
+            </div>
           </div>
 
           <div class="settings-field">

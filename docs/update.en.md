@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.2
+
+1. Added a system-level AI preset prompt with draft editing, explicit saving, and local persistence, preventing in-progress edits from changing AI behavior.
+2. Added per-conversation preset prompt snapshots. Saved changes apply only to newly created conversations, while existing conversations and compressed context segments retain their original full prompt.
+3. Improved preset prompt safety and context handling with a length limit, preserved priority for built-in permission rules, and Token budget accounting without including the preset prompt in conversation summaries.
+
 ## v1.9.1
 
 1. Improved AI endpoint compatibility by preferring the Responses API and automatically falling back to Chat Completions only when the endpoint or model explicitly does not support it, with runtime compatibility caching to avoid repeated probes.

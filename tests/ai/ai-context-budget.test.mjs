@@ -73,6 +73,19 @@ test("未配置上下文上限时不会主动压缩", () => {
   assert.equal(manager.shouldCompress(oversizedInput, 0, "model-a"), false);
 });
 
+test("预提示词会计入上下文压缩预算", () => {
+  const manager = new AiConversationContextManager();
+
+  assert.equal(manager.shouldCompress(input, 5, "model-a"), false);
+  assert.equal(
+    manager.shouldCompress({
+      ...input,
+      presetPrompt: "规则".repeat(2_500),
+    }, 5, "model-a"),
+    true,
+  );
+});
+
 test("只把明确的模型窗口错误识别为上下文溢出", () => {
   assert.equal(isContextWindowExceededError(400, '{"code":"context_length_exceeded"}'), true);
   assert.equal(isContextWindowExceededError(413, ""), true);
