@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.1
+
+1. Improved AI endpoint compatibility by preferring the Responses API and automatically falling back to Chat Completions only when the endpoint or model explicitly does not support it, with runtime compatibility caching to avoid repeated probes.
+2. Added Responses API adapters for streaming replies, function calls, token usage, and context summaries, while logging the protocol actually used for each request.
+3. Added AI token usage source logs that distinguish provider-reported usage from local estimates and record input, output, and total token counts.
+
 ## v1.9.0
 
 1. Added a per-model AI context token limit in K units, with automatic context compression when usage reaches 80% of the configured window.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -64,4 +65,16 @@ test("已保存服务器工具接受三档权限所需的风险级别", () => {
 
   assert.equal(commands[0].serverName, "backup");
   assert.equal(commands[0].risk, "medium");
+});
+
+test("AI 请求日志明确记录 Token 统计来源和用量", async () => {
+  const providerSource = await readFile(
+    new URL("../../src/main/ai/ai-provider.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(providerSource, /AI Token 用量：接口统计/);
+  assert.match(providerSource, /AI Token 用量：本地估算/);
+  assert.match(providerSource, /promptTokens: resolvedUsage\.promptTokens/);
+  assert.match(providerSource, /totalTokens: resolvedUsage\.totalTokens/);
 });
