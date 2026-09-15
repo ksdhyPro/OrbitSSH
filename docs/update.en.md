@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.9.3
+
+1. Added terminal multi-line paste confirmation. Text containing line breaks is previewed with its line count in an in-app dialog before being pasted, reducing accidental execution.
+2. Improved multi-line input delivery by routing confirmed content through the terminal's native paste flow and the active shell's bracketed-paste mode, preventing continued commands from being executed line by line.
+
 ## v1.9.2
 
 1. Added a system-level AI preset prompt with draft editing, explicit saving, and local persistence, preventing in-progress edits from changing AI behavior.

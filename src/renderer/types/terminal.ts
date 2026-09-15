@@ -25,6 +25,7 @@ export interface TerminalInstance {
   fitAddon: FitAddon;
   searchAddon: SearchAddon;
   searchResultsDisposable: IDisposable;
+  pasteDisposable: IDisposable;
   canvasAddon?: CanvasAddon;
 }
 

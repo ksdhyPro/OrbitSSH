@@ -16,6 +16,7 @@ import { useCoreStore } from "../stores/useCoreStore";
 import { useServersStore } from "../stores/useServersStore";
 import AutomationRunDialog from "./AutomationRunDialog.vue";
 import AutomationTaskDialog from "./AutomationTaskDialog.vue";
+import AppDialog from "./AppDialog.vue";
 import ContextMenu from "./ContextMenu.vue";
 import StatusBar from "./StatusBar.vue";
 
@@ -510,6 +511,31 @@ watch(
         :task="automationRun.task"
         @close="closeAutomationRunDialog"
         @start="startAutomationRun" />
+      <AppDialog
+        v-if="terminalsStore.pendingTerminalPaste"
+        title="确认粘贴多行文本"
+        :description="`检测到 ${terminalsStore.pendingTerminalPaste.lineCount} 行文本，将按原始内容粘贴到终端。`"
+        width="medium"
+        @close="terminalsStore.cancelTerminalPaste">
+        <section class="terminal-paste-confirm">
+          <p>多行内容可能被当前 Shell 立即执行，请确认内容无误后继续。</p>
+          <pre class="terminal-paste-preview">{{ terminalsStore.pendingTerminalPaste.previewText }}</pre>
+          <footer class="dialog-actions">
+            <button
+              type="button"
+              class="ghost-button"
+              @click="terminalsStore.cancelTerminalPaste">
+              取消
+            </button>
+            <button
+              type="button"
+              class="primary-button"
+              @click="terminalsStore.confirmTerminalPaste">
+              确认粘贴（{{ terminalsStore.pendingTerminalPaste.lineCount }} 行）
+            </button>
+          </footer>
+        </section>
+      </AppDialog>
       <StatusBar :active-tab-id="activeTabId" />
     </section>
   </section>

@@ -17,6 +17,10 @@ import type {
 import { copyTextByFallback } from "../utils/clipboard";
 import { parseOsc7Path } from "../utils/path";
 import {
+  attachMultilinePasteListener,
+  createTerminalPasteController,
+} from "../utils/terminal-paste";
+import {
   getTerminalSearchDecorations,
   getTerminalTheme,
 } from "../utils/theme";
@@ -58,7 +62,6 @@ export const useTerminalsStore = defineStore("terminals", () => {
     index: 0,
     total: 0,
   });
-
   const terminalHosts = new Map<string, HTMLElement>();
   const terminalInstances = new Map<string, TerminalInstance>();
   const lastSentTerminalSizes = new Map<string, { cols: number; rows: number }>();
@@ -66,6 +69,21 @@ export const useTerminalsStore = defineStore("terminals", () => {
   const terminalResizeTimers = new Map<string, number>();
   // 独立任务标签只在收到上一条命令的完成标记后，才会发送下一条命令。
   const terminalAutomationRuns = new Map<string, TerminalAutomationRun>();
+  const {
+    pendingTerminalPaste,
+    requestTerminalPaste,
+    cancelTerminalPaste,
+    confirmTerminalPaste,
+    handleTerminalInput,
+  } = createTerminalPasteController({
+    write: (tabId, text) => {
+      void core.orbitSSHApi?.terminals.write(tabId, text);
+    },
+    paste: (tabId, text) =>
+      terminalInstances.get(tabId)?.terminal.paste(text),
+    focus: tabId => terminalInstances.get(tabId)?.terminal.focus(),
+    hasTerminal: tabId => terminalInstances.has(tabId),
+  });
   let removeTerminalDataListener: (() => void) | undefined;
   let removeTerminalStatusListener: (() => void) | undefined;
   let fitScheduleTimer: number | undefined;
@@ -364,8 +382,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
         return;
       }
 
-      void core.orbitSSHApi?.terminals.write(tabId, clipboardText);
-      terminalEntry.terminal.focus();
+      requestTerminalPaste(tabId, clipboardText);
     } catch (error) {
       core.writeRendererLog(
         "终端粘贴文本失败",
@@ -595,8 +612,14 @@ export const useTerminalsStore = defineStore("terminals", () => {
       return true;
     });
 
+    const pasteDisposable = attachMultilinePasteListener(
+      host,
+      tab.id,
+      requestTerminalPaste,
+    );
+
     terminal.onData(data => {
-      void core.orbitSSHApi?.terminals.write(tab.id, data);
+      handleTerminalInput(tab.id, data);
     });
 
     terminal.onResize(({ cols, rows }) => {
@@ -608,6 +631,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       fitAddon,
       searchAddon,
       searchResultsDisposable,
+      pasteDisposable,
       canvasAddon,
     });
     core.writeRendererLog("终端实例初始化耗时", {
@@ -784,12 +808,17 @@ export const useTerminalsStore = defineStore("terminals", () => {
     tabId: string,
     callbacks: Pick<TerminalStoreCallbacks, "beforeClose" | "afterClose"> = {},
   ): Promise<void> {
+    if (pendingTerminalPaste.value?.tabId === tabId) {
+      pendingTerminalPaste.value = null;
+    }
+
     // 用户关闭独立任务标签后立即丢弃队列，避免连接关闭流程中的异步事件继续发送命令。
     terminalAutomationRuns.delete(tabId);
     await callbacks.beforeClose?.(tabId);
     await core.orbitSSHApi?.terminals.close(tabId);
     const terminalEntry = terminalInstances.get(tabId);
     terminalEntry?.searchResultsDisposable.dispose();
+    terminalEntry?.pasteDisposable.dispose();
     terminalEntry?.terminal.dispose();
     terminalInstances.delete(tabId);
     lastSentTerminalSizes.delete(tabId);
@@ -906,8 +935,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
   }
 
   function disposeAllTerminals(): void {
-    terminalInstances.forEach(({ terminal, searchResultsDisposable }) => {
+    terminalInstances.forEach(({ terminal, searchResultsDisposable, pasteDisposable }) => {
       searchResultsDisposable.dispose();
+      pasteDisposable.dispose();
       terminal.dispose();
     });
     terminalInstances.clear();
@@ -921,6 +951,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalAutomationRuns.clear();
     pendingTerminalSizes.clear();
     lastSentTerminalSizes.clear();
+    pendingTerminalPaste.value = null;
     disposeAllTerminals();
   }
 
@@ -933,6 +964,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminalSearchKeyword,
     terminalSearchInput,
     terminalSearchResult,
+    pendingTerminalPaste,
     applyTerminalSettings,
     openTerminalSearch,
     closeTerminalSearch,
@@ -942,6 +974,8 @@ export const useTerminalsStore = defineStore("terminals", () => {
     hasClipboardText,
     copyActiveTerminalSelection,
     pasteClipboardTextToActiveTerminal,
+    cancelTerminalPaste,
+    confirmTerminalPaste,
     setTerminalHost,
     fitTerminal,
     fitActiveTerminal,
