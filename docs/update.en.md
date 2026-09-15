@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.0
+
+1. Added persistent AI conversation history. Conversations are stored locally per server and can be viewed, resumed, or deleted from the "History" list in the AI panel after restarting the app or reopening a terminal. Each server keeps up to 50 conversations, oversized command output is truncated automatically, and conversation titles are generated from the first question.
+2. Deleting a server now also removes all of its AI conversation history to avoid leftover local data. Interrupted command records in restored conversations are marked as cancelled.
+3. Improved sidebar panel resizer interaction: resizers of collapsed panels remain draggable and auto-expand the panel to its minimum height; once the adjacent panel reaches its minimum height, height can be transferred from the bottom auto-fill panel so the divider no longer gets stuck.
+
 ## v1.9.3
 
 1. Added terminal multi-line paste confirmation. Text containing line breaks is previewed with its line count in an in-app dialog before being pasted, reducing accidental execution.

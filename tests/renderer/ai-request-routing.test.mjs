@@ -48,7 +48,7 @@ test('预提示词按对话创建时的快照发送', async () => {
   assert.match(source, /presetPrompt:\s*string/)
   assert.match(
     source,
-    /createConversation\(settingsStore\.appSettings\.ai\.presetPrompt\)/,
+    /createConversation\(\s*settingsStore\.appSettings\.ai\.presetPrompt,/,
   )
   assert.match(source, /presetPrompt:\s*conversation\.presetPrompt/)
 })

@@ -74,6 +74,14 @@ const orbitSSHApi = {
     rejectCommandApproval: input =>
       ipcRenderer.invoke("ai:reject-command-approval", input),
     cancel: input => ipcRenderer.invoke("ai:cancel", input),
+    conversations: {
+      list: serverId => ipcRenderer.invoke("ai:conversations:list", serverId),
+      get: (serverId, conversationId) =>
+        ipcRenderer.invoke("ai:conversations:get", serverId, conversationId),
+      save: input => ipcRenderer.invoke("ai:conversations:save", input),
+      delete: (serverId, conversationId) =>
+        ipcRenderer.invoke("ai:conversations:delete", serverId, conversationId),
+    },
     onStreamChunk: callback => {
       const listener = (_event, payload) => callback(payload);
       ipcRenderer.on("ai:stream-chunk", listener);

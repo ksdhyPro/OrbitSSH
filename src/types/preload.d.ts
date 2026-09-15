@@ -63,7 +63,10 @@ import type {
   AiChatInput,
   AiChatResult,
   AiCommandCardEvent,
+  AiConversationRecord,
+  AiConversationSummary,
   AiRejectedCommandInput,
+  AiSaveConversationInput,
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai";
@@ -138,6 +141,15 @@ declare global {
           input: AiRejectedCommandInput,
         ) => Promise<boolean>;
         cancel: (input: AiCancelInput) => Promise<boolean>;
+        conversations: {
+          list: (serverId: string) => Promise<AiConversationSummary[]>;
+          get: (
+            serverId: string,
+            conversationId: string,
+          ) => Promise<AiConversationRecord | null>;
+          save: (input: AiSaveConversationInput) => Promise<boolean>;
+          delete: (serverId: string, conversationId: string) => Promise<boolean>;
+        };
         onStreamChunk: (
           callback: (event: AiStreamChunkEvent) => void,
         ) => () => void;

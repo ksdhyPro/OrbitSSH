@@ -153,3 +153,29 @@ export interface AiCommandCardEvent {
   conversationId: string;
   card: AiCommandCard;
 }
+
+/** 历史对话列表条目：只含摘要，切换查看时再按 id 拉取完整记录。 */
+export interface AiConversationSummary {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+}
+
+/** 持久化的完整对话记录，主进程按 serverId 分区存储。 */
+export interface AiConversationRecord {
+  id: string;
+  title: string;
+  presetPrompt: string;
+  messages: AiMessage[];
+  commandCards: AiCommandCard[];
+  contextUsage?: AiContextUsage;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AiSaveConversationInput {
+  serverId: string;
+  conversation: AiConversationRecord;
+}

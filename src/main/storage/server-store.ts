@@ -2,6 +2,8 @@ import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
+import { deleteConversationsByServer } from './ai-conversation-store.js'
+
 import type { ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
 
@@ -502,6 +504,9 @@ export function deleteServer(serverId: string): void {
   const portForwardRules = getPortForwardRules()
   delete portForwardRules[serverId]
   savePortForwardRules(portForwardRules)
+
+  // 删除服务器时同步清理其 AI 历史对话，避免本地配置残留。
+  deleteConversationsByServer(serverId)
 }
 
 // 更新置顶状态时只改动目标服务器，避免影响已保存的连接认证信息。

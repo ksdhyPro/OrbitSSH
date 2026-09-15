@@ -5,6 +5,8 @@ import type {
   AiCommandCard,
   AiContextInput,
   AiContextUsage,
+  AiConversationRecord,
+  AiConversationSummary,
   AiMessage,
   AiMode,
 } from "../../shared/ai";
@@ -13,6 +15,8 @@ import { useSettingsStore } from "./useSettingsStore";
 
 interface AiConversationState {
   id: string;
+  /** 对话归属的服务器，持久化与历史列表都按此关联，与临时 tabId 解耦。 */
+  serverId: string;
   title: string;
   /** 对话创建时锁定，设置变更只会影响之后新建的对话。 */
   presetPrompt: string;
@@ -21,6 +25,8 @@ interface AiConversationState {
   contextUsage?: AiContextUsage;
   createdAt: number;
   updatedAt: number;
+  /** 仅摘要态记录携带：历史列表拉取时尚未加载正文，切换时再按 id 取完整记录。 */
+  messageCount?: number;
 }
 
 interface AiTabSessionState {
@@ -42,6 +48,8 @@ interface AiStreamState extends AiActiveRequestState {
 const HISTORY_LIMIT = 500;
 const LONG_CONVERSATION_USER_MESSAGE_LIMIT = 12;
 const LONG_CONVERSATION_COMMAND_CARD_LIMIT = 20;
+// 自动生成对话标题的最大长度（首条用户消息截断）。
+const CONVERSATION_TITLE_LIMIT = 30;
 
 function createMessage(role: AiMessage["role"], content: string): AiMessage {
   return {
@@ -54,12 +62,14 @@ function createMessage(role: AiMessage["role"], content: string): AiMessage {
 
 function createConversation(
   presetPrompt: string,
+  serverId: string,
   title = "新对话",
 ): AiConversationState {
   const now = Date.now();
 
   return {
     id: crypto.randomUUID(),
+    serverId,
     title,
     presetPrompt,
     messages: [],
@@ -67,6 +77,10 @@ function createConversation(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+function createTitleFromMessage(content: string): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, CONVERSATION_TITLE_LIMIT);
 }
 
 // IPC 只能传递可结构化克隆的数据，避免把 Vue 响应式 Proxy 传给主进程。
@@ -103,6 +117,10 @@ export const useAiStore = defineStore("ai", () => {
   const errorsByTabId = ref<Record<string, string>>({});
   const activeRequestsByTabId = ref<Record<string, AiActiveRequestState>>({});
   const streamStatesByRequestId = new Map<string, AiStreamState>();
+  // 终端标签页 → 服务器 ID 的映射，AI 对话历史按 serverId 持久化。
+  const serverIdByTabId = ref<Record<string, string>>({});
+  // 记录每个标签页已加载过哪个服务器的历史，避免来回切换标签页时重复拉取。
+  const loadedServerIdByTabId = new Map<string, string>();
 
   const inputText = computed({
     get: () => draftsByTabId.value[activeTabId.value] ?? "",
@@ -144,6 +162,37 @@ export const useAiStore = defineStore("ai", () => {
       conversation.commandCards.length >= LONG_CONVERSATION_COMMAND_CARD_LIMIT
     );
   });
+  const activeConversationId = computed(
+    () => activeConversation.value?.id ?? "",
+  );
+  // 当前标签页可见的历史对话摘要：只列出有实际内容的对话，按更新时间倒序。
+  const conversations = computed<AiConversationSummary[]>(() => {
+    const session = activeTabId.value
+      ? sessionsByTabId.value[activeTabId.value]
+      : undefined;
+
+    if (!session) {
+      return [];
+    }
+
+    return session.conversations
+      .filter(
+        conversation =>
+          conversation.messages.length > 0 ||
+          (conversation.messageCount ?? 0) > 0,
+      )
+      .map(conversation => ({
+        id: conversation.id,
+        title: conversation.title,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+        messageCount:
+          conversation.messages.length > 0
+            ? conversation.messages.length
+            : (conversation.messageCount ?? 0),
+      }))
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  });
 
   function getActiveRequest(tabId: string): AiActiveRequestState | undefined {
     return activeRequestsByTabId.value[tabId];
@@ -178,12 +227,90 @@ export const useAiStore = defineStore("ai", () => {
     mode.value = nextMode;
   }
 
-  function setActiveTabId(tabId: string): void {
+  function setActiveTabId(tabId: string, serverId = ""): void {
     activeTabId.value = tabId;
 
-    if (tabId) {
-      getActiveConversation(tabId);
+    if (!tabId) {
+      return;
     }
+
+    if (serverId) {
+      serverIdByTabId.value = {
+        ...serverIdByTabId.value,
+        [tabId]: serverId,
+      };
+    }
+
+    getActiveConversation(tabId);
+
+    if (serverId && loadedServerIdByTabId.get(tabId) !== serverId) {
+      loadedServerIdByTabId.set(tabId, serverId);
+      void loadPersistedConversations(tabId, serverId);
+    }
+  }
+
+  // 拉取该服务器的持久化对话摘要，合并进当前标签页会话。
+  // 加载失败不打断聊天，仅记录日志，历史列表显示为空。
+  async function loadPersistedConversations(
+    tabId: string,
+    serverId: string,
+  ): Promise<void> {
+    try {
+      const summaries = await core.orbitSSHApi.ai.conversations.list(serverId);
+
+      // 标签页可能已在请求期间关闭，确认会话仍在再合并。
+      const session = sessionsByTabId.value[tabId];
+      if (!session) {
+        return;
+      }
+
+      const existingIds = new Set(
+        session.conversations.map(conversation => conversation.id),
+      );
+      const stubs = summaries
+        .filter(summary => !existingIds.has(summary.id))
+        .map(summary => createStubConversation(summary, serverId));
+
+      if (stubs.length === 0) {
+        return;
+      }
+
+      sessionsByTabId.value = {
+        ...sessionsByTabId.value,
+        [tabId]: {
+          ...session,
+          conversations: [...session.conversations, ...stubs],
+        },
+      };
+    } catch (error) {
+      core.writeRendererLog(
+        "AI 历史对话加载失败",
+        {
+          tabId,
+          serverId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "warn",
+      );
+    }
+  }
+
+  // 摘要态对话：正文未加载，切换查看时再按 id 拉取完整记录。
+  function createStubConversation(
+    summary: AiConversationSummary,
+    serverId: string,
+  ): AiConversationState {
+    return {
+      id: summary.id,
+      serverId,
+      title: summary.title,
+      presetPrompt: "",
+      messages: [],
+      commandCards: [],
+      createdAt: summary.createdAt,
+      updatedAt: summary.updatedAt,
+      messageCount: summary.messageCount,
+    };
   }
 
   // 每个终端标签页维护独立 AI 会话，避免不同服务器的历史互相污染。
@@ -194,7 +321,10 @@ export const useAiStore = defineStore("ai", () => {
       return existing;
     }
 
-    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
+    const conversation = createConversation(
+      settingsStore.appSettings.ai.presetPrompt,
+      serverIdByTabId.value[tabId] ?? "",
+    );
     const session = {
       activeConversationId: conversation.id,
       conversations: [conversation],
@@ -219,7 +349,10 @@ export const useAiStore = defineStore("ai", () => {
       return active;
     }
 
-    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
+    const conversation = createConversation(
+      settingsStore.appSettings.ai.presetPrompt,
+      serverIdByTabId.value[tabId] ?? "",
+    );
     session.activeConversationId = conversation.id;
     session.conversations = [conversation];
 
@@ -372,7 +505,10 @@ export const useAiStore = defineStore("ai", () => {
     }
 
     const session = getTabSession(tabId);
-    const conversation = createConversation(settingsStore.appSettings.ai.presetPrompt);
+    const conversation = createConversation(
+      settingsStore.appSettings.ai.presetPrompt,
+      serverIdByTabId.value[tabId] ?? "",
+    );
 
     sessionsByTabId.value = {
       ...sessionsByTabId.value,
@@ -382,6 +518,236 @@ export const useAiStore = defineStore("ai", () => {
       },
     };
     setTabError(tabId, "");
+  }
+
+  // 把持久化的完整记录替换进会话（摘要态 → 正文态），保留当前激活 ID。
+  function replaceConversationInSession(
+    tabId: string,
+    record: AiConversationRecord,
+  ): void {
+    const session = sessionsByTabId.value[tabId];
+    if (!session) return;
+
+    const conversation: AiConversationState = {
+      id: record.id,
+      serverId: serverIdByTabId.value[tabId] ?? "",
+      title: record.title,
+      presetPrompt: record.presetPrompt,
+      messages: record.messages,
+      commandCards: record.commandCards,
+      contextUsage: record.contextUsage,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    };
+
+    sessionsByTabId.value = {
+      ...sessionsByTabId.value,
+      [tabId]: {
+        ...session,
+        conversations: session.conversations.map(item =>
+          item.id === record.id ? conversation : item,
+        ),
+      },
+    };
+  }
+
+  // 切换查看/续聊历史对话：与“新对话”一致，有活跃请求或待处理命令时拒绝切换。
+  async function switchConversation(
+    conversationId: string,
+    tabId = activeTabId.value,
+  ): Promise<void> {
+    if (!tabId || getActiveRequest(tabId) || hasBlockingCommandProcess(tabId)) {
+      return;
+    }
+
+    const session = getTabSession(tabId);
+    const target = session.conversations.find(
+      conversation => conversation.id === conversationId,
+    );
+
+    if (!target || session.activeConversationId === conversationId) {
+      return;
+    }
+
+    // 摘要态记录先拉取完整正文，拉取失败保持原状并提示。
+    if (target.messages.length === 0) {
+      const serverId = serverIdByTabId.value[tabId] ?? "";
+      if (!serverId) {
+        return;
+      }
+
+      try {
+        const record = await core.orbitSSHApi.ai.conversations.get(
+          serverId,
+          conversationId,
+        );
+
+        if (!record) {
+          setTabError(tabId, "历史对话不存在或已被删除");
+          return;
+        }
+
+        replaceConversationInSession(tabId, record);
+      } catch (error) {
+        setTabError(
+          tabId,
+          error instanceof Error ? error.message : String(error),
+        );
+        return;
+      }
+    }
+
+    // 重新读取会话：拉取期间状态可能已被其他操作修改。
+    const currentSession = sessionsByTabId.value[tabId];
+    if (
+      !currentSession ||
+      !currentSession.conversations.some(
+        conversation => conversation.id === conversationId,
+      )
+    ) {
+      return;
+    }
+
+    sessionsByTabId.value = {
+      ...sessionsByTabId.value,
+      [tabId]: {
+        ...currentSession,
+        activeConversationId: conversationId,
+      },
+    };
+    setTabError(tabId, "");
+  }
+
+  // 删除历史对话：当前对话有活跃请求或待处理命令时不允许删除。
+  async function deleteConversation(
+    conversationId: string,
+    tabId = activeTabId.value,
+  ): Promise<void> {
+    if (!tabId) {
+      return;
+    }
+
+    const session = sessionsByTabId.value[tabId];
+    if (!session) {
+      return;
+    }
+
+    const target = session.conversations.find(
+      conversation => conversation.id === conversationId,
+    );
+    if (!target) {
+      return;
+    }
+
+    const isActive = session.activeConversationId === conversationId;
+    if (isActive && (getActiveRequest(tabId) || hasBlockingCommandProcess(tabId))) {
+      return;
+    }
+
+    const nextConversations = session.conversations.filter(
+      conversation => conversation.id !== conversationId,
+    );
+
+    if (isActive) {
+      const fallback = nextConversations[0];
+      if (fallback) {
+        session.activeConversationId = fallback.id;
+      } else {
+        const fresh = createConversation(
+          settingsStore.appSettings.ai.presetPrompt,
+          serverIdByTabId.value[tabId] ?? "",
+        );
+        nextConversations.push(fresh);
+        session.activeConversationId = fresh.id;
+      }
+    }
+
+    sessionsByTabId.value = {
+      ...sessionsByTabId.value,
+      [tabId]: {
+        ...session,
+        conversations: nextConversations,
+      },
+    };
+
+    const serverId = serverIdByTabId.value[tabId];
+    if (serverId) {
+      try {
+        await core.orbitSSHApi.ai.conversations.delete(
+          serverId,
+          conversationId,
+        );
+      } catch (error) {
+        core.writeRendererLog(
+          "AI 历史对话删除失败",
+          {
+            tabId,
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "warn",
+        );
+      }
+    }
+  }
+
+  // IPC 只能传递可结构化克隆的数据，持久化前把响应式对象转为普通对象。
+  function toPlainConversationRecord(
+    conversation: AiConversationState,
+  ): AiConversationRecord {
+    return {
+      id: conversation.id,
+      title: conversation.title,
+      presetPrompt: conversation.presetPrompt,
+      messages: toPlainAiHistory(conversation.messages),
+      commandCards: conversation.commandCards.map(card => ({
+        ...card,
+        result: card.result
+          ? {
+              stdout: card.result.stdout,
+              stderr: card.result.stderr,
+              exitCode: card.result.exitCode,
+              timedOut: card.result.timedOut,
+              durationMs: card.result.durationMs,
+            }
+          : undefined,
+      })),
+      contextUsage: conversation.contextUsage
+        ? { ...conversation.contextUsage }
+        : undefined,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    };
+  }
+
+  // 请求结束或卡片终态时写盘；空对话不落盘。写盘失败不影响聊天。
+  function persistConversation(tabId: string, conversationId: string): void {
+    const session = sessionsByTabId.value[tabId];
+    const conversation = session?.conversations.find(
+      item => item.id === conversationId,
+    );
+    const serverId = serverIdByTabId.value[tabId];
+
+    if (!conversation || !serverId || conversation.messages.length === 0) {
+      return;
+    }
+
+    core.orbitSSHApi.ai.conversations
+      .save({
+        serverId,
+        conversation: toPlainConversationRecord(conversation),
+      })
+      .catch(error => {
+        core.writeRendererLog(
+          "AI 对话持久化失败",
+          {
+            tabId,
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "warn",
+        );
+      });
   }
 
   function removeTabSession(tabId: string): void {
@@ -395,12 +761,16 @@ export const useAiStore = defineStore("ai", () => {
     const nextDrafts = { ...draftsByTabId.value };
     const nextErrors = { ...errorsByTabId.value };
     const nextRequests = { ...activeRequestsByTabId.value };
+    const nextServerIds = { ...serverIdByTabId.value };
     delete nextDrafts[tabId];
     delete nextErrors[tabId];
     delete nextRequests[tabId];
+    delete nextServerIds[tabId];
     draftsByTabId.value = nextDrafts;
     errorsByTabId.value = nextErrors;
     activeRequestsByTabId.value = nextRequests;
+    serverIdByTabId.value = nextServerIds;
+    loadedServerIdByTabId.delete(tabId);
     for (const [requestId, streamState] of streamStatesByRequestId) {
       if (streamState.tabId === tabId) streamStatesByRequestId.delete(requestId);
     }
@@ -506,6 +876,15 @@ export const useAiStore = defineStore("ai", () => {
     draftsByTabId.value = { ...draftsByTabId.value, [context.tabId]: "" };
     setActiveRequest(context.tabId, { requestId, conversationId });
 
+    // 首条用户消息自动生成对话标题，供历史列表展示。
+    if (conversation.title === "新对话") {
+      updateConversation(
+        context.tabId,
+        item => ({ ...item, title: createTitleFromMessage(content) }),
+        conversationId,
+      );
+    }
+
     const userMessage = createMessage("user", content);
     // 发送给主进程的历史只包含既有对话，避免把当前空占位回复传给模型。
     const requestHistory = toPlainAiHistory(
@@ -542,6 +921,8 @@ export const useAiStore = defineStore("ai", () => {
         sendError instanceof Error ? sendError.message : String(sendError),
       );
     } finally {
+      // 无论成败都落盘：失败时也保留已发出的用户消息，便于下次续聊。
+      persistConversation(context.tabId, conversationId);
       clearActiveRequest(context.tabId, requestId);
     }
   }
@@ -584,6 +965,7 @@ export const useAiStore = defineStore("ai", () => {
         error: runError instanceof Error ? runError.message : String(runError),
       });
     } finally {
+      persistConversation(card.tabId, conversationId);
       clearActiveRequest(card.tabId, requestId);
     }
   }
@@ -591,6 +973,7 @@ export const useAiStore = defineStore("ai", () => {
   async function rejectApproval(card: AiCommandCard): Promise<void> {
     if (!card.approvalId) {
       updateCommandCard({ ...card, status: "rejected" });
+      persistConversation(card.tabId, card.conversationId);
       return;
     }
 
@@ -602,6 +985,7 @@ export const useAiStore = defineStore("ai", () => {
       });
     } finally {
       updateCommandCard({ ...card, status: "rejected" });
+      persistConversation(card.tabId, card.conversationId);
     }
   }
 
@@ -638,10 +1022,14 @@ export const useAiStore = defineStore("ai", () => {
     contextUsage,
     shouldSuggestNewConversation,
     canUseAi,
+    conversations,
+    activeConversationId,
     togglePanel,
     setMode,
     setActiveTabId,
     startNewConversation,
+    switchConversation,
+    deleteConversation,
     removeTabSession,
     sendMessage,
     runApprovedCommand,

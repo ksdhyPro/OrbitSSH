@@ -1,6 +1,7 @@
 .ai-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  position: relative;
   width: 100%;
   min-width: 0;
   max-width: none;
@@ -158,6 +159,149 @@
 
 .ai-message-list:has(> .ai-empty:only-child) {
   justify-content: center;
+}
+
+/* ----- 历史对话列表：悬浮在消息区顶部，不占文档流 ----- */
+.ai-history-list {
+  position: absolute;
+  top: 50px;
+  left: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  max-height: min(60%, 320px);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  background: var(--bg-elevated-2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.ai-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ai-history-header button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+}
+
+.ai-history-header button:hover {
+  background: var(--accent-hover);
+  color: var(--text-primary);
+}
+
+.ai-history-header button img {
+  width: 12px;
+  height: 12px;
+}
+
+.ai-history-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.ai-history-list ul {
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.ai-history-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-radius: 8px;
+}
+
+.ai-history-list li:hover,
+.ai-history-list li.active {
+  background: var(--accent-hover);
+}
+
+.ai-history-item-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-history-item-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-history-title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-history-meta {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.ai-history-delete {
+  flex: 0 0 auto;
+  width: 24px;
+  margin: auto 4px auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.ai-history-list li:hover .ai-history-delete,
+.ai-history-delete:focus-visible {
+  opacity: 1;
+}
+
+.ai-history-delete:hover {
+  color: var(--text-primary);
+}
+
+.ai-history-delete:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.ai-history-delete img {
+  width: 14px;
+  height: 14px;
 }
 
 /* 消息卡片必须按内容撑高，滚动统一交给外层消息列表处理。 */

@@ -5,6 +5,7 @@ import type {
   AiCommandStatus,
   AiContextInput,
   AiContextUsage,
+  AiConversationSummary,
   AiMode,
 } from "../../shared/ai";
 import type { AiModelConfig } from "../../shared/settings";
@@ -17,6 +18,7 @@ import aiAssistantIcon from "../assets/icons/ai-assistant.png";
 import aiFullIcon from "../assets/icons/ai-full.svg";
 import aiUnrestrictedIcon from "../assets/icons/ai-unrestricted.svg";
 import copyIcon from "../assets/icons/copy-ai.svg";
+import trashIcon from "../assets/icons/trash.svg";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { renderMarkdown } from "../utils/markdown";
 import { resolveMenuPlacement } from "../utils/menu-position";
@@ -67,6 +69,8 @@ const props = defineProps<{
   commandCards: AiCommandCard[];
   contextUsage?: AiContextUsage;
   shouldSuggestNewConversation: boolean;
+  conversations: AiConversationSummary[];
+  activeConversationId: string;
   context: AiContextInput;
   configs: AiModelConfig[];
   activeConfigId: string;
@@ -79,6 +83,8 @@ const emit = defineEmits<{
   send: [];
   stop: [];
   startNewConversation: [];
+  switchConversation: [conversationId: string];
+  deleteConversation: [conversationId: string];
   runApproved: [card: AiCommandCard];
   rejectApproval: [card: AiCommandCard];
   selectModel: [configId: string];
@@ -233,6 +239,41 @@ const statusLabels: Record<AiCommandStatus, string> = {
   requires_approval: "等待批准",
   rejected: "已拒绝",
 };
+
+// ----- 历史对话列表 -----
+const historyOpen = ref(false);
+
+function toggleHistory(): void {
+  historyOpen.value = !historyOpen.value;
+}
+
+// 有活跃请求或待处理命令时切换会被 store 静默拒绝，这里直接禁用点击。
+const canSwitchConversation = computed(
+  () => !props.isSending && !hasPendingApproval.value && !hasRunningCommand.value,
+);
+
+function handleSwitchConversation(conversationId: string): void {
+  if (!canSwitchConversation.value) return;
+  historyOpen.value = false;
+  emit("switchConversation", conversationId);
+}
+
+function handleDeleteConversation(conversationId: string): void {
+  if (props.isSending && conversationId === props.activeConversationId) return;
+  emit("deleteConversation", conversationId);
+}
+
+function formatConversationTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const dateText = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const timeText = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+  return date.getFullYear() === now.getFullYear()
+    ? `${dateText} ${timeText}`
+    : `${date.getFullYear()}-${dateText} ${timeText}`;
+}
 
 // 正在流式接收中的 assistant 消息 ID 集合，用于添加打字光标。
 // agent loop 串行执行，同一时刻只有最后一条 assistant 消息在流式。
@@ -730,6 +771,14 @@ function formatDuration(durationMs: number): string {
         <div class="ai-panel-header-actions">
           <button
             type="button"
+            class="ai-new-conversation-btn ai-history-toggle-btn"
+            title="历史对话"
+            :disabled="!context.tabId"
+            @click="toggleHistory">
+            历史
+          </button>
+          <button
+            type="button"
             class="ai-new-conversation-btn"
             title="新对话"
             :disabled="
@@ -746,6 +795,45 @@ function formatDuration(durationMs: number): string {
           </button>
         </div>
       </header>
+
+      <div v-if="historyOpen" class="ai-history-list">
+        <header class="ai-history-header">
+          <span>历史对话</span>
+          <button type="button" title="收起列表" @click="historyOpen = false">
+            <img :src="closeIcon" alt="收起" />
+          </button>
+        </header>
+        <p v-if="conversations.length === 0" class="ai-history-empty">
+          暂无历史对话
+        </p>
+        <ul v-else>
+          <li
+            v-for="item in conversations"
+            :key="item.id"
+            :class="{ active: item.id === activeConversationId }">
+            <button
+              type="button"
+              class="ai-history-item-main"
+              :disabled="!canSwitchConversation"
+              :title="item.title"
+              @click="handleSwitchConversation(item.id)">
+              <span class="ai-history-title">{{ item.title }}</span>
+              <span class="ai-history-meta">
+                {{ formatConversationTime(item.updatedAt) }} ·
+                {{ item.messageCount }} 条消息
+              </span>
+            </button>
+            <button
+              type="button"
+              class="ai-history-delete"
+              title="删除该对话"
+              :disabled="isSending && item.id === activeConversationId"
+              @click.stop="handleDeleteConversation(item.id)">
+              <img :src="trashIcon" alt="删除" />
+            </button>
+          </li>
+        </ul>
+      </div>
 
       <section
         ref="messageListEl"

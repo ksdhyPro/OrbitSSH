@@ -241,16 +241,20 @@ function handleSidebarPanelResizeMove(event: PointerEvent): void {
   const adjacentPanel = resizingAdjacentSidebarPanel;
 
   if (adjacentPanel && !isLastSidebarPanel(adjacentPanel)) {
-    // 中间分隔线直接在两侧面板间转移高度，避免错误挤占最底部面板的剩余空间。
+    // 中间分隔线优先在两侧面板间转移高度；相邻面板已到最小高度时，
+    // 允许从底部自动填充面板的剩余空间取高度，避免分隔线被完全卡死。
+    const adjacentSlack = resizingAdjacentPanelStartHeight
+      - getSidebarPanelMinimumHeight(adjacentPanel);
     const appliedDelta = Math.min(
       Math.max(
         Math.round(requestedDelta),
         getSidebarPanelMinimumHeight(sourcePanel) - resizingPanelStartHeight,
       ),
-      resizingAdjacentPanelStartHeight - getSidebarPanelMinimumHeight(adjacentPanel),
+      Math.max(adjacentSlack, getSidebarPanelMaxHeight(sourcePanel) - resizingPanelStartHeight),
     );
+    const adjacentDelta = Math.min(appliedDelta, Math.max(adjacentSlack, 0));
     appSettings.sidebar[sourcePanel].height = resizingPanelStartHeight + appliedDelta;
-    appSettings.sidebar[adjacentPanel].height = resizingAdjacentPanelStartHeight - appliedDelta;
+    appSettings.sidebar[adjacentPanel].height = resizingAdjacentPanelStartHeight - adjacentDelta;
   } else {
     // 下方为自动填充的末尾面板时，由末尾面板吸收高度变化，但仍保留它的最小高度。
     appSettings.sidebar[sourcePanel].height = clampSidebarPanelHeight(
@@ -285,6 +289,13 @@ function stopSidebarPanelResize(): void {
 
 function startSidebarPanelResize(event: PointerEvent, panel: SidebarPanel): void {
   event.preventDefault();
+
+  // 折叠面板的分隔条仍允许拖拽；开始调整时先恢复到最小可用高度。
+  if (appSettings.sidebar[panel].collapsed) {
+    appSettings.sidebar[panel].collapsed = false;
+    appSettings.sidebar[panel].height = SIDEBAR_PANEL_MIN_HEIGHT;
+  }
+
   const target = event.currentTarget;
   if (target instanceof HTMLElement) {
     // 指针捕获让分隔条在鼠标移入 SSH 终端画布后仍持续收到移动事件。
@@ -476,6 +487,8 @@ const {
   commandCards: aiCommandCards,
   contextUsage: aiContextUsage,
   shouldSuggestNewConversation,
+  conversations: aiConversations,
+  activeConversationId: aiActiveConversationId,
 } = storeToRefs(aiStore);
 
 const {
@@ -483,6 +496,8 @@ const {
   setMode: setAiMode,
   setActiveTabId: setAiActiveTabId,
   startNewConversation: startNewAiConversation,
+  switchConversation: switchAiConversation,
+  deleteConversation: deleteAiConversation,
   removeTabSession: removeAiTabSession,
   sendMessage: sendAiMessage,
   runApprovedCommand: runAiApprovedCommand,
@@ -867,10 +882,11 @@ watch(
 );
 
 // AI 面板跟随当前终端标签页切换，确保不同服务器的对话历史互相隔离。
+// 同时携带 serverId，用于按服务器加载持久化的 AI 历史对话。
 watch(
-  activeTabId,
-  tabId => {
-    setAiActiveTabId(tabId);
+  activeTab,
+  tab => {
+    setAiActiveTabId(tab?.id ?? "", tab?.serverId ?? "");
   },
   { immediate: true },
 );
@@ -1067,14 +1083,12 @@ onUnmounted(() => {
               'sidebar-panel-resizer',
               {
                 active: isResizingSidebarPanel(panel),
-                disabled: appSettings.sidebar[panel].collapsed,
               },
             ]"
             role="separator"
             aria-orientation="horizontal"
-            :aria-disabled="appSettings.sidebar[panel].collapsed"
             :aria-label="`调整${panel === 'servers' ? '服务器' : panel === 'automation' ? '自定义指令' : '远程文件'}面板高度`"
-            @pointerdown="!appSettings.sidebar[panel].collapsed && startSidebarPanelResize($event, panel)"></div>
+            @pointerdown="startSidebarPanelResize($event, panel)"></div>
         </template>
       </aside>
 
@@ -1136,6 +1150,8 @@ onUnmounted(() => {
         :command-cards="aiCommandCards"
         :context-usage="aiContextUsage"
         :should-suggest-new-conversation="shouldSuggestNewConversation"
+        :conversations="aiConversations"
+        :active-conversation-id="aiActiveConversationId"
         :context="aiContext"
         :configs="appSettings.ai.configs"
         :active-config-id="appSettings.ai.activeConfigId"
@@ -1145,6 +1161,8 @@ onUnmounted(() => {
         @send="sendAiMessage(aiContext)"
         @stop="cancelAiMessage(aiContext)"
         @start-new-conversation="startNewAiConversation(activeTabId)"
+        @switch-conversation="switchAiConversation($event)"
+        @delete-conversation="deleteAiConversation($event)"
         @run-approved="runAiApprovedCommand"
         @reject-approval="rejectAiApproval"
         @select-model="updateAiSetting('activeConfigId', $event)" />
