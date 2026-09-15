@@ -4,6 +4,7 @@ import type {
   AiCommandCard,
   AiCommandStatus,
   AiContextInput,
+  AiContextUsage,
   AiMode,
 } from "../../shared/ai";
 import type { AiModelConfig } from "../../shared/settings";
@@ -20,6 +21,7 @@ import { closeFloatingMenus } from "../utils/floating-menu";
 import { renderMarkdown } from "../utils/markdown";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import { copyTextByFallback } from "../utils/clipboard";
+import AiContextUsageRing from "./AiContextUsageRing.vue";
 import ContextMenu from "./ContextMenu.vue";
 
 type AiPanelMessage = {
@@ -63,6 +65,7 @@ const props = defineProps<{
   error: string;
   messages: AiPanelMessage[];
   commandCards: AiCommandCard[];
+  contextUsage?: AiContextUsage;
   shouldSuggestNewConversation: boolean;
   context: AiContextInput;
   configs: AiModelConfig[];
@@ -162,10 +165,14 @@ const modelMenuItems = computed<ContextMenuItem[]>(() =>
   })),
 );
 
-const currentModelLabel = computed(() => {
-  const active = props.configs.find(
+const activeModelConfig = computed(() =>
+  props.configs.find(
     config => config.id === props.activeConfigId,
-  );
+  ),
+);
+
+const currentModelLabel = computed(() => {
+  const active = activeModelConfig.value;
   if (!active) return "选择模型";
   return active.model;
 });
@@ -901,21 +908,26 @@ function formatDuration(durationMs: number): string {
           </div>
         </article>
         <p v-if="error" class="ai-error">{{ error }}</p>
-        <textarea
-          ref="composeInputEl"
-          :value="inputText"
-          rows="3"
-          placeholder="向 AI 询问这台服务器..."
-          :disabled="isSending"
-          @input="
-            emit(
-              'updateInputText',
-              ($event.target as HTMLTextAreaElement).value,
-            )
-          "
-          @compositionstart="handleComposeCompositionStart"
-          @compositionend="handleComposeCompositionEnd"
-          @keydown.enter.exact="handleComposeEnterKeydown"></textarea>
+        <div class="ai-compose-input-wrap">
+          <textarea
+            ref="composeInputEl"
+            :value="inputText"
+            rows="3"
+            placeholder="向 AI 询问这台服务器..."
+            :disabled="isSending"
+            @input="
+              emit(
+                'updateInputText',
+                ($event.target as HTMLTextAreaElement).value,
+              )
+            "
+            @compositionstart="handleComposeCompositionStart"
+            @compositionend="handleComposeCompositionEnd"
+            @keydown.enter.exact="handleComposeEnterKeydown"></textarea>
+          <AiContextUsageRing
+            :config="activeModelConfig"
+            :usage="contextUsage" />
+        </div>
         <div class="ai-compose-actions">
           <button
             type="button"

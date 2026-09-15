@@ -29,6 +29,16 @@
   font-weight: 100;
 }
 
+.ai-config-number-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-config-number-input .settings-text-input {
+  flex: 1;
+}
+
 .settings-toggle {
   display: flex;
   align-items: center;

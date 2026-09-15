@@ -136,3 +136,29 @@ test("命令执行历史使用标准 assistant tool call 和 tool result", () =>
   assert.equal("name" in toolResult, false);
   assert.match(toolResult.content, /"timedOut":false/);
 });
+
+test("新上下文段保留历史命令及完整指令回复", () => {
+  const stdout = "result-".repeat(1_000);
+  const command = {
+    toolCallId: "remembered-call",
+    toolName: "run_shell_command",
+    command: "journalctl -u nginx",
+    reason: "检查日志",
+    risk: "low",
+    result: {
+      stdout,
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      durationMs: 5,
+    },
+  };
+  const messages = buildAiMessages(input, [], "", undefined, {
+    summary: "用户正在排查 nginx。",
+    commands: [command],
+  });
+  const toolResult = messages.find(message => message.tool_call_id === "remembered-call");
+
+  assert.match(messages[1].content, /用户正在排查 nginx/);
+  assert.equal(JSON.parse(toolResult.content).stdout, stdout);
+});

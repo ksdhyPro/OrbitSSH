@@ -89,10 +89,20 @@ export interface AiChatInput {
   history: AiMessage[];
 }
 
+export interface AiContextUsage {
+  configId: string;
+  usedTokens: number;
+  maxTokens: number;
+  percent: number;
+  source: "provider" | "estimated";
+}
+
 export interface AiChatResult {
   // 主进程把 agent loop 每一轮的 AI 回复作为独立消息返回，前端用于和流式占位对账。
   messages: AiMessage[];
   commandCards: AiCommandCard[];
+  /** 当前模型已配置上下文上限时返回，供输入框展示使用进度。 */
+  contextUsage?: AiContextUsage;
 }
 
 export interface AiApprovedCommandInput {

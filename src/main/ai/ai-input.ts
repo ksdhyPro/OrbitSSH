@@ -7,8 +7,8 @@ import type {
 } from "../../shared/ai.js";
 
 const maxMessageChars = 8_000;
-const maxHistoryCount = 24;
-const maxHistoryChars = 64_000;
+const maxHistoryCount = 500;
+const maxHistoryChars = 1_000_000;
 const maxCommandChars = 4_096;
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {

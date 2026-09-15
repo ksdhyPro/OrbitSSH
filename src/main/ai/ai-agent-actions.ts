@@ -58,6 +58,7 @@ export interface ExecuteAgentActionInput {
   executedCommands: ExecutedAiCommandContext[];
   messages: AiMessage[];
   storeApproval: (approvalId: string, state: PendingApprovalState) => void;
+  onCommandExecuted?: (command: ExecutedAiCommandContext) => void;
   approval?: {
     id: string;
     cardId: string;
@@ -315,33 +316,51 @@ async function executeShellAction(
         durationMs: result.durationMs,
       },
     });
+    const executedCommand: ExecutedAiCommandContext = {
+      toolCallId: action.toolCallId,
+      toolName: "run_shell_command",
+      command: action.command,
+      reason: action.reason,
+      risk: action.risk,
+      workingDirectory: getWorkingDirectory(input),
+      result,
+    };
+    request.onCommandExecuted?.(executedCommand);
     return {
       status: "continue",
       commandCards: nextCards,
       executedCommands: [
         ...request.executedCommands,
-        {
-          toolCallId: action.toolCallId,
-          toolName: "run_shell_command",
-          command: action.command,
-          reason: action.reason,
-          risk: action.risk,
-          workingDirectory: getWorkingDirectory(input),
-          result,
-        },
+        executedCommand,
       ],
     };
   } catch (error) {
     const cancelled = isAbortError(error) || signal.aborted;
+    const errorMessage = cancelled
+      ? "操作已终止"
+      : error instanceof Error
+        ? error.message
+        : String(error);
+    request.onCommandExecuted?.({
+      toolCallId: action.toolCallId,
+      toolName: "run_shell_command",
+      command: action.command,
+      reason: action.reason,
+      risk: action.risk,
+      workingDirectory: getWorkingDirectory(input),
+      result: {
+        stdout: "",
+        stderr: errorMessage,
+        exitCode: null,
+        timedOut: false,
+        durationMs: 0,
+      },
+    });
     const card = createCard(input, action, cancelled ? "cancelled" : "failed", {
       id: cardId,
       createdAt: cardCreatedAt,
       approvalId: request.approval?.id,
-      error: cancelled
-        ? "操作已终止"
-        : error instanceof Error
-          ? error.message
-          : String(error),
+      error: errorMessage,
     });
     emit?.sendCommandCard(card);
     nextCards = mergeCards(nextCards, card);
@@ -391,34 +410,52 @@ async function executeSavedServerAction(
     });
     emit?.sendCommandCard(completedCard);
     nextCards = mergeCards(nextCards, completedCard);
+    const executedCommand: ExecutedAiCommandContext = {
+      toolCallId: action.toolCallId,
+      toolName: "run_saved_server_command",
+      command: action.command,
+      serverName: remote.serverName,
+      reason: action.reason,
+      risk: action.risk,
+      result: remote.result,
+    };
+    request.onCommandExecuted?.(executedCommand);
     return {
       status: "continue",
       commandCards: nextCards,
       executedCommands: [
         ...request.executedCommands,
-        {
-          toolCallId: action.toolCallId,
-          toolName: "run_saved_server_command",
-          command: action.command,
-          serverName: remote.serverName,
-          reason: action.reason,
-          risk: action.risk,
-          result: remote.result,
-        },
+        executedCommand,
       ],
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    request.onCommandExecuted?.({
+      toolCallId: action.toolCallId,
+      toolName: "run_saved_server_command",
+      command: action.command,
+      serverName: action.serverName,
+      reason: action.reason,
+      risk: action.risk,
+      result: {
+        stdout: "",
+        stderr: errorMessage,
+        exitCode: null,
+        timedOut: false,
+        durationMs: 0,
+      },
+    });
     const card = createCard(input, action, "failed", {
       id: cardId,
       createdAt: cardCreatedAt,
       approvalId: request.approval?.id,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
     emit?.sendCommandCard(card);
     nextCards = mergeCards(nextCards, card);
     messages.push(
       createAssistantMessage(
-        `已保存服务器查询失败：${error instanceof Error ? error.message : String(error)}`,
+        `已保存服务器查询失败：${errorMessage}`,
       ),
     );
     return { status: "return", result: { messages, commandCards: nextCards } };

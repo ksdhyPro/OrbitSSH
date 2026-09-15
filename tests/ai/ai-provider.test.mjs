@@ -13,6 +13,7 @@ test("SSE 支持无空格 data: 并累积工具参数分片", async () => {
     'data:{"choices":[{"delta":{"content":"开始"}}]}\n\n',
     'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"run_shell_command","arguments":"{\\"command\\":\\"df"}}]}}]}\n\n',
     'data:{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":" -h\\",\\"reason\\":\\"检查磁盘\\",\\"risk\\":\\"low\\"}"}}]}}]}\n\n',
+    'data:{"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":8,"total_tokens":128}}\n\n',
     "data:[DONE]\n\n",
   ];
   const body = new ReadableStream({
@@ -27,6 +28,12 @@ test("SSE 支持无空格 data: 并累积工具参数分片", async () => {
   assert.deepEqual(streamed, ["开始"]);
   assert.equal(result.toolCalls[0].name, "run_shell_command");
   assert.equal(JSON.parse(result.toolCalls[0].arguments).command, "df -h");
+  assert.deepEqual(result.usage, {
+    promptTokens: 120,
+    completionTokens: 8,
+    totalTokens: 128,
+    source: "provider",
+  });
 });
 
 test("只解析 run_shell_command 工具", () => {

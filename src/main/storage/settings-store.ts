@@ -107,6 +107,13 @@ function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function normalizeContextTokenLimitK(value: unknown): number {
+  const numericValue = Number(value)
+
+  // 旧配置没有该字段时保留为 0，表示上下文限制尚未设置。
+  return Number.isSafeInteger(numericValue) && numericValue > 0 ? numericValue : 0
+}
+
 function encryptSecret(value: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
     throw new Error('当前系统暂不支持安全 AI Key 存储')
@@ -149,7 +156,8 @@ function normalizeAiModelConfig(
     provider,
     baseUrl,
     apiKey: normalizeString(value?.apiKey),
-    model
+    model,
+    contextTokenLimitK: normalizeContextTokenLimitK(value?.contextTokenLimitK)
   }
 }
 

@@ -52,6 +52,8 @@ export interface AiModelConfig {
   baseUrl: string
   apiKey: string
   model: string
+  /** 模型上下文窗口总 Token 限制，单位为 K（千 Token）。 */
+  contextTokenLimitK: number
 }
 
 export interface AiSettings {

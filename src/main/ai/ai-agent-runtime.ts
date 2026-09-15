@@ -12,6 +12,7 @@ import type { AppSettings } from "../../shared/settings.js";
 import { writeAppLog } from "../logger.js";
 import {
   cancelPendingApproval,
+  createAssistantMessage,
   executeAgentAction,
   reevaluateAgentAction,
   type PendingApprovalState,
@@ -20,8 +21,17 @@ import {
   createAgentEmitter,
   type AgentEmitter,
 } from "./ai-agent-events.js";
-import { runAgentLoop } from "./ai-agent-runner.js";
+import {
+  AiContextWindowExceededError,
+  runAgentLoop,
+} from "./ai-agent-runner.js";
 import { ExpiringApprovalStore } from "./ai-approval-store.js";
+import {
+  AiConversationContextManager,
+  calculateSummaryMaxTokens,
+} from "./ai-context-budget.js";
+import type { ExecutedAiCommandContext } from "./ai-context.js";
+import { summarizeAiConversation } from "./ai-provider.js";
 
 interface ActiveAiRequest {
   requestId: string;
@@ -32,6 +42,203 @@ interface ActiveAiRequest {
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
 const activeRequests = new Map<string, ActiveAiRequest>();
+const conversationContexts = new AiConversationContextManager();
+
+function getActiveContextConfig(
+  settings: AppSettings,
+): { id: string; contextTokenLimitK: number } | null {
+  if (!settings.ai.enabled) return null;
+  const config =
+    settings.ai.configs.find(item => item.id === settings.ai.activeConfigId) ??
+    settings.ai.configs[0];
+  if (!config?.baseUrl.trim() || !config.apiKey.trim() || !config.model.trim()) {
+    return null;
+  }
+  return {
+    id: config.id,
+    contextTokenLimitK: config.contextTokenLimitK,
+  };
+}
+
+async function compressConversation(
+  input: AiChatInput,
+  settings: AppSettings,
+  additionalMessages: AiMessage[],
+  signal: AbortSignal,
+): Promise<void> {
+  const memory = conversationContexts.getMemory(input);
+  const compressionInput: AiChatInput = {
+    ...input,
+    history: [
+      ...conversationContexts.getSegmentHistory(input),
+      ...additionalMessages,
+    ],
+  };
+
+  try {
+    const contextTokenLimitK =
+      getActiveContextConfig(settings)?.contextTokenLimitK ?? 0;
+    const summaryMaxTokens = contextTokenLimitK > 0
+      ? calculateSummaryMaxTokens(compressionInput, memory, contextTokenLimitK)
+      : undefined;
+    if (contextTokenLimitK > 0 && !summaryMaxTokens) {
+      throw new Error("上下文剩余空间不足，无法生成安全的续接摘要");
+    }
+    const summary = await summarizeAiConversation(
+      compressionInput,
+      settings,
+      memory.summary,
+      summaryMaxTokens,
+      signal,
+    );
+    conversationContexts.completeCompression(compressionInput, summary);
+  } catch (error) {
+    conversationContexts.failCompression(input);
+    writeAppLog({
+      scope: "main.ai",
+      level: "error",
+      message: "AI 上下文压缩失败",
+      data: {
+        tabId: input.tabId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw new Error("上下文压缩失败，本对话已停止继续请求模型。请新建对话后重试。");
+  }
+}
+
+interface RunLoopWithContextOptions {
+  input: AiChatInput;
+  settings: AppSettings;
+  signal: AbortSignal;
+  emit?: AgentEmitter;
+  previousCards?: AiChatResult["commandCards"];
+  initialExecutedCommands?: ExecutedAiCommandContext[];
+  leadingMessages?: AiMessage[];
+}
+
+/** 在 UI 对话不变的前提下管理内部上下文段，并只允许溢出后续接重试一次。 */
+async function runLoopWithContext(
+  options: RunLoopWithContextOptions,
+): Promise<AiChatResult> {
+  const { input, settings, signal, emit } = options;
+  conversationContexts.assertAvailable(input);
+  const activeContextConfig = getActiveContextConfig(settings);
+  const contextTokenLimitK = activeContextConfig?.contextTokenLimitK ?? 0;
+  const configId = activeContextConfig?.id ?? "";
+  let leadingMessages = [...(options.leadingMessages ?? [])];
+  let previousCards = options.previousCards;
+  let initialExecutedCommands = options.initialExecutedCommands ?? [];
+  let retriedAfterCompression = false;
+  let compressedDuringRun = false;
+
+  if (conversationContexts.shouldCompress(input, contextTokenLimitK, configId)) {
+    await compressConversation(input, settings, leadingMessages, signal);
+    compressedDuringRun = true;
+  }
+
+  while (true) {
+    try {
+      const result = await runAgentLoop({
+        input,
+        settings,
+        signal,
+        emit,
+        previousCards,
+        initialExecutedCommands,
+        prepareContext: async (loopMessages, executedCommands) => {
+          const additionalMessages = [...leadingMessages, ...loopMessages];
+          const budgetInput: AiChatInput = {
+            ...input,
+            history: [
+              ...conversationContexts.getSegmentHistory(input),
+              ...additionalMessages,
+            ],
+          };
+          if (
+            !compressedDuringRun &&
+            conversationContexts.shouldCompress(
+              budgetInput,
+              contextTokenLimitK,
+              configId,
+            )
+          ) {
+            await compressConversation(
+              input,
+              settings,
+              additionalMessages,
+              signal,
+            );
+            compressedDuringRun = true;
+          }
+
+          const currentCommandIds = new Set(
+            executedCommands.map(command => command.toolCallId),
+          );
+          const memory = conversationContexts.getMemory(input);
+          memory.commands = memory.commands.filter(
+            command => !currentCommandIds.has(command.toolCallId),
+          );
+          return {
+            input: {
+              ...input,
+              history: conversationContexts.getSegmentHistory(input),
+            },
+            memory,
+          };
+        },
+        onTokenUsage: usage =>
+          conversationContexts.recordUsage(input, usage, configId),
+        onCommandExecuted: command => conversationContexts.recordCommand(input, command),
+        storeApproval: storePendingApproval,
+      });
+      return {
+        messages: [...leadingMessages, ...result.messages],
+        commandCards: result.commandCards,
+        contextUsage: activeContextConfig
+          ? conversationContexts.getContextUsage(
+              input,
+              configId,
+              contextTokenLimitK,
+            )
+          : undefined,
+      };
+    } catch (error) {
+      if (!(error instanceof AiContextWindowExceededError)) throw error;
+
+      error.executedCommands.forEach(command =>
+        conversationContexts.recordCommand(input, command),
+      );
+      leadingMessages = [...leadingMessages, ...error.messages];
+      previousCards = error.commandCards;
+      initialExecutedCommands = [];
+
+      if (retriedAfterCompression) {
+        conversationContexts.failCompression(input);
+        return {
+          messages: [
+            ...leadingMessages,
+            createAssistantMessage(
+              "上下文压缩后重试仍超过模型窗口，本对话已停止。请新建对话后继续。",
+            ),
+          ],
+          commandCards: previousCards,
+          contextUsage: activeContextConfig
+            ? conversationContexts.getContextUsage(
+                input,
+                configId,
+                contextTokenLimitK,
+              )
+            : undefined,
+        };
+      }
+
+      await compressConversation(input, settings, leadingMessages, signal);
+      retriedAfterCompression = true;
+      compressedDuringRun = true;
+    }
+  }
+}
 
 function notifyExpiredApproval(
   approvalId: string,
@@ -92,12 +299,11 @@ export async function runAiChat(
   const emit = createAgentEmitter(input, webContents);
   clearPendingApprovalsForTab(input.tabId, "已开始新的 AI 请求", emit);
   return runTrackedRequest(input, signal =>
-    runAgentLoop({
+    runLoopWithContext({
       input,
       settings,
       signal,
       emit,
-      storeApproval: storePendingApproval,
     }),
   );
 }
@@ -155,6 +361,8 @@ export async function runApprovedAiCommand(
       executedCommands: [...approval.executedCommands],
       messages,
       storeApproval: storePendingApproval,
+      onCommandExecuted: command =>
+        conversationContexts.recordCommand(resumedInput, command),
       approval: {
         id: input.approvalId,
         cardId: approval.cardId,
@@ -163,19 +371,16 @@ export async function runApprovedAiCommand(
     });
     if (execution.status === "return") return execution.result;
 
-    const loopResult = await runAgentLoop({
+    const loopResult = await runLoopWithContext({
       input: resumedInput,
       settings,
       signal,
       emit,
       previousCards: execution.commandCards,
       initialExecutedCommands: execution.executedCommands,
-      storeApproval: storePendingApproval,
+      leadingMessages: messages,
     });
-    return {
-      messages: [...messages, ...loopResult.messages],
-      commandCards: loopResult.commandCards,
-    };
+    return loopResult;
   });
 }
 
@@ -203,4 +408,5 @@ export function disposeAiTabState(tabId: string): void {
   activeRequests.get(tabId)?.controller.abort();
   activeRequests.delete(tabId);
   clearPendingApprovalsForTab(tabId, "终端标签页已关闭");
+  conversationContexts.clearTab(tabId);
 }

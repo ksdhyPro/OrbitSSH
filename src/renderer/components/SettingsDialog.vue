@@ -79,6 +79,7 @@ const aiConfigForm = ref({
   model: "",
   baseUrl: "",
   apiKey: "",
+  contextTokenLimitK: 0,
 });
 
 const activeAiConfig = computed(() =>
@@ -109,6 +110,7 @@ const aiConfigFormError = computed(() =>
     aiConfigForm.value.model,
     aiConfigForm.value.baseUrl,
     aiConfigForm.value.apiKey,
+    aiConfigForm.value.contextTokenLimitK,
   ),
 );
 
@@ -158,6 +160,7 @@ function validateAiConfigForm(
   model: string,
   baseUrl: string,
   apiKey: string,
+  contextTokenLimitK: number,
 ): string {
   const normalizedModel = model.trim();
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
@@ -183,6 +186,13 @@ function validateAiConfigForm(
     return "API Key 至少 8 位，且不能包含空格。";
   }
 
+  if (
+    !Number.isSafeInteger(contextTokenLimitK) ||
+    contextTokenLimitK <= 0
+  ) {
+    return "上下文总 Token 限制必须是大于 0 的整数。";
+  }
+
   return "";
 }
 
@@ -192,6 +202,7 @@ function resetAiConfigForm(): void {
     model: "",
     baseUrl: "",
     apiKey: "",
+    contextTokenLimitK: 0,
   };
 }
 
@@ -219,6 +230,7 @@ function startAddAiConfig(): void {
     model: "",
     baseUrl: "",
     apiKey: "",
+    contextTokenLimitK: 0,
   };
   aiConfigMessage.value = "";
   isAiConfigFormDialogOpen.value = true;
@@ -230,6 +242,7 @@ function startEditAiConfig(config: AiModelConfig): void {
     model: config.model,
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
+    contextTokenLimitK: config.contextTokenLimitK,
   };
   aiConfigMessage.value = "";
   isAiConfigFormDialogOpen.value = true;
@@ -260,6 +273,7 @@ function saveAiConfigForm(): void {
     aiConfigForm.value.model,
     aiConfigForm.value.baseUrl,
     aiConfigForm.value.apiKey,
+    aiConfigForm.value.contextTokenLimitK,
   );
   if (error) {
     aiConfigMessage.value = error;
@@ -273,6 +287,7 @@ function saveAiConfigForm(): void {
     baseUrl: normalizeBaseUrl(aiConfigForm.value.baseUrl),
     apiKey: aiConfigForm.value.apiKey.trim(),
     model: aiConfigForm.value.model.trim(),
+    contextTokenLimitK: aiConfigForm.value.contextTokenLimitK,
   };
   const nextConfigs = editingAiConfigId.value
     ? aiConfigDraft.value.map(config =>
@@ -664,13 +679,14 @@ function removeAiConfig(configId: string): void {
               <th>模型名</th>
               <th>提供商</th>
               <th>连接信息</th>
+              <th>上下文限制</th>
               <th>当前</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="aiConfigDraft.length === 0">
-              <td colspan="5" class="ai-config-empty">
+              <td colspan="6" class="ai-config-empty">
                 暂无模型配置，点击「新增」开始配置
               </td>
             </tr>
@@ -687,6 +703,9 @@ function removeAiConfig(configId: string): void {
               <td>OpenAI 兼容</td>
               <td>
                 {{ maskApiKey(config.apiKey) }}
+              </td>
+              <td>
+                {{ config.contextTokenLimitK > 0 ? `${config.contextTokenLimitK}K` : "未设置" }}
               </td>
               <td>
                 <span
@@ -762,6 +781,20 @@ function removeAiConfig(configId: string): void {
           type="password"
           autocomplete="off"
           placeholder="sk-..." />
+      </label>
+
+      <label>
+        <span>上下文总 Token 限制</span>
+        <div class="ai-config-number-input">
+          <input
+            v-model.number="aiConfigForm.contextTokenLimitK"
+            class="settings-text-input"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="128" />
+          <span>K</span>
+        </div>
       </label>
 
       <div class="ai-config-form-actions">

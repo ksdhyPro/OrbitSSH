@@ -4,6 +4,7 @@ import { computed, onScopeDispose, ref } from "vue";
 import type {
   AiCommandCard,
   AiContextInput,
+  AiContextUsage,
   AiMessage,
   AiMode,
 } from "../../shared/ai";
@@ -15,6 +16,7 @@ interface AiConversationState {
   title: string;
   messages: AiMessage[];
   commandCards: AiCommandCard[];
+  contextUsage?: AiContextUsage;
   createdAt: number;
   updatedAt: number;
 }
@@ -34,7 +36,8 @@ interface AiStreamState extends AiActiveRequestState {
   messageIds: Set<string>;
 }
 
-const HISTORY_LIMIT = 24;
+// 主进程会在模型上下文达到 80% 时压缩；这里只保留较高的 IPC 安全上限。
+const HISTORY_LIMIT = 500;
 const LONG_CONVERSATION_USER_MESSAGE_LIMIT = 12;
 const LONG_CONVERSATION_COMMAND_CARD_LIMIT = 20;
 
@@ -118,6 +121,7 @@ export const useAiStore = defineStore("ai", () => {
   const commandCards = computed(
     () => activeConversation.value?.commandCards ?? [],
   );
+  const contextUsage = computed(() => activeConversation.value?.contextUsage);
   const shouldSuggestNewConversation = computed(() => {
     const conversation = activeConversation.value;
 
@@ -300,6 +304,19 @@ export const useAiStore = defineStore("ai", () => {
     updateConversation(tabId, conversation => ({
       ...conversation,
       messages: [...conversation.messages, ...nextMessages],
+      updatedAt: Date.now(),
+    }), conversationId);
+  }
+
+  function updateContextUsage(
+    tabId: string,
+    conversationId: string,
+    usage: AiContextUsage | undefined,
+  ): void {
+    if (!usage) return;
+    updateConversation(tabId, conversation => ({
+      ...conversation,
+      contextUsage: usage,
       updatedAt: Date.now(),
     }), conversationId);
   }
@@ -510,6 +527,7 @@ export const useAiStore = defineStore("ai", () => {
         result.messages,
       );
       mergeCommandCards(context.tabId, result.commandCards, conversationId);
+      updateContextUsage(context.tabId, conversationId, result.contextUsage);
     } catch (sendError) {
       reconcileStreamMessages(context.tabId, requestId, conversationId, []);
       setTabError(
@@ -550,6 +568,7 @@ export const useAiStore = defineStore("ai", () => {
         result.messages,
       );
       mergeCommandCards(card.tabId, result.commandCards, conversationId);
+      updateContextUsage(card.tabId, conversationId, result.contextUsage);
     } catch (runError) {
       reconcileStreamMessages(card.tabId, requestId, conversationId, []);
       updateCommandCard({
@@ -609,6 +628,7 @@ export const useAiStore = defineStore("ai", () => {
     error,
     messages,
     commandCards,
+    contextUsage,
     shouldSuggestNewConversation,
     canUseAi,
     togglePanel,

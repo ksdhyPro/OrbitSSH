@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.9.0
+
+1. Added a per-model AI context token limit in K units, with automatic context compression when usage reaches 80% of the configured window.
+2. Added a context-usage ring in the prompt box. It prefers actual token usage returned by the API, falls back to a local estimate, and stays hidden when no limit is configured.
+3. Upgraded long-conversation continuation: the UI remains in the same conversation while regular dialogue is summarized and all executed commands and command responses are carried into a new internal context segment.
+4. Improved context failure handling: without a configured limit, compression only starts after an explicit context-window error; the request is retried once after compression, and a compression failure stops further model requests for that conversation.
+
 ## v1.8.3
 
 1. Added an SFTP concurrent transfer setting with a range of 1 to 5 tasks. The global upload, download, and server-to-server transfer queue now runs 3 tasks concurrently by default and applies changes immediately.

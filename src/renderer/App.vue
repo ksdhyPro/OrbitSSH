@@ -474,6 +474,7 @@ const {
   error: aiError,
   messages: aiMessages,
   commandCards: aiCommandCards,
+  contextUsage: aiContextUsage,
   shouldSuggestNewConversation,
 } = storeToRefs(aiStore);
 
@@ -1133,6 +1134,7 @@ onUnmounted(() => {
         :error="aiError"
         :messages="aiMessages"
         :command-cards="aiCommandCards"
+        :context-usage="aiContextUsage"
         :should-suggest-new-conversation="shouldSuggestNewConversation"
         :context="aiContext"
         :configs="appSettings.ai.configs"

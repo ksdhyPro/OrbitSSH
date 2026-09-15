@@ -15,6 +15,10 @@ import {
 } from "./ai-agent-actions.js";
 import type { AgentEmitter } from "./ai-agent-events.js";
 import type {
+  AiConversationMemory,
+  AiTokenUsage,
+} from "./ai-context-budget.js";
+import type {
   ExecutedAiCommandContext,
   LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
@@ -31,6 +35,24 @@ export interface RunAgentLoopOptions {
   previousCards?: AiCommandCard[];
   initialExecutedCommands?: ExecutedAiCommandContext[];
   storeApproval: (approvalId: string, state: PendingApprovalState) => void;
+  memory?: AiConversationMemory;
+  prepareContext?: (
+    messages: AiMessage[],
+    executedCommands: ExecutedAiCommandContext[],
+  ) => Promise<{ input: AiChatInput; memory: AiConversationMemory }>;
+  onTokenUsage?: (usage: AiTokenUsage) => void;
+  onCommandExecuted?: (command: ExecutedAiCommandContext) => void;
+}
+
+export class AiContextWindowExceededError extends Error {
+  constructor(
+    readonly messages: AiMessage[],
+    readonly commandCards: AiCommandCard[],
+    readonly executedCommands: ExecutedAiCommandContext[],
+  ) {
+    super("模型上下文窗口已达到上限");
+    this.name = "AiContextWindowExceededError";
+  }
 }
 
 /** 运行单个 AI 请求的模型—动作循环，直到完成、审批暂停或预算耗尽。 */
@@ -64,14 +86,27 @@ export async function runAgentLoop(
     const messageId = crypto.randomUUID();
     const messageCreatedAt = Date.now() + 1;
     emit?.sendMessageStart(messageId, messageCreatedAt);
+    const preparedContext = await options.prepareContext?.(
+      messages,
+      executedCommands,
+    );
     const parsed = await requestAiTurn(
-      input,
+      preparedContext?.input ?? input,
       settings,
       executedCommands,
       signal,
       emit ? text => emit.sendChunk(messageId, text) : undefined,
       policyFeedback,
+      preparedContext?.memory ?? options.memory,
     );
+    if (parsed.contextLimitExceeded) {
+      throw new AiContextWindowExceededError(
+        messages,
+        commandCards,
+        executedCommands,
+      );
+    }
+    if (parsed.usage) options.onTokenUsage?.(parsed.usage);
     const reply = parsed.reply?.trim();
     const action = getNextAgentAction(parsed);
     const defaultMessage = action
@@ -127,6 +162,7 @@ export async function runAgentLoop(
       executedCommands,
       messages,
       storeApproval,
+      onCommandExecuted: options.onCommandExecuted,
     });
     if (execution.status === "return") return execution.result;
     commandCards = execution.commandCards;

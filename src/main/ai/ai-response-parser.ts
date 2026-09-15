@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { AiTokenUsage } from "./ai-context-budget.js";
 
 export interface ParsedAssistantResponse {
   reply?: string;
   commands?: ParsedAiCommand[];
   savedServerCommands?: ParsedAiSavedServerCommand[];
+  usage?: AiTokenUsage;
+  contextLimitExceeded?: boolean;
 }
 
 export interface ParsedAiCommand {
@@ -30,6 +33,26 @@ export type RawToolCall = {
 };
 
 const maxSseResponseChars = 2_000_000;
+
+export function parseAiTokenUsage(value: unknown): AiTokenUsage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const usage = value as Record<string, unknown>;
+  const promptTokens = Number(usage.prompt_tokens);
+  const completionTokens = Number(usage.completion_tokens);
+  const totalTokens = Number(usage.total_tokens);
+  if (
+    !Number.isFinite(promptTokens) ||
+    !Number.isFinite(completionTokens) ||
+    !Number.isFinite(totalTokens)
+  ) return undefined;
+
+  return {
+    promptTokens: Math.max(0, Math.trunc(promptTokens)),
+    completionTokens: Math.max(0, Math.trunc(completionTokens)),
+    totalTokens: Math.max(0, Math.trunc(totalTokens)),
+    source: "provider",
+  };
+}
 
 function normalizeAiCommandRisk(value: unknown): ParsedAiCommand["risk"] {
   return value === "low" || value === "medium" || value === "high"
@@ -151,6 +174,7 @@ export async function collectSseStream(
   contentText: string;
   toolCalls: StreamedToolCall[];
   rawResponseText: string;
+  usage?: AiTokenUsage;
 }> {
   if (!body) return { contentText: "", toolCalls: [], rawResponseText: "" };
   const reader = body.getReader();
@@ -158,6 +182,7 @@ export async function collectSseStream(
   let buffer = "";
   let rawText = "";
   let contentText = "";
+  let usage: AiTokenUsage | undefined;
   const toolCallsByIndex = new Map<number, StreamedToolCall>();
 
   const appendToolCallDelta = (
@@ -180,6 +205,7 @@ export async function collectSseStream(
     if (!data || data === "[DONE]") return;
     try {
       const parsed = JSON.parse(data);
+      usage = parseAiTokenUsage(parsed?.usage) ?? usage;
       const packet = parsed?.choices?.[0]?.delta ?? parsed?.choices?.[0]?.message;
       if (!packet) return;
       if (typeof packet.content === "string" && packet.content) {
@@ -235,6 +261,7 @@ export async function collectSseStream(
       contentText,
       toolCalls: streamedToolCalls,
       rawResponseText: rawText,
+      usage,
     };
   }
 
@@ -242,6 +269,7 @@ export async function collectSseStream(
   const fallbackToolCalls: StreamedToolCall[] = [];
   try {
     const payload = JSON.parse(rawText) as Record<string, unknown>;
+    usage = parseAiTokenUsage(payload.usage) ?? usage;
     const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
     const message = (choice?.message ?? {}) as Record<string, unknown>;
     fallbackContent = typeof message.content === "string" ? message.content.trim() : "";
@@ -271,5 +299,6 @@ export async function collectSseStream(
     contentText: fallbackContent,
     toolCalls: fallbackToolCalls,
     rawResponseText: rawText,
+    usage,
   };
 }
