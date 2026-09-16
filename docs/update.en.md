@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.1
+
+1. Added sequential AI long-command monitoring. The model can choose between immediate and long-running commands, defaults to long-command mode when uncertain, and no longer subjects downloads, builds, or installations to the regular 20-second command timeout.
+2. Added long-command progress reporting. Incremental Shell output is collected and summarized by the AI at most every 30 seconds; early command completion is reported immediately from the exit code, while silent intervals clearly indicate that execution is still in progress.
+3. Improved long-command safety and cleanup by reusing existing permission approval and working-directory rules, handling user cancellation, tab closure, SSH interruption, model request failures, and a one-hour execution limit, while preventing duplicate starts and output-based completion guesses.
+
 ## v1.10.0
 
 1. Added persistent AI conversation history. Conversations are stored locally per server and can be viewed, resumed, or deleted from the "History" list in the AI panel after restarting the app or reopening a terminal. Each server keeps up to 50 conversations, oversized command output is truncated automatically, and conversation titles are generated from the first question.

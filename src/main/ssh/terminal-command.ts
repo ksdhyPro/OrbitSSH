@@ -1,10 +1,15 @@
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { type Client, type ClientChannel } from "ssh2";
 
 import type { AiCommandResult } from "../../shared/ai.js";
 
 const execAsync = promisify(exec);
+
+export type TerminalCommandOutputHandler = (
+  stream: "stdout" | "stderr",
+  text: string,
+) => void;
 
 function createCommandAbortError(): Error {
   const error = new Error("命令执行已终止");
@@ -35,6 +40,7 @@ export function executeSshTerminalCommand(
   timeoutMs: number,
   signal?: AbortSignal,
   workingDirectory?: string,
+  onOutput?: TerminalCommandOutputHandler,
 ): Promise<AiCommandResult> {
   if (signal?.aborted) {
     return Promise.reject(createCommandAbortError());
@@ -49,10 +55,14 @@ export function executeSshTerminalCommand(
     let stream: ClientChannel | undefined;
 
     const onStdout = (data: Buffer): void => {
-      stdout = `${stdout}${data.toString("utf8")}`.slice(-20_000);
+      const text = data.toString("utf8");
+      stdout = `${stdout}${text}`.slice(-20_000);
+      onOutput?.("stdout", text);
     };
     const onStderr = (data: Buffer): void => {
-      stderr = `${stderr}${data.toString("utf8")}`.slice(-10_000);
+      const text = data.toString("utf8");
+      stderr = `${stderr}${text}`.slice(-10_000);
+      onOutput?.("stderr", text);
     };
     const cleanup = (): void => {
       clearTimeout(timer);
@@ -166,7 +176,18 @@ export async function executeLocalTerminalCommand(
   command: string,
   timeoutMs: number,
   signal?: AbortSignal,
+  onOutput?: TerminalCommandOutputHandler,
 ): Promise<AiCommandResult> {
+  if (onOutput) {
+    return executeStreamingLocalTerminalCommand(
+      cwd,
+      command,
+      timeoutMs,
+      signal,
+      onOutput,
+    );
+  }
+
   const startedAt = Date.now();
 
   try {
@@ -207,4 +228,79 @@ export async function executeLocalTerminalCommand(
       durationMs: Date.now() - startedAt,
     };
   }
+}
+
+/** 本地长命令使用 ChildProcess 流式收集输出，同时保留超时和取消语义。 */
+function executeStreamingLocalTerminalCommand(
+  cwd: string,
+  command: string,
+  timeoutMs: number,
+  signal: AbortSignal | undefined,
+  onOutput: TerminalCommandOutputHandler,
+): Promise<AiCommandResult> {
+  if (signal?.aborted) {
+    return Promise.reject(createCommandAbortError());
+  }
+
+  const startedAt = Date.now();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const child = spawn(command, {
+      cwd,
+      shell: true,
+      windowsHide: true,
+    });
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const finish = (exitCode: number | null): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({
+        stdout,
+        stderr,
+        exitCode,
+        timedOut,
+        durationMs: Date.now() - startedAt,
+      });
+    };
+    const fail = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const appendOutput = (
+      stream: "stdout" | "stderr",
+      data: string | Buffer,
+    ): void => {
+      const text = data.toString();
+      if (stream === "stdout") {
+        stdout = `${stdout}${text}`.slice(-20_000);
+      } else {
+        stderr = `${stderr}${text}`.slice(-10_000);
+      }
+      onOutput(stream, text);
+    };
+    const onAbort = (): void => {
+      child.kill();
+      fail(createCommandAbortError());
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+
+    child.stdout?.on("data", data => appendOutput("stdout", data));
+    child.stderr?.on("data", data => appendOutput("stderr", data));
+    child.on("error", fail);
+    child.on("close", code => finish(code));
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

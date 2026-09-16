@@ -10,6 +10,7 @@ import {
   buildAiMessages,
   redactSensitiveTerminalText,
   truncateText,
+  type AiLongCommandProgressContext,
   type ExecutedAiCommandContext,
   type LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
@@ -22,7 +23,9 @@ import {
 import {
   collectSseStream,
   evaluateAssistantTurnProtocol,
+  parseLongCommandProgressToolCalls,
   parseAiTokenUsage,
+  parseRunLongShellToolCalls,
   parseRunShellToolCalls,
   parseSavedServerToolCalls,
   type ParsedAssistantResponse,
@@ -39,6 +42,7 @@ import { MAX_AI_PROVIDER_REQUEST_MS } from "./ai-limits.js";
 
 export type {
   ParsedAiCommand,
+  ParsedAiProgressReport,
   ParsedAiSavedServerCommand,
   ParsedAssistantResponse,
 } from "./ai-response-parser.js";
@@ -90,6 +94,47 @@ const aiTools = [
           },
         },
         required: ["serverName", "command", "reason", "risk"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "run_long_shell_command",
+      description: "在当前服务器启动一条可能长时间运行的 Shell 命令。本地会保持本次对话运行并定期把新增输出交回模型；不确定命令长短时优先使用此工具。",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          command: { type: "string", description: "要执行一次的完整 Shell 命令，不能包含后台执行符号" },
+          reason: { type: "string", description: "为什么执行这条命令，用中文简短说明" },
+          risk: {
+            type: "string",
+            enum: ["low", "medium", "high"],
+            description: "命令风险级别，与普通命令使用相同标准",
+          },
+        },
+        required: ["command", "reason", "risk"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "report_long_command_progress",
+      description: "仅在长命令状态为 running 时汇报当前进度，并让本地继续等待同一条命令。不得用于启动或重复执行命令。",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          message: {
+            type: "string",
+            description: "直接展示给用户的简短进度说明；没有新增输出时说明任务仍在执行中",
+          },
+        },
+        required: ["message"],
         additionalProperties: false,
       },
       strict: true,
@@ -338,6 +383,7 @@ async function requestAiTurnOnce(
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
   responseProtocolCorrection = false,
+  longCommandProgress?: AiLongCommandProgressContext,
 ): Promise<AiTurnAttemptResult> {
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
@@ -373,6 +419,7 @@ async function requestAiTurnOnce(
       policyFeedback,
       memory,
       responseProtocolCorrection,
+      longCommandProgress,
     );
     const chatBody: Record<string, unknown> = {
       model: activeConfig.model,
@@ -464,11 +511,14 @@ async function requestAiTurnOnce(
     const protocolEvaluation = evaluateAssistantTurnProtocol(
       reply,
       normalizedToolCalls,
+      longCommandProgress ? "long_command_running" : "normal",
     );
     const acceptedToolCalls = protocolEvaluation.outcome === "tool_call"
       ? normalizedToolCalls
       : [];
     const commands = parseRunShellToolCalls(acceptedToolCalls);
+    const longCommands = parseRunLongShellToolCalls(acceptedToolCalls);
+    const progressReports = parseLongCommandProgressToolCalls(acceptedToolCalls);
     const savedServerCommands = parseSavedServerToolCalls(acceptedToolCalls);
     const completed = protocolEvaluation.outcome === "finish";
     const protocolError = protocolEvaluation.outcome === "protocol_error";
@@ -521,7 +571,10 @@ async function requestAiTurnOnce(
         tabId: input.tabId,
         contentLength: reply.length,
         toolCallCount: normalizedToolCalls.length,
-        hasCommands: commands.length > 0 || savedServerCommands.length > 0,
+        hasCommands:
+          commands.length > 0 ||
+          longCommands.length > 0 ||
+          savedServerCommands.length > 0,
         api: protocol,
       },
     });
@@ -553,6 +606,8 @@ async function requestAiTurnOnce(
     return {
       reply,
       commands,
+      longCommands,
+      progressReports,
       savedServerCommands,
       completed,
       protocolError,
@@ -591,6 +646,7 @@ export async function requestAiTurn(
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
+  longCommandProgress?: AiLongCommandProgressContext,
 ): Promise<ParsedAssistantResponse> {
   let attempt = 1;
   let result = await requestAiTurnOnce(
@@ -601,6 +657,8 @@ export async function requestAiTurn(
     sendChunk,
     policyFeedback,
     memory,
+    false,
+    longCommandProgress,
   );
 
   while (
@@ -629,12 +687,15 @@ export async function requestAiTurn(
       policyFeedback,
       memory,
       Boolean(result.protocolError),
+      longCommandProgress,
     );
   }
 
   return {
     reply: result.reply,
     commands: result.commands,
+    longCommands: result.longCommands,
+    progressReports: result.progressReports,
     savedServerCommands: result.savedServerCommands,
     completed: result.completed,
     protocolError: result.protocolError,

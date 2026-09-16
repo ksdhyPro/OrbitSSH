@@ -4,9 +4,106 @@ import test from "node:test";
 
 import {
   collectSseStream,
+  evaluateAssistantTurnProtocol,
+  parseLongCommandProgressToolCalls,
+  parseRunLongShellToolCalls,
   parseRunShellToolCalls,
   parseSavedServerToolCalls,
 } from "../../dist-electron/main/ai/ai-response-parser.js";
+
+test("承诺执行但未调用工具的回复不会被判定为完成", () => {
+  const result = evaluateAssistantTurnProtocol(
+    "好的，我来帮你检查 nginx 配置。",
+    [],
+  );
+
+  assert.equal(result.outcome, "protocol_error");
+  assert.equal(result.retryable, true);
+});
+
+test("finish_response 明确标记 Agent 正常完成", () => {
+  const result = evaluateAssistantTurnProtocol("", [{
+    id: "finish-1",
+    type: "function",
+    function: {
+      name: "finish_response",
+      arguments: JSON.stringify({ message: "nginx 配置检查完成。" }),
+    },
+  }]);
+
+  assert.equal(result.outcome, "finish");
+  assert.equal(result.retryable, false);
+  assert.equal(result.finalReply, "nginx 配置检查完成。");
+});
+
+test("仅接受参数有效的已知工具动作", () => {
+  const valid = evaluateAssistantTurnProtocol("准备检查。", [{
+    id: "command-1",
+    type: "function",
+    function: {
+      name: "run_shell_command",
+      arguments: JSON.stringify({
+        command: "nginx -T",
+        reason: "读取 nginx 完整配置",
+        risk: "low",
+      }),
+    },
+  }]);
+  const unknown = evaluateAssistantTurnProtocol("准备检查。", [{
+    id: "unknown-1",
+    type: "function",
+    function: { name: "inspect_nginx", arguments: "{}" },
+  }]);
+
+  assert.equal(valid.outcome, "tool_call");
+  assert.equal(valid.retryable, false);
+  assert.equal(unknown.outcome, "protocol_error");
+  assert.equal(unknown.retryable, true);
+});
+
+test("长命令和进度汇报使用独立工具协议", () => {
+  const longCall = [{
+    id: "long-1",
+    type: "function",
+    function: {
+      name: "run_long_shell_command",
+      arguments: JSON.stringify({
+        command: "docker pull nginx:latest",
+        reason: "拉取镜像",
+        risk: "high",
+      }),
+    },
+  }];
+  const progressCall = [{
+    id: "progress-1",
+    type: "function",
+    function: {
+      name: "report_long_command_progress",
+      arguments: JSON.stringify({ message: "镜像仍在拉取中。" }),
+    },
+  }];
+
+  assert.equal(evaluateAssistantTurnProtocol("", longCall).outcome, "tool_call");
+  assert.equal(parseRunLongShellToolCalls(longCall)[0].command, "docker pull nginx:latest");
+  assert.equal(
+    evaluateAssistantTurnProtocol("", progressCall, "long_command_running").outcome,
+    "tool_call",
+  );
+  assert.equal(
+    parseLongCommandProgressToolCalls(progressCall)[0].message,
+    "镜像仍在拉取中。",
+  );
+  assert.equal(
+    evaluateAssistantTurnProtocol("", [{
+      type: "function",
+      function: {
+        name: "finish_response",
+        arguments: JSON.stringify({ message: "已经完成" }),
+      },
+    }], "long_command_running").outcome,
+    "protocol_error",
+  );
+});
 
 test("SSE 支持无空格 data: 并累积工具参数分片", async () => {
   const encoder = new TextEncoder();

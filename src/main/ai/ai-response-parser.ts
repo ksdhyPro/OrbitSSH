@@ -4,6 +4,8 @@ import type { AiTokenUsage } from "./ai-context-budget.js";
 export interface ParsedAssistantResponse {
   reply?: string;
   commands?: ParsedAiCommand[];
+  longCommands?: ParsedAiCommand[];
+  progressReports?: ParsedAiProgressReport[];
   savedServerCommands?: ParsedAiSavedServerCommand[];
   /** 仅 finish_response 可以明确标记模型已完成当前用户目标。 */
   completed?: boolean;
@@ -24,6 +26,10 @@ export interface ParsedAiSavedServerCommand extends ParsedAiCommand {
   serverName: string;
 }
 
+export interface ParsedAiProgressReport {
+  message: string;
+}
+
 export interface StreamedToolCall {
   id: string;
   name: string;
@@ -42,6 +48,8 @@ export interface EvaluatedAssistantTurnProtocol {
   finalReply?: string;
 }
 
+export type AssistantTurnPhase = "normal" | "long_command_running";
+
 /**
  * 判断模型单轮是否遵守 Agent 动作协议。
  * 纯文本不能隐式代表完成，避免“准备检查”之类的占位回复提前终止流程。
@@ -49,12 +57,29 @@ export interface EvaluatedAssistantTurnProtocol {
 export function evaluateAssistantTurnProtocol(
   _reply: string,
   rawToolCalls: RawToolCall[],
+  phase: AssistantTurnPhase = "normal",
 ): EvaluatedAssistantTurnProtocol {
   if (rawToolCalls.length !== 1) {
     return { outcome: "protocol_error", retryable: true };
   }
 
   const toolCall = rawToolCalls[0]!;
+  if (
+    phase === "long_command_running" &&
+    toolCall.type === "function" &&
+    toolCall.function?.name === "report_long_command_progress"
+  ) {
+    const reports = parseLongCommandProgressToolCalls(rawToolCalls);
+    return reports.length === 1
+      ? { outcome: "tool_call", retryable: false }
+      : { outcome: "protocol_error", retryable: true };
+  }
+
+  // 长命令运行期间只能汇报进度，不能提前结束或启动其他命令。
+  if (phase === "long_command_running") {
+    return { outcome: "protocol_error", retryable: true };
+  }
+
   if (
     toolCall.type === "function" &&
     toolCall.function?.name === "finish_response"
@@ -75,6 +100,7 @@ export function evaluateAssistantTurnProtocol(
 
   const commandCount =
     parseRunShellToolCalls(rawToolCalls).length +
+    parseRunLongShellToolCalls(rawToolCalls).length +
     parseSavedServerToolCalls(rawToolCalls).length;
   return commandCount === 1
     ? { outcome: "tool_call", retryable: false }
@@ -198,6 +224,39 @@ export function parseRunShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCom
           toolCall.id || `orbitssh-call-${randomUUID()}`,
         ),
   );
+}
+
+export function parseRunLongShellToolCalls(
+  rawToolCalls: RawToolCall[],
+): ParsedAiCommand[] {
+  return rawToolCalls.flatMap(toolCall =>
+    toolCall.type !== "function" ||
+    toolCall.function?.name !== "run_long_shell_command"
+      ? []
+      : buildCommandsFromToolArguments(
+          toolCall.function.arguments,
+          toolCall.id || `orbitssh-call-${randomUUID()}`,
+        ),
+  );
+}
+
+export function parseLongCommandProgressToolCalls(
+  rawToolCalls: RawToolCall[],
+): ParsedAiProgressReport[] {
+  return rawToolCalls.flatMap(toolCall => {
+    if (
+      toolCall.type !== "function" ||
+      toolCall.function?.name !== "report_long_command_progress"
+    ) {
+      return [];
+    }
+    const args = parseToolArguments(toolCall.function.arguments);
+    if (!args || typeof args !== "object") return [];
+    const message = (args as Record<string, unknown>).message;
+    return typeof message === "string" && message.trim()
+      ? [{ message: message.trim() }]
+      : [];
+  });
 }
 
 export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAiSavedServerCommand[] {

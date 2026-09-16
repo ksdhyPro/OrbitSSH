@@ -9,6 +9,7 @@ import type {
 import { writeAppLog } from "../logger.js";
 import { executeTerminalCommand } from "../ssh/session-manager.js";
 import type {
+  AiLongCommandProgressContext,
   ExecutedAiCommandContext,
   LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
@@ -20,6 +21,10 @@ import type {
 } from "./ai-provider.js";
 import { executeSavedServerCommand } from "./ai-saved-server-command.js";
 import { evaluateAiCommand } from "./command-policy.js";
+import {
+  LONG_COMMAND_TIMEOUT_MS,
+  runLongCommandMonitor,
+} from "./ai-long-command.js";
 
 interface EvaluatedCommand extends ParsedAiCommand {
   policy: AiCommandPolicyResult;
@@ -27,6 +32,7 @@ interface EvaluatedCommand extends ParsedAiCommand {
 
 export type EvaluatedAiAction =
   | ({ type: "shell" } & EvaluatedCommand)
+  | ({ type: "long_shell" } & EvaluatedCommand)
   | ({ type: "saved_server"; serverName: string } & EvaluatedCommand);
 
 export interface PendingApprovalState {
@@ -59,6 +65,10 @@ export interface ExecuteAgentActionInput {
   messages: AiMessage[];
   storeApproval: (approvalId: string, state: PendingApprovalState) => void;
   onCommandExecuted?: (command: ExecutedAiCommandContext) => void;
+  onLongCommandProgress?: (
+    progress: AiLongCommandProgressContext,
+    signal: AbortSignal,
+  ) => Promise<void>;
   approval?: {
     id: string;
     cardId: string;
@@ -153,6 +163,19 @@ export function getNextAgentAction(
     };
   }
 
+  const longShell = parsed.longCommands?.find(item => item.command.trim());
+  if (longShell) {
+    const command = longShell.command.trim();
+    const policy = evaluateAiCommand(command);
+    return {
+      type: "long_shell",
+      ...longShell,
+      command,
+      reason: longShell.reason || policy.reason,
+      policy,
+    };
+  }
+
   const shell = parsed.commands?.find(item => item.command.trim());
   if (!shell) return null;
   const command = shell.command.trim();
@@ -185,7 +208,10 @@ export function createPolicyRejectionFeedback(
   return {
     type: "local_command_policy_rejection",
     toolCallId: action.toolCallId,
-    toolName: "run_shell_command",
+    toolName:
+      action.type === "long_shell"
+        ? "run_long_shell_command"
+        : "run_shell_command",
     retryCount,
     maxRetries,
     command: action.command,
@@ -293,16 +319,43 @@ async function executeShellAction(
         risk: action.risk,
       },
     });
-    const result = await executeTerminalCommand(input.tabId, action.command, {
-      timeoutMs: 20_000,
-      signal,
-      workingDirectory: getWorkingDirectory(input),
-    });
-    const completedCard = createCard(input, action, "completed", {
+    const result = action.type === "long_shell"
+      ? await runLongCommandMonitor({
+          toolCallId: action.toolCallId,
+          command: action.command,
+          reason: action.reason,
+          risk: action.risk,
+          signal,
+          execute: onOutput => executeTerminalCommand(
+            input.tabId,
+            action.command,
+            {
+              timeoutMs: LONG_COMMAND_TIMEOUT_MS,
+              signal,
+              workingDirectory: getWorkingDirectory(input),
+              onOutput,
+            },
+          ),
+          onProgress: request.onLongCommandProgress ?? (async () => undefined),
+        })
+      : await executeTerminalCommand(input.tabId, action.command, {
+          timeoutMs: 20_000,
+          signal,
+          workingDirectory: getWorkingDirectory(input),
+        });
+    const succeeded = action.type !== "long_shell" || (
+      result.exitCode === 0 && !result.timedOut
+    );
+    const completedCard = createCard(input, action, succeeded ? "completed" : "failed", {
       id: cardId,
       createdAt: cardCreatedAt,
       approvalId: request.approval?.id,
       result,
+      error: succeeded || action.type !== "long_shell"
+        ? undefined
+        : result.timedOut
+          ? "长命令执行超时"
+          : `命令以退出码 ${String(result.exitCode ?? "未知")} 结束`,
     });
     emit?.sendCommandCard(completedCard);
     nextCards = mergeCards(nextCards, completedCard);
@@ -318,7 +371,10 @@ async function executeShellAction(
     });
     const executedCommand: ExecutedAiCommandContext = {
       toolCallId: action.toolCallId,
-      toolName: "run_shell_command",
+      toolName:
+        action.type === "long_shell"
+          ? "run_long_shell_command"
+          : "run_shell_command",
       command: action.command,
       reason: action.reason,
       risk: action.risk,
@@ -343,7 +399,10 @@ async function executeShellAction(
         : String(error);
     request.onCommandExecuted?.({
       toolCallId: action.toolCallId,
-      toolName: "run_shell_command",
+      toolName:
+        action.type === "long_shell"
+          ? "run_long_shell_command"
+          : "run_shell_command",
       command: action.command,
       reason: action.reason,
       risk: action.risk,
@@ -471,7 +530,7 @@ export async function executeAgentAction(
 
   // 跨服务器连接始终先于审批判断拦截，禁止借当前终端绕过受控连接。
   if (
-    request.action.type === "shell" &&
+    request.action.type !== "saved_server" &&
     /^\s*(?:ssh|scp|sftp)\b/i.test(request.action.command)
   ) {
     const card = createCard(request.input, request.action, "rejected", {

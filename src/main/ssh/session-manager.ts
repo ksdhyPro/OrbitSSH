@@ -25,6 +25,7 @@ import {
   executeLocalTerminalCommand,
   executeSshTextCommand,
   executeSshTerminalCommand,
+  type TerminalCommandOutputHandler,
 } from "./terminal-command.js";
 import {
   getDefaultLocalTerminalCwd,
@@ -127,6 +128,7 @@ export function executeTerminalCommand(
     timeoutMs?: number;
     signal?: AbortSignal;
     workingDirectory?: string;
+    onOutput?: TerminalCommandOutputHandler;
   } = {},
 ): Promise<AiCommandResult> {
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -151,6 +153,7 @@ export function executeTerminalCommand(
       command,
       timeoutMs,
       signal,
+      options.onOutput,
     );
   }
 
@@ -168,6 +171,7 @@ export function executeTerminalCommand(
     timeoutMs,
     signal,
     requestedDirectory,
+    options.onOutput,
   );
 }
 

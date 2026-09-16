@@ -162,3 +162,32 @@ test("新上下文段保留历史命令及完整指令回复", () => {
   assert.match(messages[1].content, /用户正在排查 nginx/);
   assert.equal(JSON.parse(toolResult.content).stdout, stdout);
 });
+
+test("长命令进度只发送增量输出并标记为仍在运行", () => {
+  const messages = buildAiMessages(
+    input,
+    [],
+    "",
+    undefined,
+    undefined,
+    false,
+    {
+      toolCallId: "long-call-1",
+      command: "docker pull nginx:latest",
+      reason: "拉取镜像",
+      risk: "high",
+      elapsedMs: 30_000,
+      stdoutDelta: "Downloading layer",
+      stderrDelta: "OPENAI_API_KEY=sk-secret-value-123456789",
+      outputChanged: true,
+    },
+  );
+  const toolResult = messages.find(
+    message => message.tool_call_id === "long-call-1",
+  );
+
+  assert.equal(JSON.parse(toolResult.content).state, "running");
+  assert.match(toolResult.content, /Downloading layer/);
+  assert.doesNotMatch(toolResult.content, /sk-secret-value/);
+  assert.match(messages.at(-1).content, /report_long_command_progress/);
+});

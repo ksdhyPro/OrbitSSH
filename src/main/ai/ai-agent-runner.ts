@@ -19,6 +19,7 @@ import type {
   AiTokenUsage,
 } from "./ai-context-budget.js";
 import type {
+  AiLongCommandProgressContext,
   ExecutedAiCommandContext,
   LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
@@ -55,13 +56,53 @@ export class AiContextWindowExceededError extends Error {
   }
 }
 
+export interface ReportLongCommandProgressOptions {
+  input: AiChatInput;
+  settings: AppSettings;
+  signal: AbortSignal;
+  progress: AiLongCommandProgressContext;
+  messages: AiMessage[];
+  executedCommands: ExecutedAiCommandContext[];
+  emit?: AgentEmitter;
+  memory?: AiConversationMemory;
+  onTokenUsage?: (usage: AiTokenUsage) => void;
+}
+
+/** 请求模型把长命令增量输出转换成简短进度，并立即推送到当前对话。 */
+export async function reportLongCommandProgress(
+  options: ReportLongCommandProgressOptions,
+): Promise<void> {
+  const parsed = await requestAiTurn(
+    options.input,
+    options.settings,
+    options.executedCommands,
+    options.signal,
+    undefined,
+    undefined,
+    options.memory,
+    options.progress,
+  );
+  if (options.signal.aborted) return;
+  if (parsed.usage) options.onTokenUsage?.(parsed.usage);
+
+  const content = parsed.progressReports?.[0]?.message || (
+    options.progress.outputChanged
+      ? "长命令仍在执行，已收到新的运行输出。"
+      : "长命令仍在执行中。"
+  );
+  const message = createAssistantMessage(content);
+  options.messages.push(message);
+  options.emit?.sendMessageStart(message.id, message.createdAt);
+  options.emit?.sendChunk(message.id, message.content);
+}
+
 /** 运行单个 AI 请求的模型—动作循环，直到完成、审批暂停或预算耗尽。 */
 export async function runAgentLoop(
   options: RunAgentLoopOptions,
 ): Promise<AiChatResult> {
   const { input, settings, signal, emit, storeApproval } = options;
   const messages: AiMessage[] = [];
-  const startedAt = Date.now();
+  let budgetStartedAt = Date.now();
   let commandCards = [...(options.previousCards ?? [])];
   let executedCommands = [...(options.initialExecutedCommands ?? [])];
   let policyFeedback: LocalPolicyRejectionFeedback | undefined;
@@ -73,7 +114,7 @@ export async function runAgentLoop(
       return { messages, commandCards };
     }
 
-    const stopReason = getAiExecutionStopReason(executedCommands, startedAt);
+    const stopReason = getAiExecutionStopReason(executedCommands, budgetStartedAt);
     if (stopReason) {
       messages.push(
         createAssistantMessage(
@@ -116,7 +157,11 @@ export async function runAgentLoop(
       : "未收到有效回复。";
 
     // 保持原有语义：当前服务器的格式拒绝会反馈给模型并允许修正。
-    if (action?.type === "shell" && action.policy.decision === "deny") {
+    if (
+      action &&
+      action.type !== "saved_server" &&
+      action.policy.decision === "deny"
+    ) {
       commandCards = emitRejectedAction(input, action, commandCards, emit);
       if (localPolicyRetryCount < maxLocalPolicyRetries) {
         localPolicyRetryCount += 1;
@@ -153,6 +198,7 @@ export async function runAgentLoop(
     });
     if (!action) return { messages, commandCards };
 
+    const actionStartedAt = Date.now();
     const execution = await executeAgentAction({
       input,
       signal,
@@ -163,7 +209,23 @@ export async function runAgentLoop(
       messages,
       storeApproval,
       onCommandExecuted: options.onCommandExecuted,
+      onLongCommandProgress: (progress, progressSignal) =>
+        reportLongCommandProgress({
+          input,
+          settings,
+          signal: progressSignal,
+          progress,
+          messages,
+          executedCommands,
+          emit,
+          memory: preparedContext?.memory ?? options.memory,
+          onTokenUsage: options.onTokenUsage,
+        }),
     });
+    if (action.type === "long_shell") {
+      // 长命令等待不占用普通 Agent 的十分钟推理预算。
+      budgetStartedAt += Date.now() - actionStartedAt;
+    }
     if (execution.status === "return") return execution.result;
     commandCards = execution.commandCards;
     executedCommands = execution.executedCommands;

@@ -37,6 +37,25 @@ test("系统提示词说明三档权限与不可绕过的格式校验", () => {
   assert.match(systemPrompt, /auto 模式自动执行低中风险操作/);
   assert.match(systemPrompt, /full_access 模式对格式有效的命令不再审批/);
   assert.match(systemPrompt, /格式无效的命令直接 deny 且不可绕过/);
+  assert.match(systemPrompt, /finish_response/);
+  assert.match(systemPrompt, /纯文本不能表示任务完成/);
+  assert.match(systemPrompt, /无法确定命令是短时间命令还是长时间命令/);
+  assert.match(systemPrompt, /优先调用 run_long_shell_command/);
+  assert.match(systemPrompt, /report_long_command_progress/);
+});
+
+test("工具协议异常重试会携带静态纠正指令", () => {
+  const messages = buildAiMessages(
+    createInput(),
+    [],
+    "",
+    undefined,
+    undefined,
+    true,
+  );
+
+  assert.match(messages.at(-1).content, /上一轮回复没有产生有效工具动作/);
+  assert.match(messages.at(-1).content, /finish_response/);
 });
 
 test("系统设置中的预提示词会随每次对话附带且不能覆盖内置策略", () => {
