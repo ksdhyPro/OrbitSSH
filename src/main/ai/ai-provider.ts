@@ -21,6 +21,7 @@ import {
 } from "./ai-context-budget.js";
 import {
   collectSseStream,
+  evaluateAssistantTurnProtocol,
   parseAiTokenUsage,
   parseRunShellToolCalls,
   parseSavedServerToolCalls,
@@ -89,6 +90,25 @@ const aiTools = [
           },
         },
         required: ["serverName", "command", "reason", "risk"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "finish_response",
+      description: "已有信息足够回答用户时结束当前 Agent 流程，并返回完整的中文最终答复。",
+      parameters: {
+        type: "object" as const,
+        properties: {
+          message: {
+            type: "string",
+            description: "直接展示给用户的完整最终答复，不能只描述准备执行的动作",
+          },
+        },
+        required: ["message"],
         additionalProperties: false,
       },
       strict: true,
@@ -317,6 +337,7 @@ async function requestAiTurnOnce(
   sendChunk?: (text: string) => void,
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
+  responseProtocolCorrection = false,
 ): Promise<AiTurnAttemptResult> {
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
@@ -351,6 +372,7 @@ async function requestAiTurnOnce(
       terminalOutput,
       policyFeedback,
       memory,
+      responseProtocolCorrection,
     );
     const chatBody: Record<string, unknown> = {
       model: activeConfig.model,
@@ -439,14 +461,22 @@ async function requestAiTurnOnce(
       }
     }
 
-    const hasMultipleToolCalls = normalizedToolCalls.length > 1;
-    const acceptedToolCalls = hasMultipleToolCalls ? [] : normalizedToolCalls;
+    const protocolEvaluation = evaluateAssistantTurnProtocol(
+      reply,
+      normalizedToolCalls,
+    );
+    const acceptedToolCalls = protocolEvaluation.outcome === "tool_call"
+      ? normalizedToolCalls
+      : [];
     const commands = parseRunShellToolCalls(acceptedToolCalls);
     const savedServerCommands = parseSavedServerToolCalls(acceptedToolCalls);
-    let retryable = false;
-    if (hasMultipleToolCalls) {
-      retryable = true;
-      reply = reply || "模型一次返回了多个工具动作，已拒绝执行并请求重新规划。";
+    const completed = protocolEvaluation.outcome === "finish";
+    const protocolError = protocolEvaluation.outcome === "protocol_error";
+    const retryable = protocolEvaluation.retryable;
+    if (completed) {
+      reply = protocolEvaluation.finalReply ?? "";
+    } else if (normalizedToolCalls.length > 1) {
+      reply = "模型一次返回了多个工具动作，已拒绝执行并请求重新规划。";
       writeAppLog({
         scope: "main.ai",
         level: "warn",
@@ -457,13 +487,8 @@ async function requestAiTurnOnce(
           toolCalls: summarizeToolCalls(normalizedToolCalls),
         },
       });
-    } else if (
-      normalizedToolCalls.length > 0 &&
-      commands.length === 0 &&
-      savedServerCommands.length === 0
-    ) {
-      retryable = true;
-      reply = reply || "模型返回了无效工具动作，已拒绝执行并请求重新规划。";
+    } else if (normalizedToolCalls.length > 0 && protocolError) {
+      reply = "模型返回了无效工具动作，已拒绝执行并请求重新规划。";
       writeAppLog({
         scope: "main.ai",
         level: "warn",
@@ -474,17 +499,17 @@ async function requestAiTurnOnce(
           toolCalls: summarizeToolCalls(normalizedToolCalls),
         },
       });
-    }
-    if (!reply.trim() && normalizedToolCalls.length === 0) {
-      retryable = true;
+    } else if (normalizedToolCalls.length === 0 && protocolError) {
+      reply = "模型只返回了说明文字，没有产生有效工具动作，已请求模型重新规划。";
       writeAppLog({
         scope: "main.ai",
         level: "warn",
-        message: "AI 返回空回复",
+        message: "AI 未返回工具动作",
         data: {
           provider: providerName,
           tabId: input.tabId,
           streaming: Boolean(sendChunk),
+          contentLength: reply.length,
         },
       });
     }
@@ -529,6 +554,8 @@ async function requestAiTurnOnce(
       reply,
       commands,
       savedServerCommands,
+      completed,
+      protocolError,
       retryable,
       usage: resolvedUsage,
     };
@@ -601,6 +628,7 @@ export async function requestAiTurn(
       sendChunk,
       policyFeedback,
       memory,
+      Boolean(result.protocolError),
     );
   }
 
@@ -608,6 +636,8 @@ export async function requestAiTurn(
     reply: result.reply,
     commands: result.commands,
     savedServerCommands: result.savedServerCommands,
+    completed: result.completed,
+    protocolError: result.protocolError,
     usage: result.usage,
     contextLimitExceeded: result.contextLimitExceeded,
   };

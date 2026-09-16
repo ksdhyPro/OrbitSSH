@@ -5,6 +5,10 @@ export interface ParsedAssistantResponse {
   reply?: string;
   commands?: ParsedAiCommand[];
   savedServerCommands?: ParsedAiSavedServerCommand[];
+  /** 仅 finish_response 可以明确标记模型已完成当前用户目标。 */
+  completed?: boolean;
+  /** 模型未返回合法动作时用于触发带纠正提示的重试。 */
+  protocolError?: boolean;
   usage?: AiTokenUsage;
   contextLimitExceeded?: boolean;
 }
@@ -31,6 +35,51 @@ export type RawToolCall = {
   type?: string;
   function?: { name?: string; arguments?: unknown };
 };
+
+export interface EvaluatedAssistantTurnProtocol {
+  outcome: "tool_call" | "finish" | "protocol_error";
+  retryable: boolean;
+  finalReply?: string;
+}
+
+/**
+ * 判断模型单轮是否遵守 Agent 动作协议。
+ * 纯文本不能隐式代表完成，避免“准备检查”之类的占位回复提前终止流程。
+ */
+export function evaluateAssistantTurnProtocol(
+  _reply: string,
+  rawToolCalls: RawToolCall[],
+): EvaluatedAssistantTurnProtocol {
+  if (rawToolCalls.length !== 1) {
+    return { outcome: "protocol_error", retryable: true };
+  }
+
+  const toolCall = rawToolCalls[0]!;
+  if (
+    toolCall.type === "function" &&
+    toolCall.function?.name === "finish_response"
+  ) {
+    const args = parseToolArguments(toolCall.function.arguments);
+    const message = args && typeof args === "object"
+      ? (args as Record<string, unknown>).message
+      : undefined;
+    if (typeof message === "string" && message.trim()) {
+      return {
+        outcome: "finish",
+        retryable: false,
+        finalReply: message.trim(),
+      };
+    }
+    return { outcome: "protocol_error", retryable: true };
+  }
+
+  const commandCount =
+    parseRunShellToolCalls(rawToolCalls).length +
+    parseSavedServerToolCalls(rawToolCalls).length;
+  return commandCount === 1
+    ? { outcome: "tool_call", retryable: false }
+    : { outcome: "protocol_error", retryable: true };
+}
 
 const maxSseResponseChars = 2_000_000;
 

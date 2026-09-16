@@ -211,7 +211,7 @@ function buildSystemPrompt(input: AiChatInput): string {
     "除非工具结果明确说明命令已经执行，否则不要声称执行成功。",
     "用简洁中文回复。当前服务器命令调用 run_shell_command；用户明确提及其他已保存服务器时，必须调用 run_saved_server_command，禁止在当前服务器执行 ssh、scp 或跳板命令。",
     "当前服务器命令会显式绑定运行上下文中的当前路径；路径未知时在登录默认目录执行。涉及文件时优先使用绝对路径。",
-    "每轮最多调用一个工具。调用前必须基于已有结果说明下一步理由；已有结果足够回答时直接总结。",
+    "每轮最多调用一个工具，且必须选择一个有效工具：需要操作时调用对应命令工具；已有结果足够回答时调用 finish_response，并把完整最终答复放入 message。纯文本不能表示任务完成。",
     "工具结果中 exitCode=0 且 timedOut=false 表示命令成功；无输出不代表未执行。",
     "风险标记必须准确：low=只读查询；medium=常规写入、依赖安装或普通服务重启；high=删除、权限提升、凭据读取、不可逆或大范围影响。",
     "ask 模式逐条审批；auto 模式自动执行低中风险操作，仅高风险或敏感操作审批；full_access 模式对格式有效的命令不再审批。",
@@ -327,6 +327,7 @@ export function buildAiMessages(
   terminalOutput: string,
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
+  responseProtocolCorrection = false,
 ): AiProviderMessage[] {
   const messages: AiProviderMessage[] = [
     { role: "system", content: buildSystemPrompt(input) },
@@ -340,5 +341,16 @@ export function buildAiMessages(
     ...buildExecutedCommandMessages(executedCommands),
   ];
   if (policyFeedback) messages.push(...buildPolicyFeedbackMessages(policyFeedback));
+  if (responseProtocolCorrection) {
+    messages.push({
+      role: "user",
+      content: [
+        "[OrbitSSH 工具协议纠正]",
+        "上一轮回复没有产生有效工具动作，因此未执行任何操作。",
+        "需要继续处理时立即调用对应命令工具；已有信息足够形成最终答复时调用 finish_response。不要只描述准备执行的动作。",
+        "[/OrbitSSH 工具协议纠正]",
+      ].join("\n"),
+    });
+  }
   return messages;
 }
