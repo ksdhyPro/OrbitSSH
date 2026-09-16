@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.10.2
+
+1. Added SFTP file-list sorting by modification time, with clickable ascending and descending switching and an arrow icon indicating the current direction.
+
 ## v1.10.1
 
 1. Added sequential AI long-command monitoring. The model can choose between immediate and long-running commands, defaults to long-command mode when uncertain, and no longer subjects downloads, builds, or installations to the regular 20-second command timeout.

@@ -570,6 +570,8 @@ const {
   applyFileEditorTheme,
   activeSftpTree,
   visibleFileTree,
+  modifyTimeSortDirection,
+  toggleModifyTimeSort,
   getFilePanelHint,
   canDownloadRemoteFile,
   canUploadRemoteNode,
@@ -1032,6 +1034,7 @@ onUnmounted(() => {
               :active-tab="activeTab"
               :active-sftp-tree="activeSftpTree"
               :visible-file-tree="visibleFileTree"
+              :modify-time-sort-direction="modifyTimeSortDirection"
               :file-context-menu="fileContextMenu"
               :blank-context-menu="blankContextMenu"
               :renaming="renaming"
@@ -1050,6 +1053,7 @@ onUnmounted(() => {
               @submit-path="submitFilePathInput"
               @copy-path="copyActiveSftpPath"
               @sync-path="syncFileTreeToTerminalPath"
+              @toggle-modify-time-sort="toggleModifyTimeSort"
               @open-context-menu="openFileContextMenu"
               @open-blank-context-menu="handleOpenBlankContextMenu"
               @close-file-context-menu="closeFileContextMenu"

@@ -1,5 +1,5 @@
 import { storeToRefs } from "pinia";
-import { computed, nextTick, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
 import type { RemoteFileNode } from "../../shared/sftp";
 import { useCoreStore } from "../stores/useCoreStore";
@@ -16,6 +16,8 @@ interface ConfirmRequest {
   confirmLabel: string;
   danger: boolean;
 }
+
+export type ModifyTimeSortDirection = "asc" | "desc";
 
 /**
  * 统一编排远程文件树、拖放、预览和编辑器交互，避免根组件承担文件域细节。
@@ -65,17 +67,46 @@ export function useRemoteFileWorkspace(
     return sftpTrees.value[activeTabId.value];
   });
 
+  const modifyTimeSortDirection = ref<ModifyTimeSortDirection>("desc");
+
   const visibleFileTree = computed<VisibleRemoteFileNode[]>(() => {
     const tree = activeSftpTree.value;
     if (!tree || tree.disconnected) return [];
 
     const parentNode = createParentDirectoryNode(tree.root.path);
-    const currentLevelNodes = (tree.root.children ?? []).map(node => ({
-      ...node,
-      level: 0,
-    }));
+    const currentLevelNodes = (tree.root.children ?? [])
+      .map(node => ({
+        ...node,
+        level: 0,
+      }))
+      .sort((left, right) => {
+        const leftTime = left.modifyTime;
+        const rightTime = right.modifyTime;
+
+        // 缺少修改时间的项目固定排在末尾，避免切换方向后干扰正常文件排序。
+        if (typeof leftTime !== "number") {
+          return typeof rightTime === "number" ? 1 : 0;
+        }
+        if (typeof rightTime !== "number") {
+          return -1;
+        }
+
+        return modifyTimeSortDirection.value === "asc"
+          ? leftTime - rightTime
+          : rightTime - leftTime;
+      });
     return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
   });
+
+  function toggleModifyTimeSort(): void {
+    modifyTimeSortDirection.value =
+      modifyTimeSortDirection.value === "asc" ? "desc" : "asc";
+
+    // 排序后旧索引不再对应同一文件，重置 Shift 范围选择锚点。
+    if (activeSftpTree.value) {
+      activeSftpTree.value.lastClickedIndex = -1;
+    }
+  }
 
   function createParentDirectoryNode(
     currentPath: string,
@@ -423,6 +454,8 @@ export function useRemoteFileWorkspace(
   return {
     activeSftpTree,
     visibleFileTree,
+    modifyTimeSortDirection,
+    toggleModifyTimeSort,
     isImagePreviewOpen,
     isSftpPathPromptOpen,
     filePathInput,

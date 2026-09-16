@@ -4,6 +4,7 @@ import copyIcon from "../assets/icons/copy.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
 import chevronRightIcon from "../assets/icons/chevron-right.svg";
+import sortArrowIcon from "../assets/icons/sort-arrow.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
 import type { TerminalTab } from "../types/terminal";
 import type {
@@ -13,6 +14,7 @@ import type {
   SftpTreeState,
   VisibleRemoteFileNode,
 } from "../types/sftp";
+import type { ModifyTimeSortDirection } from "../composables/useRemoteFileWorkspace";
 import { isPreviewImageFile } from "../utils/file-kind";
 import FileContextMenu from "./FileContextMenu.vue";
 import BlankContextMenu from "./BlankContextMenu.vue";
@@ -22,6 +24,7 @@ const props = defineProps<{
   activeTab: TerminalTab | undefined;
   activeSftpTree: SftpTreeState | undefined;
   visibleFileTree: VisibleRemoteFileNode[];
+  modifyTimeSortDirection: ModifyTimeSortDirection;
   fileContextMenu: FileContextMenuState;
   blankContextMenu: BlankContextMenuState;
   renaming: RenamingState | null;
@@ -43,6 +46,7 @@ const emit = defineEmits<{
   submitPath: [];
   copyPath: [];
   syncPath: [];
+  toggleModifyTimeSort: [];
   openContextMenu: [event: MouseEvent, node: RemoteFileNode];
   openBlankContextMenu: [event: MouseEvent];
   openFileByDoubleClick: [node: RemoteFileNode];
@@ -169,11 +173,24 @@ const remoteFileEmptyText = computed(() => {
 
     <div
       v-if="visibleFileTree.length > 0"
-      class="file-list-header"
-      aria-hidden="true">
+      class="file-list-header">
       <span>名称</span>
       <span>大小/类型</span>
-      <span>修改时间</span>
+      <span
+        class="file-list-sort-trigger"
+        role="button"
+        tabindex="0"
+        :title="`按修改时间${modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}排列`"
+        :aria-label="`修改时间，当前${modifyTimeSortDirection === 'asc' ? '正序' : '倒序'}，点击切换为${modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}`"
+        @click="emit('toggleModifyTimeSort')"
+        @keydown.enter.prevent="emit('toggleModifyTimeSort')"
+        @keydown.space.prevent="emit('toggleModifyTimeSort')">
+        <span>修改时间</span>
+        <img
+          :class="['file-list-sort-arrow', { descending: modifyTimeSortDirection === 'desc' }]"
+          :src="sortArrowIcon"
+          alt="" />
+      </span>
     </div>
 
     <RemoteFileList

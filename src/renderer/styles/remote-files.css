@@ -96,8 +96,25 @@
   user-select: none;
 }
 
-.file-list-header span:nth-child(n + 2) {
+.file-list-header > span:nth-child(n + 2) {
   text-align: right;
+}
+
+.file-list-sort-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.file-list-sort-arrow {
+  width: 10px;
+  height: 10px;
+}
+
+.file-list-sort-arrow.descending {
+  transform: rotate(180deg);
 }
 
 .file-tree {
@@ -119,7 +136,7 @@
     grid-template-columns: minmax(0, 1fr) 82px;
   }
 
-  .file-list-header span:nth-child(2),
+  .file-list-header > span:nth-child(2),
   .file-node small:not(:last-child) {
     display: none;
   }
