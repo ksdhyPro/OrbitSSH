@@ -714,6 +714,26 @@ async function showAboutDialog(): Promise<void> {
   }
 }
 
+async function openHelpFeedback(): Promise<void> {
+  try {
+    await orbitSSHApi.value?.help.openFeedback();
+  } catch (error) {
+    writeRendererLog("打开反馈页面失败", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function openHelpChangelog(): Promise<void> {
+  try {
+    await orbitSSHApi.value?.help.openChangelog();
+  } catch (error) {
+    writeRendererLog("打开更新日志失败", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 function handleAppMenuAction(action: AppMenuAction): void {
   if (action === "undo") {
     if (!undoFileEditor()) {
@@ -960,6 +980,8 @@ onUnmounted(() => {
       @open-settings="openSettingsDialog"
       @open-update="isUpdateDialogOpen = true"
       @open-about="showAboutDialog"
+      @open-feedback="openHelpFeedback"
+      @open-changelog="openHelpChangelog"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />

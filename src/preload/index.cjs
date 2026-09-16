@@ -6,6 +6,10 @@ const orbitSSHApi = {
   about: {
     show: () => ipcRenderer.invoke("about:show"),
   },
+  help: {
+    openFeedback: () => ipcRenderer.invoke("help:open-feedback"),
+    openChangelog: () => ipcRenderer.invoke("help:open-changelog"),
+  },
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
   getAppInfo: () => ipcRenderer.invoke("app:get-info"),
   logger: {

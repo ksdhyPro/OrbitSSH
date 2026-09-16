@@ -15,6 +15,7 @@ import { registerWindowIpc } from "./ipc/window-ipc.js";
 import { registerUpdateIpc } from "./ipc/update-ipc.js";
 import { registerAiIpc } from "./ipc/ai-ipc.js";
 import { registerAboutIpc } from "./ipc/about-ipc.js";
+import { openHelpLink, registerHelpIpc } from "./ipc/help-ipc.js";
 import { registerAutomationIpc } from "./ipc/automation-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
@@ -203,6 +204,19 @@ function registerMacApplicationMenu(mainWindow: BrowserWindow): void {
       label: "帮助",
       submenu: [
         {
+          label: "提交反馈",
+          click: () => {
+            void openHelpLink("feedback").catch(() => undefined);
+          },
+        },
+        {
+          label: "更新日志",
+          click: () => {
+            void openHelpLink("changelog").catch(() => undefined);
+          },
+        },
+        { type: "separator" },
+        {
           label: `关于 ${app.getName()}`,
           click: () => sendAppMenuAction(mainWindow, "open-about"),
         },
@@ -299,6 +313,7 @@ function createMainWindow(): BrowserWindow {
 // 注册基础 IPC，后续 SSH/SFTP 能力只能通过这里扩展。
 function registerBaseIpc(): void {
   registerAboutIpc();
+  registerHelpIpc();
   registerLoggerIpc();
   registerClipboardIpc();
   registerDialogIpc();

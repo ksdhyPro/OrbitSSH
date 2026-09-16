@@ -47,6 +47,8 @@ const emit = defineEmits<{
   openSettings: [];
   openUpdate: [];
   openAbout: [];
+  openFeedback: [];
+  openChangelog: [];
   minimizeWindow: [];
   toggleMaximizeWindow: [];
   closeWindow: [];
@@ -80,10 +82,22 @@ const headerMenuItems = computed<ContextMenuItem[]>(() => {
       {
         key: "check-update",
         label: "检查更新",
+        group: "update",
+      },
+      {
+        key: "changelog",
+        label: "更新日志",
+        group: "links",
+      },
+      {
+        key: "feedback",
+        label: "提交反馈",
+        group: "links",
       },
       {
         key: "about",
         label: "关于",
+        group: "about",
       },
     ];
   }
@@ -169,6 +183,16 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
   // 检查更新
   if (item.key === "check-update") {
     emit("openUpdate");
+    return;
+  }
+
+  if (item.key === "changelog") {
+    emit("openChangelog");
+    return;
+  }
+
+  if (item.key === "feedback") {
+    emit("openFeedback");
     return;
   }
 

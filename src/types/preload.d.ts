@@ -79,6 +79,10 @@ declare global {
       about: {
         show: () => Promise<boolean>;
       };
+      help: {
+        openFeedback: () => Promise<boolean>;
+        openChangelog: () => Promise<boolean>;
+      };
       getAppInfo: () => Promise<{
         name: string;
         version: string;

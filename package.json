@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "dev:electron": "node scripts/dev-electron.cjs",
-    "build": "vue-tsc --noEmit && vite build && tsc -p tsconfig.electron.json && node scripts/copy-preload.cjs",
+    "build": "vue-tsc --noEmit && vite build && tsc -p tsconfig.electron.json && node scripts/generate-build-info.cjs && node scripts/copy-preload.cjs",
     "test:ai": "tsc -p tsconfig.electron.json && node --test tests/ai/*.test.mjs",
     "test:renderer": "node --test tests/renderer/*.test.mjs",
     "test:sftp": "tsc -p tsconfig.electron.json && node --test tests/sftp/*.test.mjs",
