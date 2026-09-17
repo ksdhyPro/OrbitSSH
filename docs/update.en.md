@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.10.6
+
+1. Added per-server custom-command groups with create, rename, and delete operations, plus drag-and-drop and menu-based movement between groups and the ungrouped section. Groups and command assignments are persisted locally.
+2. Expanded custom-command management with edit, delete, pin, and unpin actions. Deleting a group preserves its commands and moves them to the ungrouped section automatically.
+3. Unified the server-group and command-group interfaces with consistent hierarchy, count badges, and collapsed states, plus clearer drop-target highlighting, hover-to-expand behavior, and completion feedback.
+4. Added a fixed “Move to ungrouped” drop area at the bottom of each panel and a “Move to group” menu for servers and commands, reducing drag distance in long lists.
+
 ## v1.10.5
 
 1. Improved SFTP pause and resume. Paused transfers retain their connection, worker slot, and resume progress for up to three minutes, allowing immediate continuation with less waiting.
