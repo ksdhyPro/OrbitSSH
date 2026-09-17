@@ -41,6 +41,18 @@ const orbitSSHApi = {
       ipcRenderer.invoke("server:automation-tasks:list", serverId),
     createAutomationTask: input =>
       ipcRenderer.invoke("server:automation-tasks:create", input),
+    updateAutomationTask: input => ipcRenderer.invoke("server:automation-tasks:update", input),
+    deleteAutomationTask: (serverId, taskId) => ipcRenderer.invoke("server:automation-tasks:delete", serverId, taskId),
+    listAutomationTaskGroups: serverId =>
+      ipcRenderer.invoke("server:automation-task-groups:list", serverId),
+    createAutomationTaskGroup: input =>
+      ipcRenderer.invoke("server:automation-task-groups:create", input),
+    updateAutomationTaskGroup: input =>
+      ipcRenderer.invoke("server:automation-task-groups:update", input),
+    deleteAutomationTaskGroup: (serverId, groupId) =>
+      ipcRenderer.invoke("server:automation-task-groups:delete", serverId, groupId),
+    organizeAutomationTask: input =>
+      ipcRenderer.invoke("server:automation-tasks:organize", input),
     delete: serverId => ipcRenderer.invoke("server:delete", serverId),
   },
   automation: {

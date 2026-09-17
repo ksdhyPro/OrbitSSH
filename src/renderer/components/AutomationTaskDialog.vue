@@ -7,6 +7,7 @@ defineProps<{
   form: { name: string; script: string }
   error: string
   isSubmitting: boolean
+  editing?: boolean
 }>()
 
 const emit = defineEmits<{ close: []; submit: [] }>()
@@ -15,7 +16,7 @@ const emit = defineEmits<{ close: []; submit: [] }>()
 <template>
   <AppDialog
     v-if="open"
-    :title="`新建自动化任务 · ${serverName}`"
+    :title="`${editing ? '编辑' : '新建'}自动化任务 · ${serverName}`"
     description="脚本会通过独立 SSH 会话执行，不影响当前终端。"
     width="medium"
     @close="emit('close')">
@@ -38,7 +39,7 @@ const emit = defineEmits<{ close: []; submit: [] }>()
       <footer class="dialog-actions">
         <button type="button" class="ghost-button" @click="emit('close')">取消</button>
         <button type="submit" class="primary-button" :disabled="isSubmitting">
-          {{ isSubmitting ? '保存中…' : '保存任务' }}
+          {{ isSubmitting ? '保存中…' : editing ? '保存修改' : '保存任务' }}
         </button>
       </footer>
     </form>

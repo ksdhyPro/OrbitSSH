@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 
-import { createPortForwardRule, createServer, createServerAutomationTask, createServerGroup, deletePortForwardRule, deleteServer, deleteServerGroup, getPortForwardRule, listPortForwardRules, listServerAutomationTasks, listServerGroups, listServers, setServerPinned, updatePortForwardRule, updateServer, updateServerAppearance, updateServerGroup } from '../storage/server-store.js'
-import type { ServerAppearanceInput, ServerAutomationTaskInput, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
+import { createAutomationTaskGroup, createPortForwardRule, createServer, createServerAutomationTask, createServerGroup, deleteAutomationTaskGroup, deletePortForwardRule, deleteServer, deleteServerAutomationTask, deleteServerGroup, getPortForwardRule, listAutomationTaskGroups, listPortForwardRules, listServerAutomationTasks, listServerGroups, listServers, organizeAutomationTask, setServerPinned, updateAutomationTaskGroup, updatePortForwardRule, updateServer, updateServerAppearance, updateServerAutomationTask, updateServerGroup } from '../storage/server-store.js'
+import type { AutomationTaskGroupInput, AutomationTaskGroupUpdateInput, AutomationTaskOrganizationInput, ServerAppearanceInput, ServerAutomationTaskInput, ServerAutomationTaskUpdateInput, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 import type { PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
 import { getPortForwardRuntimes, isPortForwardRunning, startPortForward, stopPortForward } from '../ssh/port-forward-manager.js'
 
@@ -27,6 +27,13 @@ export function registerServerIpc(): void {
   ipcMain.handle('server:automation-tasks:list', (_event, serverId: string) => listServerAutomationTasks(serverId))
 
   ipcMain.handle('server:automation-tasks:create', (_event, input: ServerAutomationTaskInput) => createServerAutomationTask(input))
+  ipcMain.handle('server:automation-tasks:update', (_event, input: ServerAutomationTaskUpdateInput) => updateServerAutomationTask(input))
+  ipcMain.handle('server:automation-tasks:delete', (_event, serverId: string, taskId: string) => { deleteServerAutomationTask(serverId, taskId); return true })
+  ipcMain.handle('server:automation-task-groups:list', (_event, serverId: string) => listAutomationTaskGroups(serverId))
+  ipcMain.handle('server:automation-task-groups:create', (_event, input: AutomationTaskGroupInput) => createAutomationTaskGroup(input))
+  ipcMain.handle('server:automation-task-groups:update', (_event, input: AutomationTaskGroupUpdateInput) => updateAutomationTaskGroup(input))
+  ipcMain.handle('server:automation-task-groups:delete', (_event, serverId: string, groupId: string) => { deleteAutomationTaskGroup(serverId, groupId); return true })
+  ipcMain.handle('server:automation-tasks:organize', (_event, input: AutomationTaskOrganizationInput) => organizeAutomationTask(input))
 
   ipcMain.handle('port-forward:list', (_event, serverId: string) => listPortForwardRules(serverId))
   ipcMain.handle('port-forward:runtimes', (_event, serverId: string) => getPortForwardRuntimes(serverId))

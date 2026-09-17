@@ -12,6 +12,11 @@ import type {
   ServerAppearanceInput,
   ServerAutomationTask,
   ServerAutomationTaskInput,
+  ServerAutomationTaskUpdateInput,
+  AutomationTaskGroup,
+  AutomationTaskGroupInput,
+  AutomationTaskGroupUpdateInput,
+  AutomationTaskOrganizationInput,
   ServerInput,
   ServerGroup,
   ServerGroupInput,
@@ -117,6 +122,13 @@ declare global {
         deleteGroup: (groupId: string) => Promise<boolean>;
         listAutomationTasks: (serverId: string) => Promise<ServerAutomationTask[]>;
         createAutomationTask: (input: ServerAutomationTaskInput) => Promise<ServerAutomationTask>;
+        updateAutomationTask: (input: ServerAutomationTaskUpdateInput) => Promise<ServerAutomationTask>;
+        deleteAutomationTask: (serverId: string, taskId: string) => Promise<boolean>;
+        listAutomationTaskGroups: (serverId: string) => Promise<AutomationTaskGroup[]>;
+        createAutomationTaskGroup: (input: AutomationTaskGroupInput) => Promise<AutomationTaskGroup>;
+        updateAutomationTaskGroup: (input: AutomationTaskGroupUpdateInput) => Promise<AutomationTaskGroup>;
+        deleteAutomationTaskGroup: (serverId: string, groupId: string) => Promise<boolean>;
+        organizeAutomationTask: (input: AutomationTaskOrganizationInput) => Promise<ServerAutomationTask>;
         delete: (serverId: string) => Promise<boolean>;
       };
       automation: {

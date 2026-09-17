@@ -854,26 +854,55 @@ input[type="number"] {
   font-size: 12px;
 }
 
-.server-group,
-.server-ungrouped {
-  margin: 2px 4px;
-  border: 0;
+/* 服务器与快捷指令共用同一套分组骨架和拖拽状态。 */
+.grouped-section {
+  position: relative;
+  margin: 0;
   border-radius: 8px;
+  background: var(--surface-subtle);
+  outline: 1px solid transparent;
+  outline-offset: -1px;
   transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    outline-color 140ms ease,
+    transform 140ms ease;
 }
 
-.server-group.drop-target,
-.server-ungrouped.drop-target {
-  box-shadow: none;
+.grouped-section.drop-available {
+  outline-color: var(--border-dashed);
+  outline-style: dashed;
+}
+
+.grouped-section.drop-hovered {
+  outline-color: var(--accent-bright);
+  outline-style: solid;
+  box-shadow:
+    inset 0 0 0 999px color-mix(in srgb, var(--accent) 9%, transparent),
+    0 4px 14px rgba(0, 0, 0, 0.16);
+  transform: translateY(-1px);
+}
+
+.grouped-section.drop-complete {
+  animation: grouped-drop-complete 520ms ease;
+}
+
+@keyframes grouped-drop-complete {
+  0%,
+  100% {
+    outline-color: transparent;
+  }
+  35% {
+    outline-color: var(--success);
+    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--success) 8%, transparent);
+  }
 }
 
 .server-group-header {
   display: flex;
   align-items: center;
-  min-height: 34px;
-  padding: 2px 4px 2px 8px;
+  min-height: 38px;
+  padding: 3px 5px 3px 8px;
 }
 
 .server-group-toggle {
@@ -881,7 +910,7 @@ input[type="number"] {
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  gap: 5px;
+  gap: 6px;
   color: var(--text-primary);
   background: transparent;
   text-align: left;
@@ -902,22 +931,34 @@ input[type="number"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  font-weight: 100;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .server-group-toggle span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--bg-badge);
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .server-group-list {
   display: grid;
-  gap: 2px;
-  padding: 0 2px 2px;
+  gap: 3px;
+  margin: 0 4px 5px 15px;
+  padding: 2px 0 2px 10px;
+  border-left: 1px solid var(--border-subtle);
 }
 
-.server-ungrouped-title,
 .server-group-empty {
   margin: 0;
   padding: 6px 8px;
@@ -974,6 +1015,69 @@ input[type="number"] {
     box-shadow 120ms ease;
 }
 
+.grouped-section .server-item {
+  min-height: 34px;
+}
+
+.grouped-section .server-item strong {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.grouped-section.drop-available .server-group-empty {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+}
+
+.server-item.dragging {
+  opacity: 0.48;
+  transform: scale(0.985);
+}
+
+.grouped-sidebar-content {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 拖拽取消分组时固定在面板底部，避免用户跨越长列表寻找未分组区域。 */
+.ungrouped-drop-dock {
+  position: absolute;
+  z-index: 5;
+  bottom: 4px;
+  right: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  margin: 0;
+  border: 1px dashed var(--accent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-elevated-2) 94%, transparent);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: auto;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    transform 120ms ease;
+}
+
+.ungrouped-drop-dock.hovered {
+  border-color: var(--accent-bright);
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-elevated-2));
+  color: var(--text-primary);
+  transform: translateY(-2px);
+}
+
 .automation-panel {
   display: flex;
   flex-direction: column;
@@ -985,11 +1089,16 @@ input[type="number"] {
   display: grid;
   /* 指令项按自身内容从顶部排列，避免单项占满整个可用区域。 */
   align-content: start;
-  gap: 2px;
+  gap: 6px;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 2px 0 8px;
+  padding: 6px 4px 10px;
   overflow: auto;
+}
+
+.grouped-sidebar-content.drag-active .server-list,
+.grouped-sidebar-content.drag-active .automation-sidebar-list {
+  padding-bottom: 62px;
 }
 
 .automation-sidebar-empty {
@@ -1015,6 +1124,16 @@ input[type="number"] {
 
 .automation-sidebar-item:hover {
   background: var(--bg-hover);
+}
+
+.automation-task-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.automation-run-button img.pinned {
+  filter: var(--icon-filter);
 }
 
 .automation-sidebar-item strong {

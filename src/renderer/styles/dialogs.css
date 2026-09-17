@@ -200,6 +200,10 @@
   gap: 14px;
 }
 
+.automation-script-preview-wrap {
+  position: relative;
+}
+
 .terminal-paste-confirm {
   display: grid;
   gap: 14px;
@@ -231,6 +235,37 @@
     monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 指令内容支持鼠标选词及系统复制快捷键。 */
+.automation-script-preview {
+  user-select: text;
+}
+
+.automation-script-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-elevated-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.automation-script-copy-button:hover {
+  background: var(--bg-hover-item);
+}
+
+.automation-script-copy-button img {
+  width: 16px;
+  height: 16px;
+  filter: var(--icon-filter);
 }
 
 .automation-run-status {

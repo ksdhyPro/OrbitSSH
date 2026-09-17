@@ -68,6 +68,8 @@ export interface ServerAutomationTask {
   serverId: string
   name: string
   script: string
+  groupId?: string
+  isPinned?: boolean
   createdAt: number
   updatedAt: number
 }
@@ -76,7 +78,21 @@ export interface ServerAutomationTaskInput {
   serverId: string
   name: string
   script: string
+  groupId?: string
 }
+export interface ServerAutomationTaskUpdateInput extends ServerAutomationTaskInput { id: string }
+
+export interface AutomationTaskGroup {
+  id: string
+  serverId: string
+  name: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface AutomationTaskGroupInput { serverId: string; name: string }
+export interface AutomationTaskGroupUpdateInput extends AutomationTaskGroupInput { id: string }
+export interface AutomationTaskOrganizationInput { id: string; serverId: string; groupId?: string; isPinned?: boolean }
 
 export type ServerAuthConfig =
   | (ServerConfig & {

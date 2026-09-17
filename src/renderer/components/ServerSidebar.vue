@@ -11,6 +11,7 @@ import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import ServerGroupDialog from "./ServerGroupDialog.vue";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import type { ServerConfig, ServerGroup } from "../../shared/server";
+import { useGroupedDrag } from "../composables/useGroupedDrag";
 
 const props = defineProps<{
   servers: ServerConfig[];
@@ -37,7 +38,7 @@ const emit = defineEmits<{
 }>();
 
 const collapsedGroupIds = ref<string[]>([]);
-const draggedServerId = ref<string | null>(null);
+const isUngroupedCollapsed = ref(false);
 const menu = reactive<ContextMenuState>({ open: false, x: 0, y: 0 });
 const menuTarget = ref<ServerConfig | ServerGroup | null>(null);
 const menuTargetType = ref<"server" | "group">("server");
@@ -59,6 +60,21 @@ const groupDeleteDialog = reactive<{
 const ungroupedServers = computed(() =>
   props.servers.filter(server => !server.groupId),
 );
+const {
+  draggedId: draggedServerId,
+  showUngroupedDock,
+  startDrag: startServerDrag,
+  enterDropTarget: enterServerDropTarget,
+  leaveDropTarget: leaveServerDropTarget,
+  finishDrag: finishServerDrag,
+  cancelDrag: cancelServerDrag,
+  isDropAvailable: isServerDropAvailable,
+  isDropHovered: isServerDropHovered,
+  isRecentlyDropped: isServerRecentlyDropped,
+} = useGroupedDrag(
+  () => props.servers,
+  (server, groupId) => emit("moveServerToGroup", server, groupId),
+);
 const menuItems = computed<ContextMenuItem[]>(() =>
   menuTargetType.value === "group"
     ? [
@@ -75,6 +91,26 @@ const menuItems = computed<ContextMenuItem[]>(() =>
         },
         { key: "edit", label: "编辑连接" },
         { key: "color", label: "修改颜色" },
+        {
+          key: "move",
+          label: "移动到分组",
+          group: "organize",
+          children: [
+            ...props.groups.map(group => ({
+              key: `move:${group.id}`,
+              label: `${(menuTarget.value as ServerConfig)?.groupId === group.id ? "✓ " : ""}${group.name}`,
+              group: "groups",
+              disabled:
+                (menuTarget.value as ServerConfig)?.groupId === group.id,
+            })),
+            {
+              key: "move:ungrouped",
+              label: `${!(menuTarget.value as ServerConfig)?.groupId ? "✓ " : ""}未分组`,
+              group: "ungrouped",
+              disabled: !(menuTarget.value as ServerConfig)?.groupId,
+            },
+          ],
+        },
         { key: "delete", label: "删除连接", group: "danger", danger: true },
       ],
 );
@@ -88,6 +124,12 @@ function toggleGroup(groupId: string): void {
   collapsedGroupIds.value = isGroupCollapsed(groupId)
     ? collapsedGroupIds.value.filter(id => id !== groupId)
     : [...collapsedGroupIds.value, groupId];
+}
+function expandGroup(groupId: string): void {
+  if (isGroupCollapsed(groupId))
+    collapsedGroupIds.value = collapsedGroupIds.value.filter(
+      id => id !== groupId,
+    );
 }
 function openGroupDialog(group?: ServerGroup): void {
   groupDialog.open = true;
@@ -164,6 +206,13 @@ function selectMenuItem(item: ContextMenuItem): void {
     return;
   }
   const server = target as ServerConfig;
+  if (item.key.startsWith("move:")) {
+    const groupId =
+      item.key === "move:ungrouped" ? undefined : item.key.slice(5);
+    if (server.groupId !== groupId)
+      emit("moveServerToGroup", server, groupId);
+    return;
+  }
   if (item.key === "pin") emit("setServerPinned", server);
   if (item.key === "edit") emit("editServer", server);
   if (item.key === "delete") emit("deleteServer", server.id);
@@ -177,17 +226,6 @@ function confirmGroupDelete(): void {
   if (!group) return;
   emit("deleteGroup", group.id);
   closeGroupDeleteDialog();
-}
-function startServerDrag(event: DragEvent, server: ServerConfig): void {
-  draggedServerId.value = server.id;
-  event.dataTransfer?.setData("text/plain", server.id);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-}
-function finishServerDrag(groupId?: string): void {
-  const server = props.servers.find(item => item.id === draggedServerId.value);
-  if (server && server.groupId !== groupId)
-    emit("moveServerToGroup", server, groupId);
-  draggedServerId.value = null;
 }
 </script>
 
@@ -222,7 +260,12 @@ function finishServerDrag(groupId?: string): void {
       </div>
     </div>
     <Transition name="panel-slide"
-      ><div v-show="!collapsed" id="server-panel-content" class="server-list">
+      ><div
+        v-show="!collapsed"
+        id="server-panel-content"
+        class="grouped-sidebar-content"
+        :class="{ 'drag-active': draggedServerId }">
+        <div class="server-list">
         <div v-if="runtimeError" class="server-empty error">
           {{ runtimeError }}
         </div>
@@ -238,10 +281,20 @@ function finishServerDrag(groupId?: string): void {
         <section
           v-for="group in groups"
           :key="group.id"
-          class="server-group"
-          :class="{ 'drop-target': draggedServerId }"
+          class="server-group grouped-section"
+          :class="{
+            'drop-available': isServerDropAvailable(group.id),
+            'drop-hovered': isServerDropHovered(group.id),
+            'drop-complete': isServerRecentlyDropped(group.id),
+          }"
           :style="group.color ? { backgroundColor: group.color } : undefined"
           @dragover.prevent
+          @dragenter.prevent="
+            enterServerDropTarget($event, group.id, () =>
+              expandGroup(group.id),
+            )
+          "
+          @dragleave="leaveServerDropTarget($event, group.id)"
           @drop.prevent="finishServerDrag(group.id)">
           <div class="server-group-header">
             <button
@@ -271,7 +324,13 @@ function finishServerDrag(groupId?: string): void {
             <article
               v-for="server in serversInGroup(group.id)"
               :key="server.id"
-              :class="['server-item', { active: server.id === activeServerId }]"
+              :class="[
+                'server-item',
+                {
+                  active: server.id === activeServerId,
+                  dragging: server.id === draggedServerId,
+                },
+              ]"
               :style="
                 server.color ? { backgroundColor: server.color } : undefined
               "
@@ -279,7 +338,7 @@ function finishServerDrag(groupId?: string): void {
               role="button"
               tabindex="0"
               @dragstart.stop="startServerDrag($event, server)"
-              @dragend="draggedServerId = null"
+              @dragend="cancelServerDrag"
               @click="emit('openServerTerminal', server)">
               <div class="server-meta">
                 <div class="server-title">
@@ -300,43 +359,80 @@ function finishServerDrag(groupId?: string): void {
         </section>
         <section
           v-if="ungroupedServers.length || groups.length"
-          class="server-ungrouped"
-          :class="{ 'drop-target': draggedServerId }"
+          class="server-ungrouped grouped-section"
+          :class="{
+            'drop-available': isServerDropAvailable(),
+            'drop-hovered': isServerDropHovered(),
+            'drop-complete': isServerRecentlyDropped(),
+          }"
           @dragover.prevent
+          @dragenter.prevent="enterServerDropTarget($event)"
+          @dragleave="leaveServerDropTarget($event)"
           @drop.prevent="finishServerDrag()">
-          <p v-if="groups.length" class="server-ungrouped-title">未分组</p>
-          <article
-            v-for="server in ungroupedServers"
-            :key="server.id"
-            :class="['server-item', { active: server.id === activeServerId }]"
-            :style="
-              server.color ? { backgroundColor: server.color } : undefined
-            "
-            draggable="true"
-            role="button"
-            tabindex="0"
-            @dragstart.stop="startServerDrag($event, server)"
-            @dragend="draggedServerId = null"
-            @click="emit('openServerTerminal', server)">
-            <div class="server-meta">
-              <div class="server-title">
-                <span v-if="server.isPinned" class="server-pinned-badge"
-                  ><img :src="pinIcon" alt="" /></span
-                ><strong>{{ server.name }}</strong>
-              </div>
-            </div>
+          <div class="server-group-header">
             <button
               type="button"
-              class="server-menu-trigger"
-              aria-label="连接更多操作"
-              @click.stop="openMenu($event, server, 'server')">
-              <img :src="moreIcon" alt="" />
+              class="server-group-toggle"
+              :aria-expanded="!isUngroupedCollapsed"
+              @click="isUngroupedCollapsed = !isUngroupedCollapsed">
+              <img
+                :class="{ expanded: !isUngroupedCollapsed }"
+                :src="chevronRightIcon"
+                alt="" /><strong>未分组</strong
+              ><span>{{ ungroupedServers.length }}</span>
             </button>
-          </article>
-          <p v-if="!ungroupedServers.length" class="server-group-empty">
-            将连接拖到此处以取消分组
-          </p>
+          </div>
+          <div v-show="!isUngroupedCollapsed" class="server-group-list">
+            <article
+              v-for="server in ungroupedServers"
+              :key="server.id"
+              :class="[
+                'server-item',
+                {
+                  active: server.id === activeServerId,
+                  dragging: server.id === draggedServerId,
+                },
+              ]"
+              :style="
+                server.color ? { backgroundColor: server.color } : undefined
+              "
+              draggable="true"
+              role="button"
+              tabindex="0"
+              @dragstart.stop="startServerDrag($event, server)"
+              @dragend="cancelServerDrag"
+              @click="emit('openServerTerminal', server)">
+              <div class="server-meta">
+                <div class="server-title">
+                  <span v-if="server.isPinned" class="server-pinned-badge"
+                    ><img :src="pinIcon" alt="" /></span
+                  ><strong>{{ server.name }}</strong>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="server-menu-trigger"
+                aria-label="连接更多操作"
+                @click.stop="openMenu($event, server, 'server')">
+                <img :src="moreIcon" alt="" />
+              </button>
+            </article>
+            <p v-if="!ungroupedServers.length" class="server-group-empty">
+              暂无未分组连接
+            </p>
+          </div>
         </section>
+        </div>
+        <div
+          v-if="showUngroupedDock"
+          class="ungrouped-drop-dock"
+          :class="{ hovered: isServerDropHovered() }"
+          @dragover.prevent
+          @dragenter.prevent="enterServerDropTarget($event)"
+          @dragleave="leaveServerDropTarget($event)"
+          @drop.stop.prevent="finishServerDrag()">
+          <strong>{{ isServerDropHovered() ? "松开以移至未分组" : "拖到这里移至未分组" }}</strong>
+        </div>
       </div></Transition
     >
     <ContextMenu
@@ -392,53 +488,6 @@ function finishServerDrag(groupId?: string): void {
   padding: 6px 4px 10px;
 }
 
-.server-group,
-.server-ungrouped {
-  margin: 0;
-}
-
-.server-group {
-  background: var(--surface-subtle);
-}
-
-.server-group-header {
-  min-height: 38px;
-  padding: 3px 5px 3px 8px;
-}
-
-.server-group-toggle {
-  gap: 6px;
-}
-
-.server-group-toggle strong {
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.server-group-toggle span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--bg-badge);
-  color: var(--text-tertiary);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 缩进与竖向引导线明确表达“服务器属于当前分组”。 */
-.server-group-list {
-  margin: 0 4px 5px 15px;
-  padding: 2px 0 2px 10px;
-  border-left: 1px solid var(--border-subtle);
-  gap: 3px;
-}
-
 .server-item {
   position: relative;
   padding: 0 4px;
@@ -478,15 +527,4 @@ function finishServerDrag(groupId?: string): void {
   opacity: 1;
 }
 
-.server-ungrouped-title {
-  padding: 7px 10px 4px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-.server-ungrouped .server-item {
-  margin: 0 4px;
-}
 </style>

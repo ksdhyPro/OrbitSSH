@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 
 import { deleteConversationsByServer } from './ai-conversation-store.js'
 
-import type { ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
+import type { AutomationTaskGroup, AutomationTaskGroupInput, AutomationTaskGroupUpdateInput, AutomationTaskOrganizationInput, ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerAutomationTaskUpdateInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
 
 interface ServerStoreSchema {
@@ -12,6 +12,7 @@ interface ServerStoreSchema {
   groups: ServerGroup[]
   passwords: Record<string, string>
   automationTasks: Record<string, ServerAutomationTask[]>
+  automationTaskGroups: Record<string, AutomationTaskGroup[]>
   portForwardRules: Record<string, PortForwardRule[]>
 }
 
@@ -22,6 +23,7 @@ const store = new Store<ServerStoreSchema>({
     groups: [],
     passwords: {},
     automationTasks: {},
+    automationTaskGroups: {},
     portForwardRules: {}
   }
 })
@@ -132,6 +134,8 @@ function getAutomationTasks(): Record<string, ServerAutomationTask[]> {
 function saveAutomationTasks(tasks: Record<string, ServerAutomationTask[]>): void {
   store.set('automationTasks', tasks)
 }
+function getAutomationTaskGroups(): Record<string, AutomationTaskGroup[]> { return store.get('automationTaskGroups', {}) }
+function saveAutomationTaskGroups(groups: Record<string, AutomationTaskGroup[]>): void { store.set('automationTaskGroups', groups) }
 
 function getPortForwardRules(): Record<string, PortForwardRule[]> {
   return store.get('portForwardRules', {})
@@ -249,7 +253,34 @@ export function listServerAutomationTasks(serverId: string): ServerAutomationTas
     throw new Error('服务器 ID 无效')
   }
 
-  return [...(getAutomationTasks()[serverId] ?? [])]
+  return [...(getAutomationTasks()[serverId] ?? [])].sort((left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)))
+}
+
+function normalizeAutomationTaskGroupInput(input: AutomationTaskGroupInput): AutomationTaskGroupInput {
+  const serverId = typeof input.serverId === 'string' ? input.serverId.trim() : ''
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  if (!serverId || !getServers().some(server => server.id === serverId)) throw new Error('服务器不存在')
+  if (!name || name.length > 100) throw new Error('分组名称不能为空且不能超过 100 个字符')
+  return { serverId, name }
+}
+export function listAutomationTaskGroups(serverId: string): AutomationTaskGroup[] { return [...(getAutomationTaskGroups()[serverId] ?? [])] }
+export function createAutomationTaskGroup(input: AutomationTaskGroupInput): AutomationTaskGroup {
+  const normalized = normalizeAutomationTaskGroupInput(input); const now = Date.now()
+  const group: AutomationTaskGroup = { id: crypto.randomUUID(), ...normalized, createdAt: now, updatedAt: now }
+  const groups = getAutomationTaskGroups(); groups[group.serverId] = [...(groups[group.serverId] ?? []), group]; saveAutomationTaskGroups(groups); return group
+}
+export function updateAutomationTaskGroup(input: AutomationTaskGroupUpdateInput): AutomationTaskGroup {
+  const normalized = normalizeAutomationTaskGroupInput(input); const groups = getAutomationTaskGroups(); const index = (groups[normalized.serverId] ?? []).findIndex(group => group.id === input.id)
+  if (index < 0) throw new Error('分组不存在'); const group = { ...groups[normalized.serverId][index], name: normalized.name, updatedAt: Date.now() }; groups[normalized.serverId][index] = group; saveAutomationTaskGroups(groups); return group
+}
+export function deleteAutomationTaskGroup(serverId: string, groupId: string): void {
+  const groups = getAutomationTaskGroups(); groups[serverId] = (groups[serverId] ?? []).filter(group => group.id !== groupId); saveAutomationTaskGroups(groups)
+  const tasks = getAutomationTasks(); tasks[serverId] = (tasks[serverId] ?? []).map(task => task.groupId === groupId ? { ...task, groupId: undefined, updatedAt: Date.now() } : task); saveAutomationTasks(tasks)
+}
+export function organizeAutomationTask(input: AutomationTaskOrganizationInput): ServerAutomationTask {
+  const tasks = getAutomationTasks(); const task = (tasks[input.serverId] ?? []).find(item => item.id === input.id); if (!task) throw new Error('自动化任务不存在')
+  if (input.groupId && !(getAutomationTaskGroups()[input.serverId] ?? []).some(group => group.id === input.groupId)) throw new Error('分组不存在')
+  const updated = { ...task, groupId: input.groupId, isPinned: input.isPinned ?? task.isPinned, updatedAt: Date.now() }; tasks[input.serverId] = tasks[input.serverId].map(item => item.id === input.id ? updated : item); saveAutomationTasks(tasks); return updated
 }
 
 export function getServerAutomationTask(taskId: string): ServerAutomationTask {
@@ -290,6 +321,8 @@ export function createServerAutomationTask(input: ServerAutomationTaskInput): Se
     serverId,
     name,
     script,
+    groupId: input.groupId,
+    isPinned: false,
     createdAt: now,
     updatedAt: now
   }
@@ -298,6 +331,25 @@ export function createServerAutomationTask(input: ServerAutomationTaskInput): Se
   saveAutomationTasks(tasks)
 
   return task
+}
+
+export function updateServerAutomationTask(input: ServerAutomationTaskUpdateInput): ServerAutomationTask {
+  const existing = (getAutomationTasks()[input.serverId] ?? []).find(task => task.id === input.id)
+  if (!existing) throw new Error('自动化任务不存在')
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const script = typeof input.script === 'string' ? input.script.trim() : ''
+  if (!name || !script || name.length > 100 || script.length > 20_000) throw new Error('指令名称或内容无效')
+  const tasks = getAutomationTasks()
+  const task: ServerAutomationTask = { ...existing, name, script, groupId: input.groupId, updatedAt: Date.now() }
+  tasks[input.serverId] = tasks[input.serverId].map(item => item.id === task.id ? task : item)
+  saveAutomationTasks(tasks)
+  return task
+}
+
+export function deleteServerAutomationTask(serverId: string, taskId: string): void {
+  const tasks = getAutomationTasks()
+  tasks[serverId] = (tasks[serverId] ?? []).filter(task => task.id !== taskId)
+  saveAutomationTasks(tasks)
 }
 
 export function getServerAuthConfig(serverId: string): ServerAuthConfig {
@@ -500,6 +552,9 @@ export function deleteServer(serverId: string): void {
   const tasks = getAutomationTasks()
   delete tasks[serverId]
   saveAutomationTasks(tasks)
+  const automationGroups = getAutomationTaskGroups()
+  delete automationGroups[serverId]
+  saveAutomationTaskGroups(automationGroups)
 
   const portForwardRules = getPortForwardRules()
   delete portForwardRules[serverId]

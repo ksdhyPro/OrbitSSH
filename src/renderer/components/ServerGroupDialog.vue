@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import AppDialog from "./AppDialog.vue";
 
-defineProps<{ open: boolean; name: string; editing: boolean }>();
+withDefaults(defineProps<{ open: boolean; name: string; editing: boolean; description?: string }>(), {
+  description: '为服务器连接创建一个独立分组。',
+});
 const emit = defineEmits<{ close: []; submit: []; updateName: [name: string] }>();
 </script>
 
 <template>
-  <AppDialog v-if="open" :title="editing ? '编辑分组' : '新增分组'" description="为服务器连接创建一个独立分组。" width="small" @close="emit('close')">
+  <AppDialog v-if="open" :title="editing ? '编辑分组' : '新增分组'" :description="description" width="small" @close="emit('close')">
     <form class="server-group-dialog-form" @submit.prevent="emit('submit')">
       <label>
         <span>分组名称</span>
