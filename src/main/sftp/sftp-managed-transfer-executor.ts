@@ -34,6 +34,8 @@ import {
 export interface ManagedTransferControl {
   paused: boolean
   canceled: boolean
+  /** 暂停期间由任务管理器调用，用于立即恢复当前传输上下文。 */
+  resume?: () => void
 }
 
 interface ManagedTransferBase {
@@ -41,6 +43,10 @@ interface ManagedTransferBase {
   size: number
   control: ManagedTransferControl
   onProgress: (transferredBytes: number, speedBytesPerSecond: number) => void
+  /** 暂停超时后重新调度时，直接使用已保存的续传进度。 */
+  skipVerification?: boolean
+  /** 内存连接释放后，供上传直接使用的已确认连续写入偏移。 */
+  resumeOffset?: number
 }
 
 export interface ManagedUploadFileInput extends ManagedTransferBase {
@@ -78,7 +84,27 @@ export type ManagedTransferResult = 'completed' | 'paused' | 'canceled'
 
 const localFingerprintReader = createLocalFileFingerprintReader()
 const RESERVED_DISK_BYTES = 1024 * 1024 * 1024
+const PAUSED_CONNECTION_HOLD_MS = 3 * 60 * 1000
 let reservedRelayBytes = 0
+
+/** 暂停时最多保留三分钟连接和工作槽，继续后直接恢复当前传输。 */
+async function waitForTransferResume(control: ManagedTransferControl): Promise<boolean> {
+  if (control.canceled) return false
+  if (!control.paused) return true
+
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      control.resume = undefined
+      resolve(false)
+    }, PAUSED_CONNECTION_HOLD_MS)
+
+    control.resume = () => {
+      clearTimeout(timeout)
+      control.resume = undefined
+      resolve(!control.canceled)
+    }
+  })
+}
 
 async function assertRemoteSourceUnchanged(
   client: SftpClient,
@@ -191,15 +217,17 @@ async function downloadRemoteFileToPath(
 }
 
 async function runUpload(input: ManagedUploadFileInput): Promise<ManagedTransferResult> {
-  const sourceStat = await lstat(input.localPath)
-  if (sourceStat.isSymbolicLink()) throw new Error('暂不支持符号链接')
-  if (!sourceStat.isFile()) throw new Error('上传源文件不存在或类型已变化')
-  if (sourceStat.size !== input.size) throw new Error('上传源文件大小已发生变化')
-  if (
-    typeof input.expectedModifyTime === 'number'
-    && Math.trunc(sourceStat.mtimeMs) !== Math.trunc(input.expectedModifyTime)
-  ) {
-    throw new Error('上传源文件修改时间已发生变化')
+  if (!input.skipVerification) {
+    const sourceStat = await lstat(input.localPath)
+    if (sourceStat.isSymbolicLink()) throw new Error('暂不支持符号链接')
+    if (!sourceStat.isFile()) throw new Error('上传源文件不存在或类型已变化')
+    if (sourceStat.size !== input.size) throw new Error('上传源文件大小已发生变化')
+    if (
+      typeof input.expectedModifyTime === 'number'
+      && Math.trunc(sourceStat.mtimeMs) !== Math.trunc(input.expectedModifyTime)
+    ) {
+      throw new Error('上传源文件修改时间已发生变化')
+    }
   }
 
   const lease = await acquireSftpConnection(input.serverId, input.nodeId)
@@ -207,33 +235,44 @@ async function runUpload(input: ManagedUploadFileInput): Promise<ManagedTransfer
 
   try {
     const client = lease.client
-    await client.mkdir(dirname(input.remotePath).replace(/\\/g, '/'), true)
-    const comparison = await compareFileFingerprints(
-      { reader: localFingerprintReader, path: input.localPath },
-      { reader: createRemoteFileFingerprintReader(client), path: input.remotePath },
-      input.size
-    )
-
-    if (comparison.matched) return 'completed'
-
     const tempRemotePath = getTransferTempPath(input.remotePath)
-    const resumeOffset = await getRemoteUploadResumeOffset(
-      client,
-      tempRemotePath,
-      input.size,
-      true
-    )
-    const reportProgress = createProgressReporter(input.onProgress, resumeOffset)
+    let resumeOffset = Math.min(Math.max(input.resumeOffset ?? 0, 0), input.size)
+    if (!input.skipVerification) {
+      await client.mkdir(dirname(input.remotePath).replace(/\\/g, '/'), true)
+      const comparison = await compareFileFingerprints(
+        { reader: localFingerprintReader, path: input.localPath },
+        { reader: createRemoteFileFingerprintReader(client), path: input.remotePath },
+        input.size
+      )
+      if (comparison.matched) return 'completed'
+      resumeOffset = await getRemoteUploadResumeOffset(
+        client,
+        tempRemotePath,
+        input.size,
+        true
+      )
+    } else {
+      // 跳过比对仍确保目标目录存在；这不会读取或校验传输文件。
+      await client.mkdir(dirname(input.remotePath).replace(/\\/g, '/'), true)
+    }
 
-    await uploadLocalFileToRemote(
-      input.control,
-      client,
-      input.localPath,
-      input.remotePath,
-      input.size,
-      resumeOffset,
-      reportProgress
-    )
+    const reportProgress = createProgressReporter(input.onProgress, resumeOffset)
+    while (!input.control.canceled) {
+      await uploadLocalFileToRemote(
+        input.control,
+        client,
+        input.localPath,
+        input.remotePath,
+        input.size,
+        resumeOffset,
+        (transferredBytes) => {
+          resumeOffset = transferredBytes
+          reportProgress(transferredBytes)
+        }
+      )
+      if (!input.control.paused) break
+      if (!await waitForTransferResume(input.control)) return input.control.canceled ? 'canceled' : 'paused'
+    }
 
     if (input.control.canceled) {
       await client.delete(tempRemotePath).catch(() => undefined)
@@ -255,22 +294,28 @@ async function runDownload(input: ManagedDownloadFileInput): Promise<ManagedTran
   let reusable = true
 
   try {
-    await assertRemoteSourceUnchanged(
-      lease.client,
-      input.remotePath,
-      input.size,
-      input.expectedModifyTime
-    )
+    if (!input.skipVerification) {
+      await assertRemoteSourceUnchanged(
+        lease.client,
+        input.remotePath,
+        input.size,
+        input.expectedModifyTime
+      )
+    }
     await mkdir(dirname(input.localPath), { recursive: true })
     const reportProgress = createProgressReporter(input.onProgress)
-    await downloadRemoteFileToPath(
-      lease.client,
-      normalizeRemotePath(input.remotePath),
-      tempLocalPath,
-      input.size,
-      input.control,
-      reportProgress
-    )
+    while (!input.control.canceled) {
+      await downloadRemoteFileToPath(
+        lease.client,
+        normalizeRemotePath(input.remotePath),
+        tempLocalPath,
+        input.size,
+        input.control,
+        reportProgress
+      )
+      if (!input.control.paused) break
+      if (!await waitForTransferResume(input.control)) return input.control.canceled ? 'canceled' : 'paused'
+    }
 
     if (input.control.canceled) {
       await rm(tempLocalPath, { force: true }).catch(() => undefined)
@@ -278,12 +323,14 @@ async function runDownload(input: ManagedDownloadFileInput): Promise<ManagedTran
     }
     if (input.control.paused) return 'paused'
 
-    await assertRemoteSourceUnchanged(
-      lease.client,
-      input.remotePath,
-      input.size,
-      input.expectedModifyTime
-    )
+    if (!input.skipVerification) {
+      await assertRemoteSourceUnchanged(
+        lease.client,
+        input.remotePath,
+        input.size,
+        input.expectedModifyTime
+      )
+    }
 
     await replaceLocalFile(tempLocalPath, input.localPath)
     return 'completed'
@@ -319,34 +366,41 @@ async function runRelay(input: ManagedRelayFileInput): Promise<ManagedTransferRe
 
   try {
     targetLease = await acquireSftpConnection(input.targetServerId, `${input.nodeId}-target`)
-    await assertRemoteSourceUnchanged(
-      sourceLease.client,
-      input.sourcePath,
-      input.size,
-      input.expectedModifyTime
-    )
-    const comparison = await compareFileFingerprints(
-      { reader: createRemoteFileFingerprintReader(sourceLease.client), path: input.sourcePath },
-      { reader: createRemoteFileFingerprintReader(targetLease.client), path: input.targetPath },
-      input.size
-    )
-
-    if (comparison.matched) {
-      await rm(input.localPath, { force: true }).catch(() => undefined)
-      return 'completed'
+    if (!input.skipVerification) {
+      await assertRemoteSourceUnchanged(
+        sourceLease.client,
+        input.sourcePath,
+        input.size,
+        input.expectedModifyTime
+      )
+      const comparison = await compareFileFingerprints(
+        { reader: createRemoteFileFingerprintReader(sourceLease.client), path: input.sourcePath },
+        { reader: createRemoteFileFingerprintReader(targetLease.client), path: input.targetPath },
+        input.size
+      )
+      if (comparison.matched) {
+        await rm(input.localPath, { force: true }).catch(() => undefined)
+        return 'completed'
+      }
     }
 
     const localBytes = await getLocalFileSize(input.localPath)
     if (localBytes < input.size) {
       const reportDownload = createProgressReporter(input.onProgress, localBytes)
-      await downloadRemoteFileToPath(
-        sourceLease.client,
-        input.sourcePath,
-        input.localPath,
-        input.size,
-        input.control,
-        reportDownload
-      )
+      while (!input.control.canceled) {
+        await downloadRemoteFileToPath(
+          sourceLease.client,
+          input.sourcePath,
+          input.localPath,
+          input.size,
+          input.control,
+          reportDownload
+        )
+        if (!input.control.paused) break
+        if (!await waitForTransferResume(input.control)) {
+          return input.control.canceled ? 'canceled' : 'paused'
+        }
+      }
     }
 
     if (input.control.canceled) {
@@ -356,35 +410,39 @@ async function runRelay(input: ManagedRelayFileInput): Promise<ManagedTransferRe
     }
     if (input.control.paused) return 'paused'
 
-    await assertRemoteSourceUnchanged(
-      sourceLease.client,
-      input.sourcePath,
-      input.size,
-      input.expectedModifyTime
-    )
-
     await targetLease.client.mkdir(dirname(input.targetPath).replace(/\\/g, '/'), true)
     const tempRemotePath = getTransferTempPath(input.targetPath)
-    const uploadOffset = await getRemoteUploadResumeOffset(
-      targetLease.client,
-      tempRemotePath,
-      input.size,
-      true
-    )
+    let uploadOffset = input.skipVerification
+      ? Math.min(Math.max(input.resumeOffset ?? 0, 0), input.size)
+      : await getRemoteUploadResumeOffset(
+        targetLease.client,
+        tempRemotePath,
+        input.size,
+        true
+      )
     const reportUpload = createProgressReporter(
       input.onProgress,
       input.size + uploadOffset
     )
 
-    await uploadLocalFileToRemote(
-      input.control,
-      targetLease.client,
-      input.localPath,
-      input.targetPath,
-      input.size,
-      uploadOffset,
-      bytes => reportUpload(input.size + bytes)
-    )
+    while (!input.control.canceled) {
+      await uploadLocalFileToRemote(
+        input.control,
+        targetLease.client,
+        input.localPath,
+        input.targetPath,
+        input.size,
+        uploadOffset,
+        bytes => {
+          uploadOffset = bytes
+          reportUpload(input.size + bytes)
+        }
+      )
+      if (!input.control.paused) break
+      if (!await waitForTransferResume(input.control)) {
+        return input.control.canceled ? 'canceled' : 'paused'
+      }
+    }
 
     if (input.control.canceled) {
       await rm(input.localPath, { force: true }).catch(() => undefined)

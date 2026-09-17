@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.5
+
+1. Improved SFTP pause and resume. Paused transfers retain their connection, worker slot, and resume progress for up to three minutes, allowing immediate continuation with less waiting.
+2. Resuming no longer repeats file fingerprint, remote-state, or resume-offset checks. Uploads, downloads, and server-to-server relays continue directly from their recorded contiguous progress.
+
 ## v1.10.4
 
 1. Reworked file-transfer task execution. Server-to-server transfers now always relay through local temporary files, the legacy direct-transfer implementation has been removed, and file-level scheduling uses exclusive per-server SFTP connection pools.

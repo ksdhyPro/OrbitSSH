@@ -36,6 +36,8 @@ interface ManagedNodeState extends SftpManagedTaskNode {
   targetPath: string
   sourceModifyTime?: number
   control?: ManagedTransferControl
+  /** 已开始过的任务继续时不重复执行远端比对与元数据校验。 */
+  resumeWithoutVerification?: boolean
   deleted?: boolean
 }
 
@@ -78,7 +80,8 @@ function countGlobalWorkItems(): number {
 function getNodeSnapshot(node: ManagedNodeState): SftpManagedTaskNode {
   const { children: _children, workItem: _workItem, sourcePath: _sourcePath,
     targetPath: _targetPath, sourceModifyTime: _sourceModifyTime,
-    control: _control, deleted: _deleted, ...snapshot } = node
+    control: _control, resumeWithoutVerification: _resumeWithoutVerification,
+    deleted: _deleted, ...snapshot } = node
   return snapshot
 }
 
@@ -349,7 +352,11 @@ function createFileInput(
     nodeId: node.id,
     size: node.totalBytes / (batch.snapshot.direction === 'server-transfer' ? 2 : 1),
     control: node.control as ManagedTransferControl,
-    onProgress: (bytes: number, speed: number) => applyProgressDelta(batch, node, bytes, speed)
+    onProgress: (bytes: number, speed: number) => applyProgressDelta(batch, node, bytes, speed),
+    skipVerification: node.resumeWithoutVerification,
+    resumeOffset: batch.snapshot.direction === 'server-transfer'
+      ? Math.max(node.transferredBytes - (node.totalBytes / 2), 0)
+      : node.transferredBytes
   }
 
   if (batch.snapshot.direction === 'upload') {
@@ -635,10 +642,21 @@ async function applyActionToNodes(
   for (const node of targets) {
     if (action === 'pause' && ['queued', 'transferring'].includes(node.status)) {
       node.status = 'paused'
-      if (node.control) node.control.paused = true
+      if (node.control) {
+        node.control.paused = true
+        node.resumeWithoutVerification = true
+      }
     } else if (action === 'resume' && node.status === 'paused') {
-      node.status = 'queued'
+      node.resumeWithoutVerification = true
       node.error = undefined
+      if (node.control) {
+        // 三分钟保留期内直接唤醒原传输上下文，避免重新排队、建连和远端比对。
+        node.control.paused = false
+        node.control.resume?.()
+        node.status = 'transferring'
+      } else {
+        node.status = 'queued'
+      }
     } else if (action === 'retry' && node.status === 'failed') {
       try {
         if (node.type === 'file') await refreshFailedSourceMetadata(batch, node)
