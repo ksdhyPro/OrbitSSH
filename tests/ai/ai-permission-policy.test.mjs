@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveAiCommandPermission } from "../../dist-electron/main/ai/ai-permission-policy.js";
+import {
+  resolveAiCommandPermission,
+  resolveSavedServerCommandPermission,
+} from "../../dist-electron/main/ai/ai-permission-policy.js";
 import { evaluateAiCommand } from "../../dist-electron/main/ai/command-policy.js";
 
 function decide(mode, command, risk = "medium", approvalGranted = false) {
@@ -44,4 +47,18 @@ test("任何权限档位都不能执行格式无效的命令", () => {
 test("用户批准可以跳过审批，但不能绕过格式拒绝", () => {
   assert.equal(decide("auto", "rm -rf /tmp/demo", "high", true), "execute");
   assert.equal(decide("ask", "echo 'unfinished", "high", true), "deny");
+});
+
+test("跨服务器命令在所有模式下都必须逐次明确批准", () => {
+  const policy = evaluateAiCommand("uptime");
+  for (const mode of ["ask", "auto", "full_access"]) {
+    assert.equal(
+      resolveSavedServerCommandPermission(mode, "low", policy, false).decision,
+      "requires_approval",
+    );
+    assert.equal(
+      resolveSavedServerCommandPermission(mode, "low", policy, true).decision,
+      "execute",
+    );
+  }
 });

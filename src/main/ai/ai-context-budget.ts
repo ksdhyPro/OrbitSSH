@@ -4,6 +4,7 @@ import type {
   AiMessage,
 } from "../../shared/ai.js";
 import type { ExecutedAiCommandContext } from "./ai-context.js";
+import type { AiPersistedConversationContext } from "../storage/ai-conversation-store.js";
 
 export interface AiTokenUsage {
   promptTokens: number;
@@ -18,7 +19,6 @@ export interface AiConversationMemory {
 }
 
 interface AiConversationContextState extends AiConversationMemory {
-  tabId: string;
   historyFloorCreatedAt: number;
   lastUsage?: AiTokenUsage;
   lastUsageConfigId?: string;
@@ -109,7 +109,36 @@ function cloneRememberedCommand(command: ExecutedAiCommandContext): ExecutedAiCo
 export class AiConversationContextManager {
   private readonly states = new Map<string, AiConversationContextState>();
 
-  getMemory(input: Pick<AiChatInput, "tabId" | "conversationId">): AiConversationMemory {
+  private getKey(input: Pick<AiChatInput, "conversationId" | "context">): string {
+    return `${input.context.serverId}\u0000${input.conversationId}`;
+  }
+
+  restore(
+    input: Pick<AiChatInput, "conversationId" | "context">,
+    snapshot: AiPersistedConversationContext | null,
+  ): void {
+    const key = this.getKey(input);
+    if (this.states.has(key) || !snapshot) return;
+    this.states.set(key, {
+      summary: snapshot.summary,
+      commands: snapshot.commands.map(command => cloneRememberedCommand(command)),
+      historyFloorCreatedAt: snapshot.historyFloorCreatedAt,
+      compressionFailed: false,
+    });
+  }
+
+  snapshot(
+    input: Pick<AiChatInput, "conversationId" | "context">,
+  ): AiPersistedConversationContext {
+    const state = this.getState(input);
+    return {
+      summary: state.summary,
+      commands: state.commands.map(command => cloneRememberedCommand(command)),
+      historyFloorCreatedAt: state.historyFloorCreatedAt,
+    };
+  }
+
+  getMemory(input: Pick<AiChatInput, "conversationId" | "context">): AiConversationMemory {
     const state = this.getState(input);
     return {
       summary: state.summary,
@@ -124,7 +153,7 @@ export class AiConversationContextManager {
       : input.history;
   }
 
-  assertAvailable(input: Pick<AiChatInput, "tabId" | "conversationId">): void {
+  assertAvailable(input: Pick<AiChatInput, "conversationId" | "context">): void {
     if (this.getState(input).compressionFailed) {
       throw new Error("上下文压缩失败，本对话已停止继续请求模型。请新建对话后重试。");
     }
@@ -153,7 +182,7 @@ export class AiConversationContextManager {
   }
 
   recordUsage(
-    input: Pick<AiChatInput, "tabId" | "conversationId">,
+    input: Pick<AiChatInput, "conversationId" | "context">,
     usage: AiTokenUsage,
     configId: string,
   ): void {
@@ -163,7 +192,7 @@ export class AiConversationContextManager {
   }
 
   getContextUsage(
-    input: Pick<AiChatInput, "tabId" | "conversationId">,
+    input: Pick<AiChatInput, "conversationId" | "context">,
     configId: string,
     contextTokenLimitK: number,
   ): AiContextUsage | undefined {
@@ -187,7 +216,7 @@ export class AiConversationContextManager {
   }
 
   recordCommand(
-    input: Pick<AiChatInput, "tabId" | "conversationId">,
+    input: Pick<AiChatInput, "conversationId" | "context">,
     command: ExecutedAiCommandContext,
   ): void {
     const state = this.getState(input);
@@ -207,35 +236,28 @@ export class AiConversationContextManager {
     state.compressionFailed = false;
   }
 
-  failCompression(input: Pick<AiChatInput, "tabId" | "conversationId">): void {
+  failCompression(input: Pick<AiChatInput, "conversationId" | "context">): void {
     this.getState(input).compressionFailed = true;
   }
 
-  clearTab(tabId: string): void {
-    for (const [conversationId, state] of this.states) {
-      if (state.tabId === tabId) this.states.delete(conversationId);
-    }
+  clearConversation(serverId: string, conversationId: string): void {
+    this.states.delete(`${serverId}\u0000${conversationId}`);
   }
 
   private getState(
-    input: Pick<AiChatInput, "tabId" | "conversationId">,
+    input: Pick<AiChatInput, "conversationId" | "context">,
   ): AiConversationContextState {
-    const existing = this.states.get(input.conversationId);
-    if (existing) {
-      if (existing.tabId !== input.tabId) {
-        throw new Error("AI 对话与终端标签页不匹配");
-      }
-      return existing;
-    }
+    const key = this.getKey(input);
+    const existing = this.states.get(key);
+    if (existing) return existing;
 
     const state: AiConversationContextState = {
-      tabId: input.tabId,
       summary: "",
       commands: [],
       historyFloorCreatedAt: 0,
       compressionFailed: false,
     };
-    this.states.set(input.conversationId, state);
+    this.states.set(key, state);
     return state;
   }
 }

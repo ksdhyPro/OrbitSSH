@@ -47,3 +47,22 @@ export function resolveAiCommandPermission(
 
   return { decision: "execute", reason: policy.reason };
 }
+
+/** 已保存服务器属于额外执行目标，任何模式都必须由用户逐次明确批准。 */
+export function resolveSavedServerCommandPermission(
+  mode: AiMode,
+  risk: "low" | "medium" | "high",
+  policy: AiCommandPolicyResult,
+  approvalGranted = false,
+): AiCommandPermissionResult {
+  if (policy.decision === "deny") {
+    return { decision: "deny", reason: policy.reason };
+  }
+  if (!approvalGranted) {
+    return {
+      decision: "requires_approval",
+      reason: "跨服务器命令必须由用户明确批准本次执行",
+    };
+  }
+  return resolveAiCommandPermission(mode, risk, policy, true);
+}

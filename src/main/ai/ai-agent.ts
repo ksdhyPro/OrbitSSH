@@ -4,6 +4,7 @@
  */
 export {
   cancelAiRequest,
+  disposeAiConversationState,
   disposeAiTabState,
   rejectAiCommandApproval,
   runAiChat,

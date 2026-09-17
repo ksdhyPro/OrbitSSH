@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.10.3
+
+1. Strengthened approval for cross-server AI commands. Regardless of the active permission mode, accessing another saved server now displays a command card and executes only after explicit user approval.
+2. Improved AI command safety detection and result reporting by blocking indirect cross-server execution through shells, script interpreters, and command substitution, while correctly marking non-zero exits and timeouts as failures.
+3. Improved AI conversation state management. The main process now persists messages, command cards, and context summaries, validates terminal-to-server ownership, and restores conversations after restarts or across tabs.
+4. Split oversized AI panel, state-management, and stylesheet files to reduce future maintenance overhead.
+
 ## v1.10.2
 
 1. Added SFTP file-list sorting by modification time, with clickable ascending and descending switching and an arrow icon indicating the current direction.

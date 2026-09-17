@@ -14,8 +14,12 @@ const validInput = {
   conversationId: "conversation-1",
   mode: "auto",
   presetPrompt: "使用简洁中文回答",
+  conversationTitle: "检查磁盘",
+  conversationCreatedAt: 1,
+  messageId: "message-1",
+  messageCreatedAt: 2,
   message: "检查磁盘",
-  context: { tabId: "tab-1", serverName: "demo" },
+  context: { tabId: "tab-1", serverId: "server-1", serverName: "demo" },
   history: [],
 };
 
@@ -25,7 +29,10 @@ test("AI 输入会归一化并拒绝标签页不匹配", () => {
   assert.equal(normalized.context.serverName, "demo");
   assert.equal(normalized.presetPrompt, validInput.presetPrompt);
   assert.throws(
-    () => normalizeAiChatInput({ ...validInput, context: { tabId: "tab-2" } }),
+    () => normalizeAiChatInput({
+      ...validInput,
+      context: { tabId: "tab-2", serverId: "server-1" },
+    }),
     /标签页与当前标签页不匹配/,
   );
 });

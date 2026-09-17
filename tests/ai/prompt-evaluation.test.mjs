@@ -11,8 +11,13 @@ function createInput(overrides = {}) {
     requestId: "request-eval",
     conversationId: "conversation-eval",
     mode: "auto",
+    presetPrompt: "",
+    conversationTitle: "检查服务",
+    conversationCreatedAt: 1,
+    messageId: "message-eval",
+    messageCreatedAt: 2,
     message: "检查当前服务状态",
-    context: { tabId: "tab-eval", serverName: "production" },
+    context: { tabId: "tab-eval", serverId: "server-eval", serverName: "production" },
     history: [],
     ...overrides,
   };
@@ -35,7 +40,8 @@ test("系统提示词说明三档权限与不可绕过的格式校验", () => {
   assert.match(systemPrompt, /每轮最多调用一个工具/);
   assert.match(systemPrompt, /ask 模式逐条审批/);
   assert.match(systemPrompt, /auto 模式自动执行低中风险操作/);
-  assert.match(systemPrompt, /full_access 模式对格式有效的命令不再审批/);
+  assert.match(systemPrompt, /full_access 模式对当前终端中格式有效的命令不再审批/);
+  assert.match(systemPrompt, /任何已保存服务器命令均必须弹出命令卡/);
   assert.match(systemPrompt, /格式无效的命令直接 deny 且不可绕过/);
   assert.match(systemPrompt, /finish_response/);
   assert.match(systemPrompt, /纯文本不能表示任务完成/);

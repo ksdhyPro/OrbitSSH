@@ -231,7 +231,7 @@ function buildSystemPrompt(input: AiChatInput): string {
     "run_long_shell_command 启动后不得重复执行相同命令。状态为 running 时只能简短汇报进度并调用 report_long_command_progress，不得调用 finish_response；只有本地返回退出码和终态后才能总结成功或失败。",
     "工具结果中 exitCode=0 且 timedOut=false 表示命令成功；无输出不代表未执行。",
     "风险标记必须准确：low=只读查询；medium=常规写入、依赖安装或普通服务重启；high=删除、权限提升、凭据读取、不可逆或大范围影响。",
-    "ask 模式逐条审批；auto 模式自动执行低中风险操作，仅高风险或敏感操作审批；full_access 模式对格式有效的命令不再审批。",
+    "ask 模式逐条审批；auto 模式自动执行低中风险操作，仅高风险或敏感操作审批；full_access 模式对当前终端中格式有效的命令不再审批。任何已保存服务器命令均必须弹出命令卡并由用户逐次明确批准。",
     "回答必须使用中文；命令、路径、服务名和错误文本保持原样。",
     "工具参数中的 command 只包含需要执行的纯命令。",
     "本地策略概要：格式无效的命令直接 deny 且不可绕过；敏感读取和明确高风险操作在 auto 模式下必须审批。",

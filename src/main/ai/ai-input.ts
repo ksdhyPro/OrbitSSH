@@ -93,6 +93,11 @@ export function normalizeAiChatInput(input: unknown): AiChatInput {
   const context = requireRecord(record.context, "AI 上下文");
   const contextTabId = requireBoundedString(context.tabId, "AI 上下文标签页 ID", 128);
   if (contextTabId !== tabId) throw new Error("AI 上下文标签页与当前标签页不匹配");
+  const conversationCreatedAt = Number(record.conversationCreatedAt);
+  const messageCreatedAt = Number(record.messageCreatedAt);
+  if (!Number.isFinite(conversationCreatedAt) || !Number.isFinite(messageCreatedAt)) {
+    throw new Error("AI 对话时间无效");
+  }
   return {
     tabId,
     requestId: requireBoundedString(record.requestId, "AI 请求 ID", 128),
@@ -107,9 +112,18 @@ export function normalizeAiChatInput(input: unknown): AiChatInput {
       "AI 预提示词",
       AI_PRESET_PROMPT_MAX_CHARS,
     ),
+    conversationTitle: requireBoundedString(
+      record.conversationTitle,
+      "AI 对话标题",
+      128,
+    ),
+    conversationCreatedAt,
+    messageId: requireBoundedString(record.messageId, "AI 当前消息 ID", 128),
+    messageCreatedAt,
     message: requireBoundedString(record.message, "AI 消息", maxMessageChars),
     context: {
       tabId: contextTabId,
+      serverId: requireBoundedString(context.serverId, "服务器 ID", 128),
       serverName: normalizeOptionalBoundedString(context.serverName, "服务器名称", 512),
       currentPath: normalizeOptionalBoundedString(context.currentPath, "当前路径", 4_096),
       status: normalizeOptionalBoundedString(context.status, "连接状态", 128),

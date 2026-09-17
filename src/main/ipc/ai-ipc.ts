@@ -1,9 +1,8 @@
 import { ipcMain } from "electron";
 
-import type { AiSaveConversationInput } from "../../shared/ai.js";
-
 import {
   cancelAiRequest,
+  disposeAiConversationState,
   rejectAiCommandApproval,
   runAiChat,
   runApprovedAiCommand,
@@ -15,11 +14,11 @@ import {
   normalizeRejectedApprovalInput,
 } from "../ai/ai-input.js";
 import { getSettings } from "../storage/settings-store.js";
+import { getTerminalContextSnapshot } from "../ssh/session-manager.js";
 import {
   deleteConversation,
   getConversationRecord,
   listConversationSummaries,
-  saveConversation,
 } from "../storage/ai-conversation-store.js";
 import { assertTabAccess } from "./validation.js";
 
@@ -35,19 +34,22 @@ export function registerAiIpc(): void {
       getConversationRecord(serverId, conversationId),
   );
 
-  ipcMain.handle("ai:conversations:save", (_event, input: AiSaveConversationInput) =>
-    saveConversation(input),
-  );
-
   ipcMain.handle(
     "ai:conversations:delete",
-    (_event, serverId: string, conversationId: string) =>
-      deleteConversation(serverId, conversationId),
+    (_event, serverId: string, conversationId: string) => {
+      const deleted = deleteConversation(serverId, conversationId);
+      if (deleted) disposeAiConversationState(serverId, conversationId);
+      return deleted;
+    },
   );
 
   ipcMain.handle("ai:chat", (event, input: unknown) => {
     const normalizedInput = normalizeAiChatInput(input);
     assertTabAccess(event, normalizedInput.tabId);
+    const terminalContext = getTerminalContextSnapshot(normalizedInput.tabId);
+    if (terminalContext?.serverId !== normalizedInput.context.serverId) {
+      throw new Error("AI 上下文服务器与当前终端不匹配");
+    }
     return runAiChat(normalizedInput, getSettings(), event.sender);
   });
 

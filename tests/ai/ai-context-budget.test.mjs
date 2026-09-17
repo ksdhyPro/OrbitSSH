@@ -15,8 +15,13 @@ const input = {
   requestId: "request-1",
   conversationId: "conversation-1",
   mode: "auto",
+  presetPrompt: "",
+  conversationTitle: "检查服务",
+  conversationCreatedAt: 1,
+  messageId: "message-1",
+  messageCreatedAt: 3,
   message: "继续检查",
-  context: { tabId: "tab-1" },
+  context: { tabId: "tab-1", serverId: "server-1" },
   history: [
     { id: "m1", role: "user", content: "检查服务", createdAt: 1 },
     { id: "m2", role: "assistant", content: "开始检查", createdAt: 2 },
@@ -170,4 +175,28 @@ test("压缩失败后当前对话直接熔断", () => {
   const manager = new AiConversationContextManager();
   manager.failCompression(input);
   assert.throws(() => manager.assertAvailable(input), /已停止继续请求模型/);
+});
+
+test("同一服务器会话可在其他标签页恢复运行上下文", () => {
+  const manager = new AiConversationContextManager();
+  const restoredInput = {
+    ...input,
+    tabId: "tab-2",
+    context: { ...input.context, tabId: "tab-2" },
+  };
+  manager.restore(restoredInput, {
+    summary: "已经确认 nginx 正常运行。",
+    historyFloorCreatedAt: 2,
+    commands: [],
+  });
+
+  assert.equal(
+    manager.getMemory(restoredInput).summary,
+    "已经确认 nginx 正常运行。",
+  );
+  assert.deepEqual(manager.snapshot(restoredInput), {
+    summary: "已经确认 nginx 正常运行。",
+    historyFloorCreatedAt: 2,
+    commands: [],
+  });
 });

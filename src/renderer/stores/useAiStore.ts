@@ -87,6 +87,7 @@ function createTitleFromMessage(content: string): string {
 function toPlainAiContext(context: AiContextInput): AiContextInput {
   return {
     tabId: context.tabId || "",
+    serverId: context.serverId || "",
     serverName: context.serverName,
     currentPath: context.currentPath,
     status: context.status,
@@ -691,65 +692,6 @@ export const useAiStore = defineStore("ai", () => {
     }
   }
 
-  // IPC 只能传递可结构化克隆的数据，持久化前把响应式对象转为普通对象。
-  function toPlainConversationRecord(
-    conversation: AiConversationState,
-  ): AiConversationRecord {
-    return {
-      id: conversation.id,
-      title: conversation.title,
-      presetPrompt: conversation.presetPrompt,
-      messages: toPlainAiHistory(conversation.messages),
-      commandCards: conversation.commandCards.map(card => ({
-        ...card,
-        result: card.result
-          ? {
-              stdout: card.result.stdout,
-              stderr: card.result.stderr,
-              exitCode: card.result.exitCode,
-              timedOut: card.result.timedOut,
-              durationMs: card.result.durationMs,
-            }
-          : undefined,
-      })),
-      contextUsage: conversation.contextUsage
-        ? { ...conversation.contextUsage }
-        : undefined,
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-    };
-  }
-
-  // 请求结束或卡片终态时写盘；空对话不落盘。写盘失败不影响聊天。
-  function persistConversation(tabId: string, conversationId: string): void {
-    const session = sessionsByTabId.value[tabId];
-    const conversation = session?.conversations.find(
-      item => item.id === conversationId,
-    );
-    const serverId = serverIdByTabId.value[tabId];
-
-    if (!conversation || !serverId || conversation.messages.length === 0) {
-      return;
-    }
-
-    core.orbitSSHApi.ai.conversations
-      .save({
-        serverId,
-        conversation: toPlainConversationRecord(conversation),
-      })
-      .catch(error => {
-        core.writeRendererLog(
-          "AI 对话持久化失败",
-          {
-            tabId,
-            conversationId,
-            error: error instanceof Error ? error.message : String(error),
-          },
-          "warn",
-        );
-      });
-  }
-
   function removeTabSession(tabId: string): void {
     if (!tabId) {
       return;
@@ -885,7 +827,7 @@ export const useAiStore = defineStore("ai", () => {
       );
     }
 
-    const userMessage = createMessage("user", content);
+      const userMessage = createMessage("user", content);
     // 发送给主进程的历史只包含既有对话，避免把当前空占位回复传给模型。
     const requestHistory = toPlainAiHistory(
       conversation.messages.slice(-HISTORY_LIMIT),
@@ -901,6 +843,12 @@ export const useAiStore = defineStore("ai", () => {
         conversationId,
         mode: mode.value,
         presetPrompt: conversation.presetPrompt,
+        conversationTitle: conversation.title === "新对话"
+          ? createTitleFromMessage(content)
+          : conversation.title,
+        conversationCreatedAt: conversation.createdAt,
+        messageId: userMessage.id,
+        messageCreatedAt: userMessage.createdAt,
         message: content,
         context: plainContext,
         history: requestHistory,
@@ -921,8 +869,6 @@ export const useAiStore = defineStore("ai", () => {
         sendError instanceof Error ? sendError.message : String(sendError),
       );
     } finally {
-      // 无论成败都落盘：失败时也保留已发出的用户消息，便于下次续聊。
-      persistConversation(context.tabId, conversationId);
       clearActiveRequest(context.tabId, requestId);
     }
   }
@@ -965,7 +911,6 @@ export const useAiStore = defineStore("ai", () => {
         error: runError instanceof Error ? runError.message : String(runError),
       });
     } finally {
-      persistConversation(card.tabId, conversationId);
       clearActiveRequest(card.tabId, requestId);
     }
   }
@@ -973,7 +918,6 @@ export const useAiStore = defineStore("ai", () => {
   async function rejectApproval(card: AiCommandCard): Promise<void> {
     if (!card.approvalId) {
       updateCommandCard({ ...card, status: "rejected" });
-      persistConversation(card.tabId, card.conversationId);
       return;
     }
 
@@ -985,7 +929,6 @@ export const useAiStore = defineStore("ai", () => {
       });
     } finally {
       updateCommandCard({ ...card, status: "rejected" });
-      persistConversation(card.tabId, card.conversationId);
     }
   }
 

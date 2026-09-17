@@ -8,6 +8,10 @@ const baseStyleUrl = new URL(
   import.meta.url,
 )
 const aiStyleUrl = new URL('../../src/renderer/styles/ai.css', import.meta.url)
+const aiComposeStyleUrl = new URL(
+  '../../src/renderer/styles/ai-compose.css',
+  import.meta.url,
+)
 const sidebarStoreUrl = new URL(
   '../../src/renderer/stores/useSidebarStore.ts',
   import.meta.url,
@@ -49,7 +53,10 @@ test('AI 面板拖拽使用内容区真实右边界计算宽度', async () => {
 })
 
 test('AI 面板头部和输入操作区允许内容随面板收缩', async () => {
-  const aiStyle = await readFile(aiStyleUrl, 'utf8')
+  const aiStyle = [
+    await readFile(aiStyleUrl, 'utf8'),
+    await readFile(aiComposeStyleUrl, 'utf8'),
+  ].join('\n')
   const headerContentRule = aiStyle.match(
     /\.ai-panel-heading\s*\{[\s\S]*?\n\}/,
   )?.[0]

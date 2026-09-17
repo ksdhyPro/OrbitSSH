@@ -2,7 +2,7 @@ import { getServerAuthConfig, listServers } from '../storage/server-store.js'
 import { executeSshTerminalCommand } from '../ssh/terminal-command.js'
 import { createSshClient } from '../sftp/sftp-transfer-common.js'
 import type { AiCommandResult, AiMode } from '../../shared/ai.js'
-import { resolveAiCommandPermission } from './ai-permission-policy.js'
+import { resolveSavedServerCommandPermission } from './ai-permission-policy.js'
 import { evaluateAiCommand } from './command-policy.js'
 
 function normalizeServerReference(value: string): string {
@@ -47,7 +47,7 @@ export async function executeSavedServerCommand(
   input: ExecuteSavedServerCommandInput
 ): Promise<{ serverName: string; result: AiCommandResult }> {
   const policy = evaluateAiCommand(input.command)
-  const permission = resolveAiCommandPermission(
+  const permission = resolveSavedServerCommandPermission(
     input.mode,
     input.risk,
     policy,

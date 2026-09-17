@@ -33,6 +33,13 @@ import {
 } from "./ai-context-budget.js";
 import type { ExecutedAiCommandContext } from "./ai-context.js";
 import { summarizeAiConversation } from "./ai-provider.js";
+import {
+  beginPersistedAiTurn,
+  completePersistedAiTurn,
+  persistAiConversationContext,
+  restoreAiConversationContext,
+  updatePersistedAiCommandCard,
+} from "./ai-conversation-state.js";
 
 interface ActiveAiRequest {
   requestId: string;
@@ -43,7 +50,14 @@ interface ActiveAiRequest {
 const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
 const activeRequests = new Map<string, ActiveAiRequest>();
+const activeConversationRequests = new Map<string, ActiveAiRequest>();
 const conversationContexts = new AiConversationContextManager();
+
+function getConversationRequestKey(
+  input: Pick<AiChatInput, "conversationId" | "context">,
+): string {
+  return `${input.context.serverId}\u0000${input.conversationId}`;
+}
 
 function getActiveContextConfig(
   settings: AppSettings,
@@ -97,6 +111,7 @@ async function compressConversation(
       signal,
     );
     conversationContexts.completeCompression(compressionInput, summary);
+    persistAiConversationContext(input, conversationContexts);
   } catch (error) {
     conversationContexts.failCompression(input);
     writeAppLog({
@@ -127,6 +142,7 @@ async function runLoopWithContext(
   options: RunLoopWithContextOptions,
 ): Promise<AiChatResult> {
   const { input, settings, signal, emit } = options;
+  restoreAiConversationContext(input, conversationContexts);
   conversationContexts.assertAvailable(input);
   const activeContextConfig = getActiveContextConfig(settings);
   const contextTokenLimitK = activeContextConfig?.contextTokenLimitK ?? 0;
@@ -200,7 +216,10 @@ async function runLoopWithContext(
         },
         onTokenUsage: usage =>
           conversationContexts.recordUsage(input, usage, configId),
-        onCommandExecuted: command => conversationContexts.recordCommand(input, command),
+        onCommandExecuted: command => {
+          conversationContexts.recordCommand(input, command);
+          persistAiConversationContext(input, conversationContexts);
+        },
         storeApproval: storePendingApproval,
       });
       return {
@@ -255,7 +274,8 @@ function notifyExpiredApproval(
   approvalId: string,
   approval: PendingApprovalState,
 ): void {
-  cancelPendingApproval(approvalId, approval, "命令授权已过期");
+  const card = cancelPendingApproval(approvalId, approval, "命令授权已过期");
+  updatePersistedAiCommandCard(approval.input, card);
 }
 
 function storePendingApproval(
@@ -276,15 +296,18 @@ function clearPendingApprovalsForTab(
   emit?: AgentEmitter,
 ): void {
   for (const { id, value } of pendingApprovals.clearForTab(tabId)) {
-    cancelPendingApproval(id, value, reason, emit);
+    const card = cancelPendingApproval(id, value, reason, emit);
+    updatePersistedAiCommandCard(value.input, card);
   }
 }
 
 async function runTrackedRequest<T>(
-  input: Pick<AiChatInput, "tabId" | "requestId" | "conversationId">,
+  input: Pick<AiChatInput, "tabId" | "requestId" | "conversationId" | "context">,
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   activeRequests.get(input.tabId)?.controller.abort();
+  const conversationKey = getConversationRequestKey(input);
+  activeConversationRequests.get(conversationKey)?.controller.abort();
   const controller = new AbortController();
   const activeRequest: ActiveAiRequest = {
     requestId: input.requestId,
@@ -292,11 +315,15 @@ async function runTrackedRequest<T>(
     controller,
   };
   activeRequests.set(input.tabId, activeRequest);
+  activeConversationRequests.set(conversationKey, activeRequest);
   try {
     return await operation(controller.signal);
   } finally {
     if (activeRequests.get(input.tabId) === activeRequest) {
       activeRequests.delete(input.tabId);
+    }
+    if (activeConversationRequests.get(conversationKey) === activeRequest) {
+      activeConversationRequests.delete(conversationKey);
     }
   }
 }
@@ -309,14 +336,17 @@ export async function runAiChat(
 ): Promise<AiChatResult> {
   const emit = createAgentEmitter(input, webContents);
   clearPendingApprovalsForTab(input.tabId, "已开始新的 AI 请求", emit);
-  return runTrackedRequest(input, signal =>
-    runLoopWithContext({
+  beginPersistedAiTurn(input);
+  return runTrackedRequest(input, async signal => {
+    const result = await runLoopWithContext({
       input,
       settings,
       signal,
       emit,
-    }),
-  );
+    });
+    completePersistedAiTurn(input, result);
+    return result;
+  });
 }
 
 export function cancelAiRequest(input: AiCancelInput): boolean {
@@ -356,6 +386,7 @@ export async function runApprovedAiCommand(
     conversationId: input.conversationId,
   };
   const emit = createAgentEmitter(resumedInput, webContents);
+  restoreAiConversationContext(resumedInput, conversationContexts);
 
   return runTrackedRequest(resumedInput, async signal => {
     const action = reevaluateAgentAction(approval.action);
@@ -372,8 +403,10 @@ export async function runApprovedAiCommand(
       executedCommands: [...approval.executedCommands],
       messages,
       storeApproval: storePendingApproval,
-      onCommandExecuted: command =>
-        conversationContexts.recordCommand(resumedInput, command),
+      onCommandExecuted: command => {
+        conversationContexts.recordCommand(resumedInput, command);
+        persistAiConversationContext(resumedInput, conversationContexts);
+      },
       onLongCommandProgress: (progress, progressSignal) =>
         reportLongCommandProgress({
           input: resumedInput,
@@ -401,7 +434,10 @@ export async function runApprovedAiCommand(
         cardCreatedAt: previousCard?.createdAt ?? Date.now(),
       },
     });
-    if (execution.status === "return") return execution.result;
+    if (execution.status === "return") {
+      completePersistedAiTurn(resumedInput, execution.result);
+      return execution.result;
+    }
 
     const loopResult = await runLoopWithContext({
       input: resumedInput,
@@ -412,6 +448,7 @@ export async function runApprovedAiCommand(
       initialExecutedCommands: execution.executedCommands,
       leadingMessages: messages,
     });
+    completePersistedAiTurn(resumedInput, loopResult);
     return loopResult;
   });
 }
@@ -428,6 +465,18 @@ export function rejectAiCommandApproval(
     return false;
   }
   if (!pendingApprovals.take(input.approvalId)) return false;
+  const previousCard = approval.previousCards.find(
+    card => card.id === approval.cardId,
+  );
+  if (previousCard) {
+    const rejectedCard = {
+      ...previousCard,
+      status: "rejected" as const,
+      error: "用户已拒绝本次命令授权",
+    };
+    approval.emit?.sendCommandCard(rejectedCard);
+    updatePersistedAiCommandCard(approval.input, rejectedCard);
+  }
   writeAppLog({
     scope: "main.ai",
     message: "AI 命令授权已拒绝",
@@ -440,5 +489,11 @@ export function disposeAiTabState(tabId: string): void {
   activeRequests.get(tabId)?.controller.abort();
   activeRequests.delete(tabId);
   clearPendingApprovalsForTab(tabId, "终端标签页已关闭");
-  conversationContexts.clearTab(tabId);
+}
+
+export function disposeAiConversationState(
+  serverId: string,
+  conversationId: string,
+): void {
+  conversationContexts.clearConversation(serverId, conversationId);
 }

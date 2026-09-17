@@ -82,7 +82,6 @@ const orbitSSHApi = {
       list: serverId => ipcRenderer.invoke("ai:conversations:list", serverId),
       get: (serverId, conversationId) =>
         ipcRenderer.invoke("ai:conversations:get", serverId, conversationId),
-      save: input => ipcRenderer.invoke("ai:conversations:save", input),
       delete: (serverId, conversationId) =>
         ipcRenderer.invoke("ai:conversations:delete", serverId, conversationId),
     },

@@ -66,7 +66,6 @@ import type {
   AiConversationRecord,
   AiConversationSummary,
   AiRejectedCommandInput,
-  AiSaveConversationInput,
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai";
@@ -151,7 +150,6 @@ declare global {
             serverId: string,
             conversationId: string,
           ) => Promise<AiConversationRecord | null>;
-          save: (input: AiSaveConversationInput) => Promise<boolean>;
           delete: (serverId: string, conversationId: string) => Promise<boolean>;
         };
         onStreamChunk: (

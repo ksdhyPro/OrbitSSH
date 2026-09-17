@@ -5,12 +5,24 @@ import type {
   AiCommandResult,
   AiConversationRecord,
   AiConversationSummary,
-  AiMessage,
-  AiSaveConversationInput
+  AiMessage
 } from '../../shared/ai.js'
+import type { ExecutedAiCommandContext } from '../ai/ai-context.js'
+
+export interface AiPersistedConversationContext {
+  summary: string
+  commands: ExecutedAiCommandContext[]
+  historyFloorCreatedAt: number
+}
+
+interface AiSaveConversationInput {
+  serverId: string
+  conversation: AiConversationRecord
+}
 
 interface AiConversationStoreSchema {
   conversationsByServer: Record<string, AiConversationRecord[]>
+  runtimeContextsByServer: Record<string, Record<string, AiPersistedConversationContext>>
 }
 
 // 每台服务器最多保留的历史对话数，超出时按 updatedAt 淘汰最旧的。
@@ -21,7 +33,8 @@ const MAX_COMMAND_OUTPUT_LENGTH = 20_000
 const store = new Store<AiConversationStoreSchema>({
   name: 'ai-conversations',
   defaults: {
-    conversationsByServer: {}
+    conversationsByServer: {},
+    runtimeContextsByServer: {}
   }
 })
 
@@ -31,6 +44,16 @@ function getConversationsByServer(): Record<string, AiConversationRecord[]> {
 
 function saveConversationsByServer(map: Record<string, AiConversationRecord[]>): void {
   store.set('conversationsByServer', map)
+}
+
+function getRuntimeContextsByServer(): Record<string, Record<string, AiPersistedConversationContext>> {
+  return store.get('runtimeContextsByServer', {})
+}
+
+function saveRuntimeContextsByServer(
+  map: Record<string, Record<string, AiPersistedConversationContext>>
+): void {
+  store.set('runtimeContextsByServer', map)
 }
 
 function normalizeServerId(serverId: unknown): string {
@@ -177,7 +200,66 @@ export function deleteConversation(serverId: string, conversationId: string): bo
     map[normalizedServerId] = next
   }
   saveConversationsByServer(map)
+  deleteConversationRuntimeContext(normalizedServerId, normalizedConversationId)
   return true
+}
+
+/** 保存主进程 Agent 的可恢复上下文，Renderer 不直接读写该状态。 */
+export function saveConversationRuntimeContext(
+  serverId: string,
+  conversationId: string,
+  context: AiPersistedConversationContext
+): void {
+  const normalizedServerId = normalizeServerId(serverId)
+  const normalizedConversationId = conversationId.trim()
+  if (!normalizedConversationId) throw new Error('对话 ID 无效')
+  const map = getRuntimeContextsByServer()
+  const serverContexts = map[normalizedServerId] ?? {}
+  serverContexts[normalizedConversationId] = {
+    summary: context.summary.trim(),
+    historyFloorCreatedAt: Math.max(0, context.historyFloorCreatedAt),
+    commands: context.commands.map(command => ({
+      ...command,
+      result: normalizeCommandResult(command.result) ?? command.result
+    }))
+  }
+  map[normalizedServerId] = serverContexts
+  saveRuntimeContextsByServer(map)
+}
+
+export function getConversationRuntimeContext(
+  serverId: string,
+  conversationId: string
+): AiPersistedConversationContext | null {
+  const normalizedServerId = normalizeServerId(serverId)
+  const normalizedConversationId = conversationId.trim()
+  if (!normalizedConversationId) throw new Error('对话 ID 无效')
+  const context = getRuntimeContextsByServer()[normalizedServerId]?.[normalizedConversationId]
+  if (!context) return null
+  return {
+    summary: typeof context.summary === 'string' ? context.summary : '',
+    historyFloorCreatedAt: Number.isFinite(context.historyFloorCreatedAt)
+      ? Math.max(0, context.historyFloorCreatedAt)
+      : 0,
+    commands: Array.isArray(context.commands)
+      ? context.commands.map(command => ({
+          ...command,
+          result: normalizeCommandResult(command.result) ?? command.result
+        }))
+      : []
+  }
+}
+
+export function deleteConversationRuntimeContext(
+  serverId: string,
+  conversationId: string
+): void {
+  const map = getRuntimeContextsByServer()
+  const serverContexts = map[serverId]
+  if (!serverContexts || !(conversationId in serverContexts)) return
+  delete serverContexts[conversationId]
+  if (Object.keys(serverContexts).length === 0) delete map[serverId]
+  saveRuntimeContextsByServer(map)
 }
 
 /** 删除服务器时级联清理其全部 AI 历史对话，避免本地配置残留。 */
@@ -185,10 +267,13 @@ export function deleteConversationsByServer(serverId: string): void {
   const normalizedServerId = normalizeServerId(serverId)
   const map = getConversationsByServer()
 
-  if (!(normalizedServerId in map)) {
-    return
+  if (normalizedServerId in map) {
+    delete map[normalizedServerId]
+    saveConversationsByServer(map)
   }
-
-  delete map[normalizedServerId]
-  saveConversationsByServer(map)
+  const runtimeMap = getRuntimeContextsByServer()
+  if (normalizedServerId in runtimeMap) {
+    delete runtimeMap[normalizedServerId]
+    saveRuntimeContextsByServer(runtimeMap)
+  }
 }

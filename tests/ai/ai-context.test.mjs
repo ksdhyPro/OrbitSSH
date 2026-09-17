@@ -11,8 +11,13 @@ const input = {
   requestId: "request-1",
   conversationId: "conversation-1",
   mode: "auto",
+  presetPrompt: "",
+  conversationTitle: "检查服务",
+  conversationCreatedAt: 1,
+  messageId: "message-1",
+  messageCreatedAt: 2,
   message: "检查服务",
-  context: { tabId: "tab-1", serverName: "demo" },
+  context: { tabId: "tab-1", serverId: "server-1", serverName: "demo" },
   history: [],
 };
 

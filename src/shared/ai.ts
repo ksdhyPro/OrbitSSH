@@ -73,6 +73,8 @@ export interface AiCommandPolicyResult {
 
 export interface AiContextInput {
   tabId: string;
+  /** 当前终端所属服务器，用于主进程持久化和恢复对话运行上下文。 */
+  serverId: string;
   serverName?: string;
   currentPath?: string;
   status?: string;
@@ -86,6 +88,10 @@ export interface AiChatInput {
   mode: AiMode;
   /** 创建对话时固定的预提示词快照，后续轮次与压缩续接保持不变。 */
   presetPrompt: string;
+  conversationTitle: string;
+  conversationCreatedAt: number;
+  messageId: string;
+  messageCreatedAt: number;
   message: string;
   context: AiContextInput;
   history: AiMessage[];
@@ -173,9 +179,4 @@ export interface AiConversationRecord {
   contextUsage?: AiContextUsage;
   createdAt: number;
   updatedAt: number;
-}
-
-export interface AiSaveConversationInput {
-  serverId: string;
-  conversation: AiConversationRecord;
 }

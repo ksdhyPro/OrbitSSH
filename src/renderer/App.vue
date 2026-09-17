@@ -612,6 +612,7 @@ const {
 
 const aiContext = computed(() => ({
   tabId: activeTabId.value,
+  serverId: activeTab.value?.serverId ?? "",
   serverName: activeTab.value?.title,
   currentPath: activeTab.value?.currentPath,
   status: activeTab.value?.status,

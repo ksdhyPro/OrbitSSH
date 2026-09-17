@@ -73,6 +73,31 @@ const MUST_APPROVE_GENERAL_PATTERNS = [
   /^(mysql|mariadb|psql|sqlite3)\b.*\s(?:-e|-c|--execute)(?:\s|=)/i,
 ];
 
+// Shell、解释器和批处理包装器可以隐藏真实执行意图，无法仅凭外层命令安全判断。
+const INDIRECT_EXECUTION_COMMANDS = new Set([
+  ".",
+  "bash",
+  "dash",
+  "eval",
+  "fish",
+  "ksh",
+  "node",
+  "perl",
+  "python",
+  "python3",
+  "ruby",
+  "sh",
+  "source",
+  "xargs",
+  "zsh",
+]);
+
+const REMOTE_SHELL_COMMAND_PATTERN =
+  /(?:^|[\s'"`;|&()])(?:[^\s'"`;|&()]+\/)?(?:ssh|scp|sftp)(?=\s|$)/i;
+
+const INDIRECT_EXECUTION_PATTERN =
+  /(?:^|[\s'"`;|&()])(?:[^\s'"`;|&()]+\/)?(?:bash|busybox|dash|eval|fish|ksh|node|perl|php|powershell|pwsh|python3?|ruby|setsid|sh|source|timeout|xargs|zsh)(?=\s|$)/i;
+
 const SAFE_ARG = "[A-Za-z0-9_./:@%+=,~*?-]+";
 const SAFE_TEXT = "['\"]?[^'\";&|<>`$]{1,160}['\"]?";
 const SAFE_TOOL_NAME = "[A-Za-z0-9_.@+-]+";
@@ -548,6 +573,21 @@ function getMandatoryApprovalReason(
 
   const commandName = effective.commandName;
 
+  if (REMOTE_SHELL_COMMAND_PATTERN.test(command)) {
+    return "检测到 SSH、SCP 或 SFTP 跨服务器命令";
+  }
+
+  if (
+    INDIRECT_EXECUTION_COMMANDS.has(commandName) ||
+    INDIRECT_EXECUTION_PATTERN.test(command)
+  ) {
+    return "命令通过 Shell、解释器或批处理包装器间接执行，必须确认";
+  }
+
+  if (/\$\(|`/.test(command)) {
+    return "命令包含动态命令替换，必须确认";
+  }
+
   if (CRITICAL_APPROVAL_PREFIXES.includes(commandName)) {
     return "命中高风险命令前缀";
   }
@@ -715,6 +755,11 @@ export function isAutoAllowedQueryCommand(command: string): boolean {
 
 export function isReadonlyAllowedCommand(command: string): boolean {
   return isAutoAllowedQueryCommand(command);
+}
+
+/** 当前终端禁止通过任何常见包装形式发起跨服务器 Shell。 */
+export function containsRemoteShellCommand(command: string): boolean {
+  return REMOTE_SHELL_COMMAND_PATTERN.test(command);
 }
 
 export function requiresMandatoryApproval(

@@ -15,12 +15,20 @@ import type {
 } from "./ai-context.js";
 import type { AgentEmitter } from "./ai-agent-events.js";
 import { resolveAiCommandPermission } from "./ai-permission-policy.js";
+import { resolveSavedServerCommandPermission } from "./ai-permission-policy.js";
 import type {
   ParsedAiCommand,
   ParsedAssistantResponse,
 } from "./ai-provider.js";
 import { executeSavedServerCommand } from "./ai-saved-server-command.js";
-import { evaluateAiCommand } from "./command-policy.js";
+import {
+  containsRemoteShellCommand,
+  evaluateAiCommand,
+} from "./command-policy.js";
+import {
+  getAiCommandResultError,
+  getAiCommandResultStatus,
+} from "./ai-command-result.js";
 import {
   LONG_COMMAND_TIMEOUT_MS,
   runLongCommandMonitor,
@@ -242,7 +250,7 @@ export function cancelPendingApproval(
   approval: PendingApprovalState,
   reason: string,
   emit?: AgentEmitter,
-): void {
+): AiCommandCard {
   const previousCard = approval.previousCards.find(
     card => card.id === approval.cardId,
   );
@@ -253,6 +261,7 @@ export function cancelPendingApproval(
     error: reason,
   });
   (approval.emit ?? emit)?.sendCommandCard(card);
+  return card;
 }
 
 function pauseForApproval(
@@ -343,19 +352,13 @@ async function executeShellAction(
           signal,
           workingDirectory: getWorkingDirectory(input),
         });
-    const succeeded = action.type !== "long_shell" || (
-      result.exitCode === 0 && !result.timedOut
-    );
-    const completedCard = createCard(input, action, succeeded ? "completed" : "failed", {
+    const resultStatus = getAiCommandResultStatus(result);
+    const completedCard = createCard(input, action, resultStatus, {
       id: cardId,
       createdAt: cardCreatedAt,
       approvalId: request.approval?.id,
       result,
-      error: succeeded || action.type !== "long_shell"
-        ? undefined
-        : result.timedOut
-          ? "长命令执行超时"
-          : `命令以退出码 ${String(result.exitCode ?? "未知")} 结束`,
+      error: getAiCommandResultError(result),
     });
     emit?.sendCommandCard(completedCard);
     nextCards = mergeCards(nextCards, completedCard);
@@ -461,11 +464,12 @@ async function executeSavedServerAction(
       approvalGranted: Boolean(request.approval),
       signal,
     });
-    const completedCard = createCard(input, action, "completed", {
+    const completedCard = createCard(input, action, getAiCommandResultStatus(remote.result), {
       id: cardId,
       createdAt: cardCreatedAt,
       approvalId: request.approval?.id,
       result: remote.result,
+      error: getAiCommandResultError(remote.result),
     });
     emit?.sendCommandCard(completedCard);
     nextCards = mergeCards(nextCards, completedCard);
@@ -531,7 +535,7 @@ export async function executeAgentAction(
   // 跨服务器连接始终先于审批判断拦截，禁止借当前终端绕过受控连接。
   if (
     request.action.type !== "saved_server" &&
-    /^\s*(?:ssh|scp|sftp)\b/i.test(request.action.command)
+    containsRemoteShellCommand(request.action.command)
   ) {
     const card = createCard(request.input, request.action, "rejected", {
       error: "跨服务器操作必须使用已保存服务器工具，不能通过当前终端跳转 SSH",
@@ -551,12 +555,19 @@ export async function executeAgentAction(
     };
   }
 
-  const permission = resolveAiCommandPermission(
-    request.input.mode,
-    request.action.risk,
-    request.action.policy,
-    Boolean(request.approval),
-  );
+  const permission = request.action.type === "saved_server"
+    ? resolveSavedServerCommandPermission(
+        request.input.mode,
+        request.action.risk,
+        request.action.policy,
+        Boolean(request.approval),
+      )
+    : resolveAiCommandPermission(
+        request.input.mode,
+        request.action.risk,
+        request.action.policy,
+        Boolean(request.approval),
+      );
 
   if (permission.decision === "deny") {
     if (request.action.type === "saved_server") {
@@ -587,7 +598,11 @@ export async function executeAgentAction(
       request,
       cardId,
       cardCreatedAt,
-      request.input.mode === "ask" ? request.action.reason : permission.reason,
+      request.action.type === "saved_server"
+        ? permission.reason
+        : request.input.mode === "ask"
+          ? request.action.reason
+          : permission.reason,
     );
   }
 

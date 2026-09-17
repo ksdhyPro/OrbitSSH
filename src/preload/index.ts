@@ -66,7 +66,6 @@ import type {
   AiConversationRecord,
   AiConversationSummary,
   AiRejectedCommandInput,
-  AiSaveConversationInput,
   AiStreamChunkEvent,
   AiStreamMessageStartEvent,
 } from "../shared/ai.js";
@@ -187,11 +186,6 @@ const orbitSSHApi = {
           serverId,
           conversationId,
         ) as Promise<AiConversationRecord | null>,
-      save: (input: AiSaveConversationInput) =>
-        ipcRenderer.invoke(
-          "ai:conversations:save",
-          input,
-        ) as Promise<boolean>,
       delete: (serverId: string, conversationId: string) =>
         ipcRenderer.invoke(
           "ai:conversations:delete",
