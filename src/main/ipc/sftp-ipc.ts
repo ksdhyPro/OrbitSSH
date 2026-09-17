@@ -4,16 +4,9 @@ import { basename, join } from 'node:path'
 
 import {
   closeSftpSession,
-  controlRemoteDownloadTask,
-  controlRemoteTransferTask,
-  controlRemoteUploadTask,
-  createUploadPlan,
   createRemoteDirectory,
   createRemoteFile,
-  downloadRemoteDirectory,
   deleteRemoteNode,
-  downloadRemoteFile,
-  enqueueTransferTask,
   assertSftpSessionAccess,
   listRemoteDirectory,
   openSftpSession,
@@ -21,10 +14,19 @@ import {
   probeRemoteTextFile,
   readRemoteTextFile,
   renameRemoteNode,
-  transferRemoteSourcesBetweenServers,
-  uploadLocalPathsToRemoteDirectory,
   writeRemoteTextFile
 } from '../sftp/sftp-manager.js'
+import {
+  controlManagedTransferTask,
+  createManagedTransferBatch,
+  getManagedTransferSnapshot
+} from '../sftp/sftp-managed-task-manager.js'
+import {
+  createManagedDownloadPlan,
+  createManagedRelayPlan,
+  createManagedUploadPlan
+} from '../sftp/sftp-managed-transfer-planner.js'
+import { getSftpSession } from '../sftp/sftp-session-registry.js'
 import type {
   SftpCreateNodeInput,
   SftpDeleteInput,
@@ -39,6 +41,7 @@ import type {
   SftpRenameInput,
   SftpUploadControlInput,
   SftpUploadInput,
+  SftpManagedTaskControlInput,
   SftpWriteTextInput
 } from '../../shared/sftp.js'
 import {
@@ -53,6 +56,7 @@ import {
 
 const remoteNodeTypes = ['file', 'directory'] as const
 const transferControlActions = ['pause', 'resume', 'cancel'] as const
+const managedTransferControlActions = ['pause', 'resume', 'delete', 'retry'] as const
 const uploadSourceTypes = ['file', 'directory'] as const
 
 function normalizeTabPathInput(
@@ -200,6 +204,18 @@ function normalizeRemoteTransferInput(input: unknown): SftpRemoteTransferInput {
   }
 }
 
+function normalizeManagedTaskControlInput(input: unknown): SftpManagedTaskControlInput {
+  const record = requireRecord(input, '传输任务控制参数')
+
+  return {
+    taskId: requireNonEmptyString(record.taskId, '任务 ID'),
+    nodeIds: record.nodeIds === undefined
+      ? undefined
+      : requireStringArray(record.nodeIds, '任务节点 ID'),
+    action: requireEnum(record.action, '控制动作', managedTransferControlActions)
+  }
+}
+
 function normalizeRemoteTransferControlInput(input: unknown): SftpRemoteTransferControlInput {
   const record = requireRecord(input, '服务器间传输控制参数')
 
@@ -339,53 +355,33 @@ export function registerSftpIpc(): void {
     const targetPath = input.type === 'directory'
       ? join(input.localDirectoryPath as string, basename(input.name))
       : filePath as string
-    const baseEvent = {
-      taskId,
-      tabId: input.tabId,
-      name: input.name,
-      path: input.path,
-      transferredBytes: input.transferredBytes ?? 0,
-      totalBytes: input.size ?? 0,
-      speedBytesPerSecond: 0,
-      filePath: targetPath
-    }
-    event.sender.send('sftp:download-progress', {
-      ...baseEvent,
-      status: 'queued'
-    })
+    const plan = await createManagedDownloadPlan(
+      input.tabId,
+      input.path,
+      input.name,
+      input.type ?? 'file',
+      targetPath,
+      input.size
+    )
+    const sourceServerId = getSftpSession(input.tabId).serverId
 
-    // 下载任务放到后台执行，IPC 调用只负责创建任务并立即返回，避免长下载被暂停后出现 reply 未返回。
-    void enqueueTransferTask(taskId, () => input.type === 'directory'
-      ? downloadRemoteDirectory(
-          input.tabId,
-          input.path,
-          input.name,
-          input.localDirectoryPath as string,
-          { taskId },
-          (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
-        )
-      : downloadRemoteFile(
-          input.tabId,
-          input.path,
-          filePath as string,
-          { taskId, name: input.name },
-          input.size,
-          (progressEvent) => event.sender.send('sftp:download-progress', progressEvent)
-        ))
-      .catch((error) => {
-        event.sender.send('sftp:download-progress', {
-          ...baseEvent,
-          status: 'error',
-          error: error instanceof Error ? error.message : String(error)
-        })
-      })
+    createManagedTransferBatch({
+      taskId,
+      direction: 'download',
+      plan,
+      sender: event.sender,
+      sourceServerId
+    })
 
     return { saved: true, taskId, filePath: targetPath }
   })
 
   ipcMain.handle('sftp:download-control', (_event, rawInput: unknown) => {
     const input = normalizeDownloadControlInput(rawInput)
-    return controlRemoteDownloadTask(input.taskId, input.action, input.localPath)
+    return controlManagedTransferTask({
+      taskId: input.taskId,
+      action: input.action === 'cancel' ? 'delete' : input.action
+    })
   })
 
   ipcMain.handle('sftp:upload', async (event, rawInput: unknown) => {
@@ -415,100 +411,66 @@ export function registerSftpIpc(): void {
     }
 
     const taskId = input.taskId ?? randomUUID()
-    const uploadPlan = await createUploadPlan(input.remoteDirectoryPath, localPaths)
-    const baseEvent = {
-      taskId,
-      tabId: input.tabId,
-      name: uploadPlan.name,
-      path: uploadPlan.normalizedRemoteDirectoryPath,
-      transferredBytes: 0,
-      totalBytes: uploadPlan.totalBytes,
-      speedBytesPerSecond: 0,
-      localPaths: uploadPlan.normalizedLocalPaths,
-      remoteDirectoryPath: uploadPlan.normalizedRemoteDirectoryPath,
-      uploadEntryCount: uploadPlan.entries.length,
-      uploadedEntryCount: 0
-    }
-    event.sender.send('sftp:upload-progress', {
-      ...baseEvent,
-      status: 'queued'
-    })
+    const plan = await createManagedUploadPlan(input.remoteDirectoryPath, localPaths)
+    const targetServerId = getSftpSession(input.tabId).serverId
 
-    void enqueueTransferTask(taskId, () => uploadLocalPathsToRemoteDirectory(
-      input.tabId,
-      uploadPlan.normalizedRemoteDirectoryPath,
-      uploadPlan.normalizedLocalPaths,
-      { taskId },
-      (progressEvent) => event.sender.send('sftp:upload-progress', progressEvent),
-      uploadPlan
-    )).catch((error) => {
-      event.sender.send('sftp:upload-progress', {
-        ...baseEvent,
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error)
-      })
+    createManagedTransferBatch({
+      taskId,
+      direction: 'upload',
+      plan,
+      sender: event.sender,
+      targetServerId
     })
 
     return {
       uploaded: true,
       taskId,
-      remoteDirectoryPath: uploadPlan.normalizedRemoteDirectoryPath,
-      uploadedCount: uploadPlan.entries.length
+      remoteDirectoryPath: input.remoteDirectoryPath,
+      uploadedCount: plan.entries.length
     }
   })
 
-  ipcMain.handle('sftp:upload-control', (event, rawInput: unknown) => {
+  ipcMain.handle('sftp:upload-control', (_event, rawInput: unknown) => {
     const input = normalizeUploadControlInput(rawInput)
-    return controlRemoteUploadTask(input.taskId, input.action, (progressEvent) =>
-      event.sender.send('sftp:upload-progress', progressEvent)
-    )
+    return controlManagedTransferTask({
+      taskId: input.taskId,
+      action: input.action === 'cancel' ? 'delete' : input.action
+    })
   })
 
   ipcMain.handle('sftp:remote-transfer', async (event, rawInput: unknown) => {
     const input = normalizeRemoteTransferInput(rawInput)
     const taskId = input.taskId ?? randomUUID()
-    const baseEvent = {
+    const plan = await createManagedRelayPlan(
+      input.sourceServerId,
+      input.targetServerId,
+      input.sources,
+      input.targetDirectoryPath
+    )
+
+    createManagedTransferBatch({
       taskId,
+      direction: 'server-transfer',
+      plan,
+      sender: event.sender,
       sourceServerId: input.sourceServerId,
-      targetServerId: input.targetServerId,
-      name: input.sources.length === 1 ? input.sources[0].name : `${input.sources.length} 个项目`,
-      path: input.sources[0]?.path ?? '',
-      targetDirectoryPath: input.targetDirectoryPath,
-      phase: 'preparing',
-      transferredBytes: 0,
-      totalBytes: input.sources.reduce((total, source) => total + (source.size ?? 0), 0),
-      speedBytesPerSecond: 0,
-      sources: input.sources
-    }
-
-    event.sender.send('sftp:remote-transfer-progress', {
-      ...baseEvent,
-      status: 'queued'
-    })
-
-    void enqueueTransferTask(taskId, () => transferRemoteSourcesBetweenServers(
-      {
-        ...input,
-        taskId
-      },
-      (progressEvent) => event.sender.send('sftp:remote-transfer-progress', progressEvent)
-    )).catch((error) => {
-      event.sender.send('sftp:remote-transfer-progress', {
-        ...baseEvent,
-        status: 'error',
-        error: error instanceof Error ? error.message : String(error)
-      })
+      targetServerId: input.targetServerId
     })
 
     return { transferred: true, taskId, transferredCount: input.sources.length }
   })
 
-  ipcMain.handle('sftp:remote-transfer-control', (event, rawInput: unknown) => {
+  ipcMain.handle('sftp:remote-transfer-control', (_event, rawInput: unknown) => {
     const input = normalizeRemoteTransferControlInput(rawInput)
-    return controlRemoteTransferTask(input.taskId, input.action, (progressEvent) =>
-      event.sender.send('sftp:remote-transfer-progress', progressEvent)
-    )
+    return controlManagedTransferTask({
+      taskId: input.taskId,
+      action: input.action === 'cancel' ? 'delete' : input.action
+    })
   })
+
+  ipcMain.handle('sftp:managed-task-list', () => getManagedTransferSnapshot())
+  ipcMain.handle('sftp:managed-task-control', (_event, rawInput: unknown) =>
+    controlManagedTransferTask(normalizeManagedTaskControlInput(rawInput)))
 
   ipcMain.handle('sftp:delete', (event, rawInput: unknown) => {
     const input = normalizeDeleteInput(event, rawInput)

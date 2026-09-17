@@ -2,46 +2,29 @@
 import { computed, reactive, ref } from "vue";
 import appIcon from "../assets/icons/app-icon.png";
 import closeIcon from "../assets/icons/close.svg";
-import continueIcon from "../assets/icons/continue.svg";
 import macCloseIcon from "../assets/icons/mac-close.svg";
 import macMinimizeIcon from "../assets/icons/mac-minimize.svg";
 import macZoomIcon from "../assets/icons/mac-zoom.svg";
 import maximizeIcon from "../assets/icons/maximize.svg";
 import minimizeIcon from "../assets/icons/minimize.svg";
-import pauseIcon from "../assets/icons/pause.svg";
 import restoreIcon from "../assets/icons/restore.svg";
 import settingsIcon from "../assets/icons/settings.svg";
 import taskIcon from "../assets/icons/task.svg";
-import trashIcon from "../assets/icons/trash.svg";
-import type { DownloadTask } from "../types/download";
 import type { ContextMenuItem } from "../types/context-menu";
-import { formatFileSize } from "../utils/format";
-import {
-  getDownloadProgressPercent,
-  getDownloadTaskStatusText,
-} from "../utils/status-text";
 import { closeFloatingMenus } from "../utils/floating-menu";
 import { resolveMenuPlacement } from "../utils/menu-position";
 import ContextMenu from "./ContextMenu.vue";
-import FloatingMenu from "./FloatingMenu.vue";
 
-const props = defineProps<{
+defineProps<{
   isWindows: boolean;
   isMac: boolean;
   isWindowMaximized: boolean;
   isWindowFullScreen: boolean;
-  isTaskListOpen: boolean;
-  activeDownloadCount: number;
-  visibleDownloadTasks: DownloadTask[];
-  isDownloadTaskOperating: (taskId: string) => boolean;
+  hasTransferTasks: boolean;
 }>();
 
 const emit = defineEmits<{
-  updateTaskListOpen: [open: boolean];
-  controlDownloadTask: [
-    task: DownloadTask,
-    action: "pause" | "resume" | "cancel",
-  ];
+  openTransferTasks: [];
   openDataTransfer: [];
   openPortForwards: [];
   openSettings: [];
@@ -201,51 +184,6 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
   }
 }
 
-function toggleTaskList(): void {
-  if (props.isTaskListOpen) {
-    emit("updateTaskListOpen", false);
-    return;
-  }
-
-  closeFloatingMenus();
-  emit("updateTaskListOpen", true);
-}
-
-function getTaskDirectionText(task: DownloadTask): string {
-  if (task.direction === "upload") {
-    return "上传";
-  }
-
-  if (task.direction === "server-transfer") {
-    return "服务器传输";
-  }
-
-  return "下载";
-}
-
-function getTaskTransferSummary(task: DownloadTask): string {
-  const bytesText =
-    task.totalBytes > 0
-      ? `${formatFileSize(task.transferredBytes)} / ${formatFileSize(task.totalBytes)}`
-      : formatFileSize(task.transferredBytes);
-
-  if (task.direction !== "upload" || !task.uploadEntryCount) {
-    return bytesText;
-  }
-
-  return `${task.uploadedEntryCount ?? 0}/${task.uploadEntryCount} 项 · ${bytesText}`;
-}
-
-function getTaskCurrentItemText(task: DownloadTask): string {
-  if (task.direction !== "upload" || !task.currentUploadPath) {
-    return "";
-  }
-
-  const actionText =
-    task.currentUploadType === "directory" ? "正在创建目录" : "正在上传";
-
-  return `${actionText}：${task.currentUploadPath}`;
-}
 </script>
 
 <template>
@@ -321,111 +259,18 @@ function getTaskCurrentItemText(task: DownloadTask): string {
     </nav>
     <div class="titlebar-drag-zone" aria-hidden="true"></div>
     <div class="window-actions">
-      <div class="tasklist" @click.stop>
+      <div class="tasklist">
         <button
           type="button"
           tabindex="-1"
           class="tasklist-trigger"
-          data-floating-menu-trigger
           aria-label="传输任务"
           title="传输任务"
-          @click="toggleTaskList"
+          @click="emit('openTransferTasks')"
         >
           <img :src="taskIcon" alt="" />
-          <strong v-if="activeDownloadCount > 0">
-            {{ activeDownloadCount }}
-          </strong>
+          <span v-if="hasTransferTasks" class="tasklist-dot"></span>
         </button>
-        <FloatingMenu
-          :open="isTaskListOpen"
-          class="tasklist-panel"
-          @close="emit('updateTaskListOpen', false)"
-        >
-          <header>
-            <span>传输任务</span>
-            <small>{{ visibleDownloadTasks.length }} 项</small>
-          </header>
-          <div v-if="visibleDownloadTasks.length === 0" class="tasklist-empty">
-            暂无传输任务
-          </div>
-          <template v-else>
-            <article
-              v-for="task in visibleDownloadTasks"
-              :key="task.taskId"
-              class="tasklist-item"
-            >
-              <div class="tasklist-item-head">
-                <strong>
-                  <span class="tasklist-direction">
-                    {{ getTaskDirectionText(task) }}
-                  </span>
-                  {{ task.name }}
-                </strong>
-                <small>{{ getDownloadTaskStatusText(task) }}</small>
-              </div>
-              <div class="tasklist-progress">
-                <span
-                  :style="{
-                    width: `${getDownloadProgressPercent(task)}%`,
-                  }"
-                ></span>
-              </div>
-
-              <div class="tasklist-info">
-                <div class="tasklist-detail">
-                  <p v-if="task.status === 'error'">{{ task.error }}</p>
-                  <template v-else>
-                    <p>{{ getTaskTransferSummary(task) }}</p>
-                    <p
-                      v-if="getTaskCurrentItemText(task)"
-                      class="tasklist-current-item"
-                    >
-                      {{ getTaskCurrentItemText(task) }}
-                    </p>
-                  </template>
-                </div>
-                <div class="tasklist-actions">
-                  <template
-                    v-if="
-                      ['started', 'progress', 'paused'].includes(task.status)
-                    "
-                  >
-                    <button
-                      v-if="task.status === 'paused'"
-                      title="继续"
-                      type="button"
-                      tabindex="-1"
-                      :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'resume')"
-                    >
-                      <img :src="continueIcon" alt="继续" />
-                    </button>
-                    <button
-                      v-else
-                      title="暂停"
-                      type="button"
-                      tabindex="-1"
-                      :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'pause')"
-                    >
-                      <img :src="pauseIcon" alt="暂停" />
-                    </button>
-                    <button
-                      title="删除"
-                      type="button"
-                      tabindex="-1"
-                      class="danger"
-                      :disabled="isDownloadTaskOperating(task.taskId)"
-                      @click="emit('controlDownloadTask', task, 'cancel')"
-                    >
-                      <img :src="trashIcon" alt="删除" />
-                    </button>
-                  </template>
-                </div>
-              </div>
-            </article>
-          </template>
-        </FloatingMenu>
       </div>
       <button
         type="button"

@@ -33,6 +33,9 @@ import type {
   SftpDownloadResult,
   SftpInitResult,
   SftpListInput,
+  SftpManagedTaskControlInput,
+  SftpManagedTaskEvent,
+  SftpManagedTaskSnapshot,
   SftpPreviewImageInput,
   SftpPreviewImageResult,
   SftpProbeTextInput,
@@ -181,6 +184,8 @@ declare global {
           input: SftpRemoteTransferControlInput,
         ) => Promise<boolean>;
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
+        listManagedTasks: () => Promise<SftpManagedTaskSnapshot>;
+        controlManagedTask: (input: SftpManagedTaskControlInput) => Promise<boolean>;
         delete: (input: SftpDeleteInput) => Promise<boolean>;
         rename: (input: SftpRenameInput) => Promise<boolean>;
         createFile: (input: SftpCreateNodeInput) => Promise<boolean>;
@@ -193,6 +198,9 @@ declare global {
         ) => () => void;
         onRemoteTransferProgress?: (
           callback: (event: SftpRemoteTransferProgressEvent) => void,
+        ) => () => void;
+        onManagedTaskEvent: (
+          callback: (event: SftpManagedTaskEvent) => void,
         ) => () => void;
         close: (tabId: string) => Promise<boolean>;
       };

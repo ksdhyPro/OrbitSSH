@@ -35,7 +35,6 @@ const props = defineProps<{
   isEditableTextFile: (node: RemoteFileNode | null) => boolean;
   getFileEditMenuLabel: (node: RemoteFileNode | null) => string;
   canDownloadRemoteFile: (node: RemoteFileNode | null) => boolean;
-  canUploadRemoteNode: (node: RemoteFileNode | null) => boolean;
   canDeleteRemoteNode: (node: RemoteFileNode | null) => boolean;
   collapsed: boolean;
 }>();
@@ -71,8 +70,6 @@ const emit = defineEmits<{
   previewContextFile: [];
   editContextFile: [];
   downloadContextFile: [];
-  uploadContextFile: [sourceType: "file" | "directory"];
-  uploadToCurrentDirectory: [sourceType: "file" | "directory"];
   deleteContextFile: [];
   renameContextFile: [];
   closeFileContextMenu: [];
@@ -230,12 +227,10 @@ const remoteFileEmptyText = computed(() => {
       :is-editable-text-file="isEditableTextFile"
       :get-file-edit-menu-label="getFileEditMenuLabel"
       :can-download-remote-file="canDownloadRemoteFile"
-      :can-upload-remote-node="canUploadRemoteNode"
       :can-delete-remote-node="canDeleteRemoteNode"
       @preview="emit('previewContextFile')"
       @edit="emit('editContextFile')"
       @download="emit('downloadContextFile')"
-      @upload="emit('uploadContextFile', $event)"
       @create="emit('createBlankNode', $event)"
       @rename="emit('renameContextFile')"
       @delete="emit('deleteContextFile')"
@@ -244,7 +239,6 @@ const remoteFileEmptyText = computed(() => {
     <BlankContextMenu
       :menu="blankContextMenu"
       @create="emit('createBlankNode', $event)"
-      @upload="emit('uploadToCurrentDirectory', $event)"
       @close="emit('closeBlankContextMenu')" />
     </div>
     </Transition>

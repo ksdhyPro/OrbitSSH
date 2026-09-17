@@ -11,7 +11,7 @@ export interface ConnectionSettings {
   keepaliveIntervalSeconds: number
   /** Disconnect idle terminal and main SFTP sessions after this many minutes. 0 disables idle disconnect. */
   idleDisconnectMinutes: number
-  /** 上传、下载和服务器间传输共享的全局并发任务数。 */
+  /** 上传、下载和服务器间传输共享的文件级并发数。 */
   sftpMaxConcurrentTransfers: number
 }
 

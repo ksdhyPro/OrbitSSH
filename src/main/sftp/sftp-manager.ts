@@ -24,11 +24,6 @@ export {
 } from './sftp-upload-transfer.js'
 
 export {
-  controlRemoteTransferTask,
-  transferRemoteSourcesBetweenServers
-} from './sftp-remote-transfer.js'
-
-export {
   controlRemoteDownloadTask,
   downloadRemoteDirectory,
   downloadRemoteFile

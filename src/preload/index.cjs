@@ -117,6 +117,9 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:remote-transfer-control", input),
     controlDownload: input =>
       ipcRenderer.invoke("sftp:download-control", input),
+    listManagedTasks: () => ipcRenderer.invoke("sftp:managed-task-list"),
+    controlManagedTask: input =>
+      ipcRenderer.invoke("sftp:managed-task-control", input),
     delete: input => ipcRenderer.invoke("sftp:delete", input),
     rename: input => ipcRenderer.invoke("sftp:rename", input),
     createFile: input => ipcRenderer.invoke("sftp:create-file", input),
@@ -138,6 +141,12 @@ const orbitSSHApi = {
       ipcRenderer.on("sftp:remote-transfer-progress", listener);
       return () =>
         ipcRenderer.removeListener("sftp:remote-transfer-progress", listener);
+    },
+    onManagedTaskEvent: callback => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("sftp:managed-task-event", listener);
+      return () =>
+        ipcRenderer.removeListener("sftp:managed-task-event", listener);
     },
     close: tabId => ipcRenderer.invoke("sftp:close", tabId),
   },

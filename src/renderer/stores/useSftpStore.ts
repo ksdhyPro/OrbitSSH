@@ -544,10 +544,6 @@ export const useSftpStore = defineStore("sftp", () => {
     );
   }
 
-  function canUploadRemoteNode(node: RemoteFileNode | null): boolean {
-    return Boolean(node && node.type === "directory");
-  }
-
   async function probeFileTextSupport(
     tabId: string,
     node: RemoteFileNode,
@@ -1128,75 +1124,6 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  async function uploadToContextDirectory(
-    tabId: string,
-    sourceType: "file" | "directory",
-  ): Promise<void> {
-    const tree = getSftpTree(tabId);
-
-    if (!tabId || !core.orbitSSHApi) {
-      return;
-    }
-
-    // 右键菜单上传始终落到当前所在目录，避免选中目录时改变目标。
-    const targetPath = tree?.homePath;
-
-    if (!targetPath) {
-      return;
-    }
-
-    closeFileContextMenu();
-    await uploadToRemoteDirectory(tabId, targetPath, sourceType);
-  }
-
-  async function uploadToCurrentDirectory(
-    tabId: string,
-    sourceType: "file" | "directory",
-  ): Promise<void> {
-    const tree = getSftpTree(tabId);
-
-    if (!tabId || !tree?.homePath || !core.orbitSSHApi) {
-      return;
-    }
-
-    closeBlankContextMenu();
-    await uploadToRemoteDirectory(tabId, tree.homePath, sourceType);
-  }
-
-  async function uploadToRemoteDirectory(
-    tabId: string,
-    remoteDirectoryPath: string,
-    sourceType: "file" | "directory",
-  ): Promise<void> {
-    try {
-      const result = await core.orbitSSHApi.sftp.upload({
-        tabId,
-        remoteDirectoryPath,
-        sourceType,
-      });
-
-      if (!result.uploaded) {
-        return;
-      }
-
-      await refreshRemoteDirectoryPath(tabId, remoteDirectoryPath);
-    } catch (error) {
-      showSftpPathPrompt(
-        error instanceof Error ? error.message : "文件上传失败",
-        "上传失败",
-      );
-      core.writeRendererLog(
-        "远程目录上传失败",
-        {
-          tabId,
-          path: remoteDirectoryPath,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "error",
-      );
-    }
-  }
-
   async function refreshRemoteDirectoryPath(
     tabId: string,
     path: string,
@@ -1382,7 +1309,6 @@ export const useSftpStore = defineStore("sftp", () => {
     isEditableTextFile,
     getFileEditMenuLabel,
     canDeleteRemoteNode,
-    canUploadRemoteNode,
     probeFileTextSupport,
     ensureEditableTextFile,
     closeFileContextMenu,
@@ -1408,8 +1334,6 @@ export const useSftpStore = defineStore("sftp", () => {
     downloadRemoteFileNode,
     downloadContextFile,
     downloadImagePreviewFile,
-    uploadToContextDirectory,
-    uploadToCurrentDirectory,
     refreshRemoteDirectoryPath,
     deleteContextFile,
   };

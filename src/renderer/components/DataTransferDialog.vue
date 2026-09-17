@@ -18,6 +18,7 @@ import type { ServerConfig } from "../../shared/server";
 import type {
   RemoteFileNode,
   SftpDownloadProgressEvent,
+  SftpManagedTaskEvent,
   SftpRemoteTransferProgressEvent,
   SftpRemoteTransferSource,
   SftpUploadProgressEvent,
@@ -146,6 +147,8 @@ const pendingLocalDownloadRefreshes = new Map<string, PendingTransferRefresh>();
 let removeRemoteTransferProgressListener: (() => void) | undefined;
 let removeUploadProgressListener: (() => void) | undefined;
 let removeDownloadProgressListener: (() => void) | undefined;
+let removeManagedTaskListener: (() => void) | undefined;
+const managedRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const transferDrag = reactive<{
   paneKey: TransferPaneKey | null;
   sourcePaths: Set<string>;
@@ -196,24 +199,8 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
     return items;
   }
 
-  const uploadItems: ContextMenuItem[] = [
-    {
-      key: "upload-file",
-      label: "上传文件",
-      icon: arrowUpIcon,
-      disabled: !pane.currentPath || pane.loading,
-    },
-    {
-      key: "upload-directory",
-      label: "上传文件夹",
-      icon: arrowUpIcon,
-      disabled: !pane.currentPath || pane.loading,
-    },
-  ];
-
   if (multiContext) {
     items.push(
-      ...uploadItems,
       {
         key: "delete",
         label: `删除 ${transferContextMenu.selectedCount} 项`,
@@ -241,14 +228,13 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
         ]
       : [];
   if (!node) {
-    items.push(...createItems, ...uploadItems);
+    items.push(...createItems);
     return items;
   }
 
   if (node.type === "directory") {
     items.push(
       ...createItems,
-      ...uploadItems,
       {
         key: "download",
         label: "下载文件夹",
@@ -287,7 +273,6 @@ const transferMenuItems = computed<ContextMenuItem[]>(() => {
 
   items.push(
     ...createItems,
-    ...uploadItems,
     primaryItem,
     {
       key: "download",
@@ -399,6 +384,19 @@ function canTransferFromPane(paneKey: TransferPaneKey): boolean {
   const hasRemoteEndpoint = !isLocalPane(sourcePane) || !isLocalPane(targetPane);
   const canDownloadToLocal = !isLocalPane(targetPane) ||
     selectedNodes.every((node) => node.type === "file");
+  const hasUnsafeSameServerTarget =
+    !isLocalPane(sourcePane) &&
+    sourcePane.serverId === targetPane.serverId &&
+    selectedNodes.some((node) => {
+      const sourcePath = normalizeComparisonPath(node.path);
+      const targetDirectory = normalizeComparisonPath(targetPane.currentPath);
+      const finalTarget = normalizeComparisonPath(
+        buildRemoteChildPath(targetPane.currentPath, node.name),
+      );
+      return finalTarget === sourcePath ||
+        (node.type === "directory" &&
+          (targetDirectory === sourcePath || targetDirectory.startsWith(`${sourcePath}/`)));
+    });
 
   return Boolean(
     sourcePane.serverId &&
@@ -407,6 +405,7 @@ function canTransferFromPane(paneKey: TransferPaneKey): boolean {
     selectedNodes.length > 0 &&
     hasRemoteEndpoint &&
     canDownloadToLocal &&
+    !hasUnsafeSameServerTarget &&
     !sourcePane.loading &&
     !targetPane.loading,
   );
@@ -504,6 +503,11 @@ function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
   });
 
   return parentNode ? [parentNode, ...sortedNodes] : sortedNodes;
+}
+
+function normalizeComparisonPath(value: string): string {
+  const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  return normalized.length > 1 ? normalized.replace(/\/$/, "") : normalized;
 }
 
 function togglePaneModifyTimeSort(pane: TransferPaneState): void {
@@ -975,10 +979,6 @@ async function selectTransferMenuItem(item: ContextMenuItem): Promise<void> {
     await editContextNode(paneKey);
   } else if (item.key === "download") {
     await downloadContextNode(paneKey);
-  } else if (item.key === "upload-file") {
-    await uploadToTransferContext(paneKey, "file");
-  } else if (item.key === "upload-directory") {
-    await uploadToTransferContext(paneKey, "directory");
   } else if (item.key === "new-file") {
     await createTransferNode(paneKey, "file");
   } else if (item.key === "new-directory") {
@@ -1146,6 +1146,35 @@ async function handleDownloadProgress(event: SftpDownloadProgressEvent): Promise
   }
 }
 
+function handleManagedTaskEvent(event: SftpManagedTaskEvent): void {
+  if (event.type !== "node-remove" && event.type !== "batch-remove") return;
+
+  const taskId = event.taskId;
+  const refreshState = pendingTransferRefreshes.get(taskId) ??
+    pendingUploadRefreshes.get(taskId) ?? pendingLocalDownloadRefreshes.get(taskId);
+  if (!refreshState) return;
+
+  const existingTimer = managedRefreshTimers.get(taskId);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  // 多个文件连续完成时合并刷新，最多每秒刷新一次目标列表。
+  managedRefreshTimers.set(taskId, setTimeout(() => {
+    managedRefreshTimers.delete(taskId);
+    const targetPane = getPaneByKey(refreshState.targetPaneKey);
+    if (targetPane.currentPath === refreshState.targetDirectoryPath) {
+      void refreshPaneDirectory(targetPane).catch((error) => {
+        targetPane.error = error instanceof Error ? error.message : "刷新目标目录失败";
+      });
+    }
+
+    if (event.type === "batch-remove") {
+      pendingTransferRefreshes.delete(taskId);
+      pendingUploadRefreshes.delete(taskId);
+      pendingLocalDownloadRefreshes.delete(taskId);
+    }
+  }, 1_000));
+}
+
 async function previewContextNode(paneKey: TransferPaneKey): Promise<void> {
   const pane = getPaneByKey(paneKey);
   const node = transferContextMenu.node;
@@ -1183,39 +1212,6 @@ async function downloadContextNode(paneKey: TransferPaneKey): Promise<void> {
 
   closeTransferContextMenu();
   await sftpStore.downloadRemoteFileNode(pane.tabId, node);
-}
-
-function getTransferUploadTargetPath(pane: TransferPaneState): string {
-  // 文件传输右键上传始终落到当前面板目录，不受右键节点或选区影响。
-  return pane.currentPath;
-}
-
-async function uploadToTransferContext(
-  paneKey: TransferPaneKey,
-  sourceType: "file" | "directory",
-): Promise<void> {
-  const pane = getPaneByKey(paneKey);
-  const targetPath = getTransferUploadTargetPath(pane);
-
-  if (!targetPath || pane.loading) {
-    return;
-  }
-
-  closeTransferContextMenu();
-
-  try {
-    const result = await window.orbitSSH.sftp.upload({
-      tabId: pane.tabId,
-      remoteDirectoryPath: targetPath,
-      sourceType,
-    });
-
-    if (result.uploaded) {
-      await refreshPaneDirectory(pane, pane.currentPath);
-    }
-  } catch (error) {
-    pane.error = error instanceof Error ? error.message : "上传失败";
-  }
 }
 
 async function createTransferNode(
@@ -1473,6 +1469,9 @@ onMounted(() => {
   removeDownloadProgressListener = window.orbitSSH?.sftp.onDownloadProgress((event) => {
     void handleDownloadProgress(event);
   });
+  removeManagedTaskListener = window.orbitSSH?.sftp.onManagedTaskEvent?.(
+    handleManagedTaskEvent,
+  );
 });
 
 onUnmounted(() => {
@@ -1480,9 +1479,13 @@ onUnmounted(() => {
   removeRemoteTransferProgressListener?.();
   removeUploadProgressListener?.();
   removeDownloadProgressListener?.();
+  removeManagedTaskListener?.();
   removeRemoteTransferProgressListener = undefined;
   removeUploadProgressListener = undefined;
   removeDownloadProgressListener = undefined;
+  removeManagedTaskListener = undefined;
+  for (const timer of managedRefreshTimers.values()) clearTimeout(timer);
+  managedRefreshTimers.clear();
   pendingTransferRefreshes.clear();
   pendingUploadRefreshes.clear();
   pendingLocalDownloadRefreshes.clear();

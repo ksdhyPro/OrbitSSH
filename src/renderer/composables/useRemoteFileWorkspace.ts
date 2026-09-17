@@ -143,10 +143,6 @@ export function useRemoteFileWorkspace(
     return sftpStore.canDownloadRemoteFile(activeTabId.value, node);
   }
 
-  function canUploadRemoteNode(node: RemoteFileNode | null): boolean {
-    return sftpStore.canUploadRemoteNode(node);
-  }
-
   function getFileEditMenuLabel(node: RemoteFileNode | null): string {
     return sftpStore.getFileEditMenuLabel(node);
   }
@@ -276,18 +272,6 @@ export function useRemoteFileWorkspace(
 
   async function downloadContextFile(): Promise<void> {
     await sftpStore.downloadContextFile(activeTabId.value);
-  }
-
-  async function uploadContextFile(
-    sourceType: "file" | "directory",
-  ): Promise<void> {
-    await sftpStore.uploadToContextDirectory(activeTabId.value, sourceType);
-  }
-
-  async function uploadToActiveSftpDirectory(
-    sourceType: "file" | "directory",
-  ): Promise<void> {
-    await sftpStore.uploadToCurrentDirectory(activeTabId.value, sourceType);
   }
 
   async function refreshActiveDirectory(): Promise<void> {
@@ -503,7 +487,6 @@ export function useRemoteFileWorkspace(
     applyFileEditorTheme: fileEditorStore.applyFileEditorTheme,
     getFilePanelHint,
     canDownloadRemoteFile,
-    canUploadRemoteNode,
     getFileEditMenuLabel,
     isEditableTextFile,
     canDeleteRemoteNode,
@@ -517,8 +500,6 @@ export function useRemoteFileWorkspace(
     handleFileDragLeave,
     handleFileDrop,
     downloadContextFile,
-    uploadContextFile,
-    uploadToActiveSftpDirectory,
     refreshActiveDirectory,
     closeSftpPathPrompt,
     submitFilePathInput,

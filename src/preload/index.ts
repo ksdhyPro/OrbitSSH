@@ -32,6 +32,9 @@ import type {
   SftpDownloadResult,
   SftpInitResult,
   SftpListInput,
+  SftpManagedTaskControlInput,
+  SftpManagedTaskEvent,
+  SftpManagedTaskSnapshot,
   SftpPreviewImageInput,
   SftpPreviewImageResult,
   SftpProbeTextInput,
@@ -262,6 +265,10 @@ const orbitSSHApi = {
       ) as Promise<boolean>,
     controlDownload: (input: SftpDownloadControlInput) =>
       ipcRenderer.invoke("sftp:download-control", input) as Promise<boolean>,
+    listManagedTasks: () =>
+      ipcRenderer.invoke("sftp:managed-task-list") as Promise<SftpManagedTaskSnapshot>,
+    controlManagedTask: (input: SftpManagedTaskControlInput) =>
+      ipcRenderer.invoke("sftp:managed-task-control", input) as Promise<boolean>,
     delete: (input: SftpDeleteInput) =>
       ipcRenderer.invoke("sftp:delete", input) as Promise<boolean>,
     rename: (input: SftpRenameInput) =>
@@ -302,6 +309,17 @@ const orbitSSHApi = {
       ipcRenderer.on("sftp:remote-transfer-progress", listener);
       return () =>
         ipcRenderer.removeListener("sftp:remote-transfer-progress", listener);
+    },
+    onManagedTaskEvent: (
+      callback: (event: SftpManagedTaskEvent) => void,
+    ) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        payload: SftpManagedTaskEvent,
+      ) => callback(payload);
+      ipcRenderer.on("sftp:managed-task-event", listener);
+      return () =>
+        ipcRenderer.removeListener("sftp:managed-task-event", listener);
     },
     close: (tabId: string) =>
       ipcRenderer.invoke("sftp:close", tabId) as Promise<boolean>,

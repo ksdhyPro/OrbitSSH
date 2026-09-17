@@ -1,6 +1,6 @@
 import SftpClient from 'ssh2-sftp-client'
 
-import { readdir, stat as statLocalFile } from 'node:fs/promises'
+import { lstat as statLocalFile, readdir } from 'node:fs/promises'
 import { basename, dirname, join as joinLocalPath, relative } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
@@ -31,6 +31,7 @@ export interface UploadEntry {
   relativePath: string
   type: RemoteFileNode['type']
   size: number
+  modifyTime?: number
 }
 
 interface UploadScanState {
@@ -125,6 +126,9 @@ async function collectUploadEntriesForPath(
   }
 
   const localStat = await statLocalFile(localPath)
+  if (localStat.isSymbolicLink()) {
+    throw new Error(`暂不支持符号链接：${localPath}`)
+  }
   const relativePath = localPath === rootLocalPath
     ? basename(localPath)
     : relative(dirname(rootLocalPath), localPath)
@@ -137,16 +141,14 @@ async function collectUploadEntriesForPath(
     if (scanState.entryCount > appConfig.sftp.upload.maxScanEntries) {
       throw new Error(`上传文件数量超过 ${appConfig.sftp.upload.maxScanEntries} 个，请拆分后再上传`)
     }
-    if (scanState.totalBytes > appConfig.sftp.upload.maxScanTotalBytes) {
-      throw new Error('上传总大小超过限制，请拆分后再上传')
-    }
 
     return [{
       localPath,
       remotePath,
       relativePath: relativePath.replace(/\\/g, '/'),
       type: 'file',
-      size: localStat.size
+      size: localStat.size,
+      modifyTime: localStat.mtimeMs
     }]
   }
 

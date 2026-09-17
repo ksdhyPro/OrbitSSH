@@ -1,251 +1,162 @@
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import type {
-  SftpDownloadProgressEvent,
-  SftpRemoteTransferProgressEvent,
-  SftpUploadProgressEvent,
+  SftpManagedTaskBatch,
+  SftpManagedTaskControlInput,
+  SftpManagedTaskEvent,
+  SftpManagedTaskNode,
 } from "../../shared/sftp";
-import type { DownloadTask } from "../types/download";
 import { useCoreStore } from "./useCoreStore";
-import { useSftpStore } from "./useSftpStore";
 
-// 传输任务列表 store：统一管理上传/下载状态、进度事件与暂停/继续/取消控制。
+// 传输任务中心只保存主进程快照，调度、清理与状态判定统一由主进程负责。
 export const useDownloadsStore = defineStore("downloads", () => {
   const core = useCoreStore();
-  const downloadTasks = ref<DownloadTask[]>([]);
-  const downloadTaskOperationIds = ref<Set<string>>(new Set());
+  const transferBatches = ref<SftpManagedTaskBatch[]>([]);
+  const transferNodes = ref<SftpManagedTaskNode[]>([]);
   const isTaskListOpen = ref(false);
+  const operatingKeys = ref<Set<string>>(new Set());
 
-  const activeDownloadCount = computed(
-    () =>
-      downloadTasks.value.filter((task) =>
-        ["queued", "started", "progress", "paused"].includes(task.status),
-      ).length,
-  );
+  const hasTransferTasks = computed(() => transferBatches.value.length > 0);
+  // 兼容标题栏原有属性；界面只把它当作是否显示红点，不展示数字。
+  const activeDownloadCount = computed(() => (hasTransferTasks.value ? 1 : 0));
+  const visibleDownloadTasks = computed(() => transferBatches.value);
 
-  const visibleDownloadTasks = computed(() => downloadTasks.value);
+  function applyEvent(event: SftpManagedTaskEvent): void {
+    if (event.type === "reset") {
+      transferBatches.value = event.snapshot.batches;
+      transferNodes.value = event.snapshot.nodes;
+      return;
+    }
 
-  function isDownloadTaskOperating(taskId: string): boolean {
-    return downloadTaskOperationIds.value.has(taskId);
-  }
+    if (event.type === "batch-upsert") {
+      const index = transferBatches.value.findIndex(
+        (batch) => batch.taskId === event.batch.taskId,
+      );
+      // 仅新批次首次提交时打开任务中心；后续进度刷新不改变用户的开关状态。
+      if (index < 0) {
+        isTaskListOpen.value = true;
+      }
+      transferBatches.value =
+        index < 0
+          ? [...transferBatches.value, event.batch]
+          : transferBatches.value.map((batch, itemIndex) =>
+              itemIndex === index ? event.batch : batch,
+            );
+      return;
+    }
 
-  function upsertDownloadTask(task: DownloadTask): void {
-    const existingIndex = downloadTasks.value.findIndex(
-      (item) => item.taskId === task.taskId,
-    );
-
-    if (existingIndex >= 0) {
-      downloadTasks.value = downloadTasks.value.map((item, index) =>
-        index === existingIndex ? { ...item, ...task } : item,
+    if (event.type === "batch-remove") {
+      transferBatches.value = transferBatches.value.filter(
+        (batch) => batch.taskId !== event.taskId,
+      );
+      transferNodes.value = transferNodes.value.filter(
+        (node) => node.taskId !== event.taskId,
       );
       return;
     }
 
-    // 新任务首次进入列表时自动打开一次，后续进度消息只更新状态，不再反复弹出任务中心。
-    isTaskListOpen.value = true;
-    downloadTasks.value = [task, ...downloadTasks.value].slice(0, 50);
-  }
-
-  function handleSftpDownloadProgress(event: SftpDownloadProgressEvent): void {
-    upsertDownloadTask({
-      taskId: event.taskId,
-      tabId: event.tabId,
-      direction: "download",
-      name: event.name,
-      path: event.path,
-      status: event.status,
-      transferredBytes: event.transferredBytes,
-      totalBytes: event.totalBytes,
-      speedBytesPerSecond: event.speedBytesPerSecond,
-      filePath: event.filePath,
-      error: event.error,
-    });
-  }
-
-  function handleSftpUploadProgress(event: SftpUploadProgressEvent): void {
-    upsertDownloadTask({
-      taskId: event.taskId,
-      tabId: event.tabId,
-      direction: "upload",
-      name: event.name,
-      path: event.path,
-      status: event.status,
-      transferredBytes: event.transferredBytes,
-      totalBytes: event.totalBytes,
-      speedBytesPerSecond: event.speedBytesPerSecond,
-      localPaths: event.localPaths,
-      remoteDirectoryPath: event.remoteDirectoryPath,
-      uploadEntryCount: event.uploadEntryCount,
-      uploadedEntryCount: event.uploadedEntryCount,
-      currentUploadPath: event.currentUploadPath,
-      currentUploadType: event.currentUploadType,
-      error: event.error,
-    });
-
-    if (event.status === "completed") {
-      void useSftpStore().refreshRemoteDirectoryPath(
-        event.tabId,
-        event.remoteDirectoryPath,
+    if (event.type === "node-upsert") {
+      const index = transferNodes.value.findIndex(
+        (node) => node.id === event.node.id,
       );
+      transferNodes.value =
+        index < 0
+          ? [...transferNodes.value, event.node]
+          : transferNodes.value.map((node, itemIndex) =>
+              itemIndex === index ? event.node : node,
+            );
+      return;
+    }
+
+    transferNodes.value = transferNodes.value.filter(
+      (node) => node.id !== event.nodeId,
+    );
+  }
+
+  function operationKey(input: SftpManagedTaskControlInput): string {
+    return `${input.taskId}:${input.nodeIds?.join(",") ?? "root"}:${input.action}`;
+  }
+
+  function isManagedTaskOperating(
+    taskId: string,
+    nodeId?: string,
+  ): boolean {
+    const prefix = `${taskId}:${nodeId ?? "root"}:`;
+    return [...operatingKeys.value].some((key) => key.startsWith(prefix));
+  }
+
+  async function controlManagedTask(
+    input: SftpManagedTaskControlInput,
+  ): Promise<boolean> {
+    const key = operationKey(input);
+    if (operatingKeys.value.has(key)) {
+      return false;
+    }
+
+    operatingKeys.value = new Set([...operatingKeys.value, key]);
+    try {
+      if (!core.orbitSSHApi?.sftp.controlManagedTask) {
+        throw new Error("当前窗口未加载任务控制能力，请重启应用后重试");
+      }
+      return await core.orbitSSHApi.sftp.controlManagedTask(input);
+    } finally {
+      const nextKeys = new Set(operatingKeys.value);
+      nextKeys.delete(key);
+      operatingKeys.value = nextKeys;
     }
   }
 
-  function handleSftpRemoteTransferProgress(
-    event: SftpRemoteTransferProgressEvent,
-  ): void {
-    upsertDownloadTask({
-      taskId: event.taskId,
-      tabId: event.targetServerId,
-      direction: "server-transfer",
-      name: event.name,
-      path: event.path,
-      status: event.status,
-      transferredBytes: event.transferredBytes,
-      totalBytes: event.totalBytes,
-      speedBytesPerSecond: event.speedBytesPerSecond,
-      sourceServerId: event.sourceServerId,
-      targetServerId: event.targetServerId,
-      transferPhase: event.phase,
-      targetDirectoryPath: event.targetDirectoryPath,
-      error: event.error,
+  // 兼容旧组件调用，后续任务列表统一使用节点级控制。
+  async function controlDownloadTask(
+    task: { taskId: string },
+    action: "pause" | "resume" | "cancel",
+  ): Promise<void> {
+    await controlManagedTask({
+      taskId: task.taskId,
+      action: action === "cancel" ? "delete" : action,
     });
+  }
+
+  function isDownloadTaskOperating(taskId: string): boolean {
+    return isManagedTaskOperating(taskId);
   }
 
   function removeDownloadTask(taskId: string): void {
-    downloadTasks.value = downloadTasks.value.filter(
-      (task) => task.taskId !== taskId,
-    );
+    void controlManagedTask({ taskId, action: "delete" });
   }
 
-  async function controlDownloadTask(
-    task: DownloadTask,
-    action: "pause" | "resume" | "cancel",
-  ): Promise<void> {
-    if (isDownloadTaskOperating(task.taskId)) {
+  let removeManagedTaskListener: (() => void) | undefined;
+
+  async function startListeners(): Promise<void> {
+    if (!core.orbitSSHApi?.sftp.onManagedTaskEvent) {
       return;
     }
 
-    downloadTaskOperationIds.value = new Set([
-      ...downloadTaskOperationIds.value,
-      task.taskId,
-    ]);
-
-    try {
-      let isControlled = true;
-
-      if (task.direction === "upload") {
-        if (!core.orbitSSHApi?.sftp.controlUpload) {
-          throw new Error("当前窗口未加载上传控制能力，请重启应用后重试");
-        }
-
-        isControlled = await core.orbitSSHApi.sftp.controlUpload({
-          taskId: task.taskId,
-          action,
-        });
-      } else if (task.direction === "server-transfer") {
-        if (!core.orbitSSHApi?.sftp.controlRemoteTransfer) {
-          throw new Error("当前窗口未加载文件传输控制能力，请重启应用后重试");
-        }
-
-        isControlled = await core.orbitSSHApi.sftp.controlRemoteTransfer({
-          taskId: task.taskId,
-          action,
-        });
-      } else if (action === "resume") {
-        await core.orbitSSHApi?.sftp.download({
-          tabId: task.tabId,
-          path: task.path,
-          name: task.name,
-          size: task.totalBytes || undefined,
-          taskId: task.taskId,
-          localPath: task.filePath,
-          transferredBytes: task.transferredBytes,
-        });
-      } else {
-        if (!core.orbitSSHApi?.sftp.controlDownload) {
-          throw new Error("当前窗口未加载下载控制能力，请重启应用后重试");
-        }
-
-        isControlled = await core.orbitSSHApi.sftp.controlDownload({
-          taskId: task.taskId,
-          action,
-          localPath: task.filePath,
-        });
-      }
-
-      if (!isControlled) {
-        throw new Error("传输任务状态已变化，请稍后重试");
-      }
-
-      if (action === "cancel") {
-        downloadTasks.value = downloadTasks.value.map((item) =>
-          item.taskId === task.taskId ? { ...item, status: "canceled" } : item,
-        );
-      }
-    } catch (error) {
-      downloadTasks.value = downloadTasks.value.map((item) =>
-        item.taskId === task.taskId
-          ? {
-              ...item,
-              status: "error",
-              error:
-                error instanceof Error ? error.message : "传输任务操作失败",
-            }
-          : item,
-      );
-    } finally {
-      const nextOperationIds = new Set(downloadTaskOperationIds.value);
-      nextOperationIds.delete(task.taskId);
-      downloadTaskOperationIds.value = nextOperationIds;
-    }
-  }
-
-  let removeSftpDownloadProgressListener: (() => void) | undefined;
-  let removeSftpUploadProgressListener: (() => void) | undefined;
-  let removeSftpRemoteTransferProgressListener: (() => void) | undefined;
-
-  function startListeners(): void {
-    if (core.orbitSSHApi && !removeSftpDownloadProgressListener) {
-      removeSftpDownloadProgressListener =
-        core.orbitSSHApi.sftp.onDownloadProgress(handleSftpDownloadProgress);
+    if (!removeManagedTaskListener) {
+      removeManagedTaskListener =
+        core.orbitSSHApi.sftp.onManagedTaskEvent(applyEvent);
     }
 
-    if (core.orbitSSHApi && !removeSftpUploadProgressListener) {
-      removeSftpUploadProgressListener = core.orbitSSHApi.sftp.onUploadProgress(
-        handleSftpUploadProgress,
-      );
-    }
-
-    if (
-      core.orbitSSHApi?.sftp.onRemoteTransferProgress &&
-      !removeSftpRemoteTransferProgressListener
-    ) {
-      removeSftpRemoteTransferProgressListener =
-        core.orbitSSHApi.sftp.onRemoteTransferProgress(
-          handleSftpRemoteTransferProgress,
-        );
-    }
+    const snapshot = await core.orbitSSHApi.sftp.listManagedTasks();
+    applyEvent({ type: "reset", snapshot });
   }
 
   function stopListeners(): void {
-    removeSftpDownloadProgressListener?.();
-    removeSftpDownloadProgressListener = undefined;
-    removeSftpUploadProgressListener?.();
-    removeSftpUploadProgressListener = undefined;
-    removeSftpRemoteTransferProgressListener?.();
-    removeSftpRemoteTransferProgressListener = undefined;
+    removeManagedTaskListener?.();
+    removeManagedTaskListener = undefined;
   }
 
   return {
-    downloadTasks,
-    downloadTaskOperationIds,
+    transferBatches,
+    transferNodes,
     isTaskListOpen,
+    operatingKeys,
+    hasTransferTasks,
     activeDownloadCount,
     visibleDownloadTasks,
+    isManagedTaskOperating,
     isDownloadTaskOperating,
-    handleSftpDownloadProgress,
-    handleSftpUploadProgress,
-    handleSftpRemoteTransferProgress,
+    controlManagedTask,
     controlDownloadTask,
     removeDownloadTask,
     startListeners,

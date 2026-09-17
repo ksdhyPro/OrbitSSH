@@ -1,0 +1,179 @@
+.app-dialog-transfer {
+  --transfer-card-border: color-mix(in srgb, var(--text-primary) 7%, transparent);
+  --transfer-row-divider: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  --transfer-progress-track: color-mix(in srgb, var(--text-primary) 9%, transparent);
+  width: 85vw;
+  height: 80vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.app-dialog-transfer .app-dialog-body {
+  overflow: hidden;
+}
+
+.transfer-task-list {
+  height: 100%;
+  overflow: auto;
+}
+
+.transfer-task-empty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.transfer-task-batch {
+  margin-bottom: 10px;
+  overflow: hidden;
+  border: 1px solid var(--transfer-card-border);
+  border-radius: 8px;
+}
+
+.transfer-task-batch-header,
+.transfer-task-row {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-width: 860px;
+}
+
+.transfer-task-batch-header {
+  grid-template-columns: 28px minmax(220px, 1fr) minmax(350px, auto) 92px;
+  gap: 8px;
+  min-height: 58px;
+  padding: 6px 10px;
+  background: var(--bg-elevated-1);
+}
+
+.transfer-task-title {
+  min-width: 0;
+}
+
+.transfer-task-title strong,
+.transfer-task-title small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-task-title small {
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+.transfer-task-summary {
+  display: grid;
+  grid-template-columns: 170px 120px 105px 60px;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.transfer-task-row {
+  grid-template-columns: 24px minmax(220px, 1fr) 105px 110px 100px 64px 92px;
+  gap: 8px;
+  min-height: 42px;
+  padding: 5px 10px 5px calc(10px + var(--tree-depth) * 18px);
+  border-top: 1px solid var(--transfer-row-divider);
+  font-size: 12px;
+}
+
+.transfer-task-row.selected {
+  background: var(--selected-bg);
+}
+
+.transfer-task-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-inline-more {
+  margin-left: 8px;
+  padding: 2px 5px;
+  border: 0;
+  color: var(--accent);
+  background: transparent;
+  font-size: 11px;
+}
+
+.transfer-tree-toggle,
+.transfer-task-actions button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+}
+
+.transfer-tree-toggle img,
+.transfer-task-actions img {
+  width: 14px;
+  height: 14px;
+}
+
+.transfer-tree-spacer {
+  width: 24px;
+}
+
+.transfer-task-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.transfer-task-actions button:hover {
+  background: var(--surface-hover);
+}
+
+.transfer-task-actions .danger:hover {
+  background: var(--danger-bg);
+}
+
+.transfer-inline-progress {
+  display: grid;
+  grid-template-columns: minmax(54px, 1fr) 32px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.transfer-inline-progress > span {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--transfer-progress-track);
+}
+
+.transfer-inline-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
+}
+
+.transfer-inline-progress small {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.transfer-show-more {
+  width: 100%;
+  padding: 9px;
+  border: 0;
+  border-top: 1px solid var(--transfer-row-divider);
+  color: var(--accent);
+  background: transparent;
+}
+
+.is-failed {
+  color: var(--danger);
+}

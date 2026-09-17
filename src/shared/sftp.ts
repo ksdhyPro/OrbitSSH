@@ -127,7 +127,7 @@ export interface SftpRemoteTransferProgressEvent {
   name: string
   path: string
   targetDirectoryPath: string
-  phase: 'preparing' | 'direct' | 'download' | 'upload'
+  phase: 'preparing' | 'download' | 'upload'
   status: 'queued' | 'started' | 'progress' | 'paused' | 'completed' | 'canceled' | 'error'
   transferredBytes: number
   totalBytes: number
@@ -145,6 +145,55 @@ export interface SftpDownloadControlInput {
 export interface SftpRemoteTransferControlInput {
   taskId: string
   action: 'pause' | 'resume' | 'cancel'
+}
+
+export type SftpManagedTaskStatus = 'queued' | 'transferring' | 'paused' | 'failed'
+export type SftpManagedTaskDirection = 'upload' | 'download' | 'server-transfer'
+
+export interface SftpManagedTaskNode {
+  id: string
+  taskId: string
+  parentId?: string
+  name: string
+  relativePath: string
+  type: RemoteFileNode['type']
+  status: SftpManagedTaskStatus
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  childCount: number
+  error?: string
+}
+
+export interface SftpManagedTaskBatch {
+  taskId: string
+  direction: SftpManagedTaskDirection
+  name: string
+  sourceLabel: string
+  targetLabel: string
+  status: SftpManagedTaskStatus
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  remainingCount: number
+}
+
+export interface SftpManagedTaskSnapshot {
+  batches: SftpManagedTaskBatch[]
+  nodes: SftpManagedTaskNode[]
+}
+
+export type SftpManagedTaskEvent =
+  | { type: 'reset'; snapshot: SftpManagedTaskSnapshot }
+  | { type: 'batch-upsert'; batch: SftpManagedTaskBatch }
+  | { type: 'batch-remove'; taskId: string }
+  | { type: 'node-upsert'; node: SftpManagedTaskNode }
+  | { type: 'node-remove'; taskId: string; nodeId: string }
+
+export interface SftpManagedTaskControlInput {
+  taskId: string
+  nodeIds?: string[]
+  action: 'pause' | 'resume' | 'delete' | 'retry'
 }
 
 export interface SftpProbeTextInput {

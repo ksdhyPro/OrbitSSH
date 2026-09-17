@@ -24,6 +24,7 @@ import SftpPanel from "./components/SftpPanel.vue";
 import SftpPathPromptDialog from "./components/SftpPathPromptDialog.vue";
 import TerminalPanel from "./components/TerminalPanel.vue";
 import TitleBarTabs from "./components/TitleBarTabs.vue";
+import TransferTaskDialog from "./components/TransferTaskDialog.vue";
 import type { ServerConfig } from "../shared/server";
 import type { AppMenuAction } from "../shared/app-menu";
 import { storeToRefs } from "pinia";
@@ -430,12 +431,13 @@ const { startSidebarResize, startAiPanelResize } = sidebarStore;
 // downloads
 const {
   isTaskListOpen,
-  activeDownloadCount,
-  visibleDownloadTasks,
+  transferBatches,
+  transferNodes,
+  hasTransferTasks,
 } = storeToRefs(downloadsStore);
 const {
-  controlDownloadTask,
-  isDownloadTaskOperating,
+  controlManagedTask,
+  isManagedTaskOperating,
 } = downloadsStore;
 
 const {
@@ -574,7 +576,6 @@ const {
   toggleModifyTimeSort,
   getFilePanelHint,
   canDownloadRemoteFile,
-  canUploadRemoteNode,
   getFileEditMenuLabel,
   isEditableTextFile,
   canDeleteRemoteNode,
@@ -588,8 +589,6 @@ const {
   handleFileDragLeave,
   handleFileDrop,
   downloadContextFile,
-  uploadContextFile,
-  uploadToActiveSftpDirectory,
   refreshActiveDirectory,
   closeSftpPathPrompt,
   submitFilePathInput,
@@ -970,12 +969,8 @@ onUnmounted(() => {
       :is-window-full-screen="isWindowFullScreen"
       :is-windows="isWindows"
       :is-mac="isMac"
-      :is-task-list-open="isTaskListOpen"
-      :active-download-count="activeDownloadCount"
-      :visible-download-tasks="visibleDownloadTasks"
-      :is-download-task-operating="isDownloadTaskOperating"
-      @update-task-list-open="isTaskListOpen = $event"
-      @control-download-task="controlDownloadTask"
+      :has-transfer-tasks="hasTransferTasks"
+      @open-transfer-tasks="isTaskListOpen = true"
       @open-data-transfer="openDataTransferDialog"
       @open-port-forwards="openPortForwardDialog"
       @open-settings="openSettingsDialog"
@@ -986,6 +981,14 @@ onUnmounted(() => {
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
       @close-window="closeWindow" />
+
+    <TransferTaskDialog
+      :open="isTaskListOpen"
+      :batches="transferBatches"
+      :nodes="transferNodes"
+      :is-operating="isManagedTaskOperating"
+      @close="isTaskListOpen = false"
+      @control="controlManagedTask" />
 
     <PortForwardDialog
       :open="isPortForwardDialogOpen"
@@ -1068,7 +1071,6 @@ onUnmounted(() => {
               :is-editable-text-file="isEditableTextFile"
               :get-file-edit-menu-label="getFileEditMenuLabel"
               :can-download-remote-file="canDownloadRemoteFile"
-              :can-upload-remote-node="canUploadRemoteNode"
               :can-delete-remote-node="canDeleteRemoteNode"
               :collapsed="appSettings.sidebar.remoteFiles.collapsed"
               @update:file-path-input="filePathInput = $event"
@@ -1094,8 +1096,6 @@ onUnmounted(() => {
               @preview-context-file="previewContextFile"
               @edit-context-file="editContextFile"
               @download-context-file="downloadContextFile"
-              @upload-context-file="uploadContextFile"
-              @upload-to-current-directory="uploadToActiveSftpDirectory"
               @rename-context-file="renameContextFile"
               @delete-context-file="deleteContextFile"
               @commit-rename="handleCommitRename"

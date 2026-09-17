@@ -27,7 +27,6 @@ export function getDownloadProgressPercent(task: DownloadTask): number {
 export function getDownloadTaskStatusText(task: DownloadTask): string {
   const phasePrefixMap: Record<string, string> = {
     preparing: "准备中",
-    direct: "直连传输",
     download: "下载到本地",
     upload: "上传到目标",
   };

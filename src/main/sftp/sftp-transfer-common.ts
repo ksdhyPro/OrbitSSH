@@ -15,6 +15,13 @@ import {
 import type { FileFingerprintReader } from './file-fingerprint.js'
 
 export interface RawSftpClient {
+  lstat: (
+    path: string,
+    callback: (
+      error: Error | undefined,
+      attributes: { mode?: number; size: number; mtime: number }
+    ) => void
+  ) => void
   open: (path: string, flags: string, callback: (error: Error | undefined, handle: Buffer) => void) => void
   read: (
     handle: Buffer,
@@ -240,8 +247,31 @@ export function getTransferTempPath(path: string): string {
 }
 
 export async function replaceLocalFile(sourcePath: string, targetPath: string): Promise<void> {
-  await rm(targetPath, { force: true }).catch(() => undefined)
+  // 类型冲突时也只在临时文件完整落盘后删除旧目标，避免传输失败提前丢失原内容。
+  await rm(targetPath, { recursive: true, force: true }).catch(() => undefined)
   await rename(sourcePath, targetPath)
+}
+
+export function lstatRemotePath(
+  client: SftpClient,
+  path: string
+): Promise<{ isFile: boolean; isSymbolicLink: boolean; size: number; modifyTime: number }> {
+  return new Promise((resolve, reject) => {
+    getRawSftpClient(client).lstat(path, (error, attributes) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      const fileType = (attributes.mode ?? 0) & 0o170000
+      resolve({
+        isFile: fileType === 0o100000,
+        isSymbolicLink: fileType === 0o120000,
+        size: attributes.size,
+        modifyTime: attributes.mtime
+      })
+    })
+  })
 }
 
 export async function replaceRemoteFile(
@@ -249,7 +279,17 @@ export async function replaceRemoteFile(
   sourcePath: string,
   targetPath: string
 ): Promise<void> {
-  await client.delete(targetPath).catch(() => undefined)
+  try {
+    const targetStat = await client.stat(targetPath)
+
+    if (targetStat.isDirectory) {
+      await client.rmdir(targetPath, true)
+    } else {
+      await client.delete(targetPath)
+    }
+  } catch {
+    // 目标不存在时直接将完整临时文件改名到最终位置。
+  }
   await client.rename(sourcePath, targetPath)
 }
 

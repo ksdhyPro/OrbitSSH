@@ -3,9 +3,7 @@ import { computed } from "vue";
 import downloadIcon from "../assets/icons/download.svg";
 import fileAddIcon from "../assets/icons/file-add.svg";
 import fileEditIcon from "../assets/icons/file-edit.svg";
-import fileUploadIcon from "../assets/icons/file-upload.svg";
 import folderAddIcon from "../assets/icons/folder-add.svg";
-import folderUploadIcon from "../assets/icons/folder-upload.svg";
 import previewIcon from "../assets/icons/preview.svg";
 import renameIcon from "../assets/icons/rename.svg";
 import trashIcon from "../assets/icons/trash.svg";
@@ -20,7 +18,6 @@ const props = defineProps<{
   isEditableTextFile: (node: RemoteFileNode | null) => boolean;
   getFileEditMenuLabel: (node: RemoteFileNode | null) => string;
   canDownloadRemoteFile: (node: RemoteFileNode | null) => boolean;
-  canUploadRemoteNode: (node: RemoteFileNode | null) => boolean;
   canDeleteRemoteNode: (node: RemoteFileNode | null) => boolean;
 }>();
 
@@ -28,7 +25,6 @@ const emit = defineEmits<{
   preview: [];
   edit: [];
   download: [];
-  upload: [sourceType: "file" | "directory"];
   create: [type: "file" | "directory"];
   rename: [];
   delete: [];
@@ -38,24 +34,10 @@ const emit = defineEmits<{
 const menuItems = computed<ContextMenuItem[]>(() => {
   const node = props.menu.node;
   const count = props.menu.selectedCount;
-  const uploadFileItem = {
-    key: "upload-file",
-    label: "上传文件",
-    icon: fileUploadIcon,
-    group: "upload",
-  };
-  const uploadDirectoryItem = {
-    key: "upload-directory",
-    label: "上传文件夹",
-    icon: folderUploadIcon,
-    group: "upload",
-  };
 
   // 右键目标属于多选选区时，菜单执行批量操作；右键未选中项时不影响既有选区。
   if (props.menu.contextNodeSelected && count > 1) {
     return [
-      uploadFileItem,
-      uploadDirectoryItem,
       {
         key: "delete",
         label: `删除 ${count} 项`,
@@ -88,8 +70,6 @@ const menuItems = computed<ContextMenuItem[]>(() => {
     return [
       // 文件夹菜单按单一顺序展示，避免在下载操作前后插入分隔线。
       ...createItems.map((item) => ({ ...item, group: undefined })),
-      { ...uploadFileItem, group: undefined },
-      { ...uploadDirectoryItem, group: undefined },
       {
         key: "download",
         label: "下载文件夹",
@@ -129,8 +109,6 @@ const menuItems = computed<ContextMenuItem[]>(() => {
 
   return [
     ...createItems,
-    uploadFileItem,
-    uploadDirectoryItem,
     primaryItem,
     {
       key: "download",
@@ -165,10 +143,6 @@ function selectMenuItem(item: ContextMenuItem): void {
     emit("edit");
   } else if (item.key === "download") {
     emit("download");
-  } else if (item.key === "upload-file") {
-    emit("upload", "file");
-  } else if (item.key === "upload-directory") {
-    emit("upload", "directory");
   } else if (item.key === "new-file") {
     emit("create", "file");
   } else if (item.key === "new-directory") {

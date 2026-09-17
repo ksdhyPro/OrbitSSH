@@ -587,3 +587,14 @@
   top: 2px;
   right: 2px;
 }
+
+.tasklist-trigger .tasklist-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--topbar-bg, #1f2937);
+  border-radius: 50%;
+  background: #ef4444;
+}

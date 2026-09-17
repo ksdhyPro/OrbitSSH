@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,12 @@ import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { writeStartupDiagnostic } from "./startup-diagnostics.js";
 import { closeAllSftpSessions } from "./sftp/sftp-manager.js";
+import { closeAllSftpTransferConnections } from "./sftp/sftp-connection-pool.js";
+import {
+  cleanupManagedTransferTempFiles,
+  discardAllManagedTransferTasks,
+  hasManagedTransferTasks,
+} from "./sftp/sftp-managed-task-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
 import { closeAllPortForwards } from "./ssh/port-forward-manager.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
@@ -33,6 +39,7 @@ let tray: Tray | null = null;
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let hasCleanedUpConnections = false;
+let isQuitPromptOpen = false;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 // Windows: 确保任务栏图标正确、通知分组正确（需在 app.whenReady 之前设置）
@@ -60,6 +67,43 @@ function cleanupConnections(): void {
   closeAllTerminalSessions();
   closeAllPortForwards();
   void closeAllSftpSessions();
+  void closeAllSftpTransferConnections();
+}
+
+async function cleanupTransfersBeforeQuit(): Promise<void> {
+  // 退出清理最多等待 5 秒，避免连接异常时应用无法退出。
+  await Promise.race([
+    discardAllManagedTransferTasks(),
+    new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+  ]);
+}
+
+async function requestAppQuit(): Promise<void> {
+  if (isQuitting || isQuitPromptOpen) return;
+
+  if (hasManagedTransferTasks()) {
+    isQuitPromptOpen = true;
+    const options: Electron.MessageBoxOptions = {
+      type: "warning",
+      buttons: ["取消", "确认退出"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "确认退出",
+      message: "当前仍有传输任务，退出后任务不会恢复。",
+      detail: "已传输完成的目标文件会保留，本地临时中转文件将被清理。",
+      noLink: true,
+    };
+    const result = mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
+    isQuitPromptOpen = false;
+    if (result.response !== 1) return;
+  }
+
+  await cleanupTransfersBeforeQuit();
+  isQuitting = true;
+  cleanupConnections();
+  app.quit();
 }
 
 // 恢复并聚焦已有主窗口，供托盘和重复启动事件复用。
@@ -94,9 +138,7 @@ function createTray(): void {
       {
         label: "关闭",
         click: () => {
-          isQuitting = true;
-          cleanupConnections();
-          app.quit();
+          void requestAppQuit();
         },
       },
     ]),
@@ -348,6 +390,8 @@ if (!hasSingleInstanceLock) {
       scope: "main.app",
       message: "应用 ready",
     });
+    // 任务不跨进程恢复，启动时清除上次异常退出遗留的中转文件。
+    void cleanupManagedTransferTempFiles();
     registerBaseIpc();
     mainWindow = createMainWindow();
     registerCloseToTray(mainWindow);
@@ -381,7 +425,13 @@ app.on("child-process-gone", (_event, details) => {
   });
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (!isQuitting && hasManagedTransferTasks()) {
+    event.preventDefault();
+    void requestAppQuit();
+    return;
+  }
+
   isQuitting = true;
   cleanupConnections();
 });

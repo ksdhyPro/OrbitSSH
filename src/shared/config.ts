@@ -5,8 +5,8 @@ export const appConfig = {
   },
   sftp: {
     transfer: {
-      // 全局传输并发上限：上传、下载、服务器间传输共享该队列。
-      // 调大后会同时打开更多 SFTP/SSH 连接，可能增加服务器和本机压力。
+      // 全局文件级传输并发上限：上传、下载、服务器间传输共享该队列。
+      // 服务器中转每个文件最多使用两条独占连接。
       maxConcurrentTasks: 3,
     },
     textEditor: {
@@ -118,7 +118,6 @@ export const appConfig = {
       // 上传目录前的本地扫描上限，避免误选超大目录导致主进程内存和文件句柄压力过高。
       maxScanEntries: 20_000,
       maxScanDepth: 32,
-      maxScanTotalBytes: 20 * 1024 * 1024 * 1024,
     },
     download: {
       // fastGet 使用并发读取，吞吐通常明显高于普通 stream pipe。

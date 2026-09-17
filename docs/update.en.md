@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.10.4
+
+1. Reworked file-transfer task execution. Server-to-server transfers now always relay through local temporary files, the legacy direct-transfer implementation has been removed, and file-level scheduling uses exclusive per-server SFTP connection pools.
+2. Added a dedicated transfer task center with a directory tree, inline progress bars, speed and status details, and pause, resume, delete, and retry controls for files, folders, and batches. Completed items disappear immediately, while submitting a new batch automatically opens the task center.
+3. Improved transfer reliability and safety with identical-content skipping, overwrite handling, source-change detection, symbolic-link rejection, reserved disk space, same-path and nested-directory validation, and limits for batch depth, entry count, and global unfinished work.
+4. Improved task lifecycle handling with debounced target refreshes, exit confirmation while tasks remain, temporary-file cleanup during shutdown, no task recovery after crashes, and stale relay cleanup on the next launch.
+5. Simplified transfer entry points by removing upload actions from SFTP context menus and routing transfers through the dual-pane File Transfer window.
+
 ## v1.10.3
 
 1. Strengthened approval for cross-server AI commands. Regardless of the active permission mode, accessing another saved server now displays a command card and executes only after explicit user approval.

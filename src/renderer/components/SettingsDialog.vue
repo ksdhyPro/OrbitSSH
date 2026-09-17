@@ -532,7 +532,7 @@ function removeAiConfig(configId: string): void {
           <div class="settings-field">
             <div>
               <h3>SFTP 同时传输数量</h3>
-              <p>上传、下载和服务器间传输共享该并发数量。</p>
+              <p>上传、下载和服务器间传输共享该文件并发数；中转时每个文件最多占用两条连接。</p>
             </div>
             <AppSelect
               :model-value="
