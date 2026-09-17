@@ -333,6 +333,27 @@
   background: transparent;
 }
 
+.transfer-file-list-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(54px, auto) minmax(82px, auto);
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 26px;
+  /* 左侧避开文件图标，右侧与列表预留的框选空白保持一致。 */
+  padding: 0 38px 0 34px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  user-select: none;
+}
+
+.transfer-file-list-header > span:nth-child(n + 2) {
+  text-align: right;
+}
+
 .transfer-file-list-inner {
   display: grid;
   flex: 1 1 auto;

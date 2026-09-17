@@ -12,6 +12,7 @@ import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import editIcon from "../assets/icons/edit.svg";
 import fileIcon from "../assets/icons/file.svg";
 import folderIcon from "../assets/icons/folder.svg";
+import sortArrowIcon from "../assets/icons/sort-arrow.svg";
 import trashIcon from "../assets/icons/trash.svg";
 import type { ServerConfig } from "../../shared/server";
 import type {
@@ -48,6 +49,7 @@ import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 type TransferPaneKey = "left" | "right";
+type ModifyTimeSortDirection = "asc" | "desc";
 const LOCAL_ENDPOINT_ID = "__local__";
 interface TransferPaneState {
   tabId: string;
@@ -59,6 +61,7 @@ interface TransferPaneState {
   selectedPaths: Set<string>;
   deletingPaths: Set<string>;
   lastClickedIndex: number;
+  modifyTimeSortDirection: ModifyTimeSortDirection;
   loading: boolean;
   error: string;
 }
@@ -100,6 +103,7 @@ const leftPane = reactive<TransferPaneState>({
   selectedPaths: new Set<string>(),
   deletingPaths: new Set<string>(),
   lastClickedIndex: -1,
+  modifyTimeSortDirection: "desc",
   loading: false,
   error: "",
 });
@@ -113,6 +117,7 @@ const rightPane = reactive<TransferPaneState>({
   selectedPaths: new Set<string>(),
   deletingPaths: new Set<string>(),
   lastClickedIndex: -1,
+  modifyTimeSortDirection: "desc",
   loading: false,
   error: "",
 });
@@ -152,6 +157,8 @@ const transferDrag = reactive<{
 });
 const leftSelectedNodes = computed(() => getSelectedNodes(leftPane));
 const rightSelectedNodes = computed(() => getSelectedNodes(rightPane));
+const leftVisibleNodes = computed(() => getVisibleNodes(leftPane));
+const rightVisibleNodes = computed(() => getVisibleNodes(rightPane));
 const leftServerOptions = computed<AppSelectOption[]>(() =>
   [
     { value: LOCAL_ENDPOINT_ID, label: "本地" },
@@ -479,8 +486,32 @@ function createParentNode(pane: TransferPaneState): RemoteFileListNode | null {
 
 function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
   const parentNode = createParentNode(pane);
+  const sortedNodes = [...pane.nodes].sort((left, right) => {
+    const leftTime = left.modifyTime;
+    const rightTime = right.modifyTime;
 
-  return parentNode ? [parentNode, ...pane.nodes] : pane.nodes;
+    // 与主 SFTP 保持一致：无修改时间的项目固定置底，切换方向时不参与翻转。
+    if (typeof leftTime !== "number") {
+      return typeof rightTime === "number" ? 1 : 0;
+    }
+    if (typeof rightTime !== "number") {
+      return -1;
+    }
+
+    return pane.modifyTimeSortDirection === "asc"
+      ? leftTime - rightTime
+      : rightTime - leftTime;
+  });
+
+  return parentNode ? [parentNode, ...sortedNodes] : sortedNodes;
+}
+
+function togglePaneModifyTimeSort(pane: TransferPaneState): void {
+  pane.modifyTimeSortDirection =
+    pane.modifyTimeSortDirection === "asc" ? "desc" : "asc";
+
+  // 排序后列表索引发生变化，重置 Shift 范围选择锚点。
+  pane.lastClickedIndex = -1;
 }
 
 async function closePaneSession(pane: TransferPaneState): Promise<void> {
@@ -1498,39 +1529,61 @@ onUnmounted(() => {
           <div v-else-if="leftPane.error" class="transfer-state error">
             {{ leftPane.error }}
           </div>
-          <RemoteFileList
-            v-else
-            :nodes="getVisibleNodes(leftPane) as RemoteFileListNode[]"
-            :aria-label="isLocalPane(leftPane) ? '本地文件列表' : '左侧远程文件列表'"
-            list-class="transfer-file-list-inner"
-            row-class="transfer-file-row"
-            :selected-paths="leftPane.selectedPaths"
-            :deleting-paths="leftPane.deletingPaths"
-            :drop-target-path="transferDrag.targetPath"
-            :renaming-path="getPaneRenamingPath('left')"
-            :renaming-value="getPaneRenamingValue('left')"
-            empty-text="当前目录为空"
-            @select-node="(event, node) => selectPaneNode(event, 'left', node)"
-            @select-all="selectAllInPane(leftPane)"
-            @clear-selection="clearPaneSelection('left')"
-            @marquee-select="selectPaneNodesByPaths('left', $event)"
-            @open-context-menu="
-              (event, node) => openTransferContextMenu(event, 'left', node)
-            "
-            @open-node="openNodeByDoubleClick(leftPane, $event)"
-            @drag-start-node="
-              (event, node) => startTransferDrag(event, 'left', node)
-            "
-            @drag-over-node="
-              (event, node) => dragOverTransferNode(event, 'left', node)
-            "
-            @drag-leave-node="dragLeaveTransferNode"
-            @drop-node="(event, node) => dropTransferNode(event, 'left', node)"
-            @drag-end-node="clearTransferDrag()"
-            @update-rename-value="updatePaneRenameValue('left', $event)"
-            @commit-rename="commitRename"
-            @cancel-rename="cancelRename"
-          />
+          <template v-else>
+            <div
+              v-if="leftVisibleNodes.length > 0"
+              class="transfer-file-list-header">
+              <span>名称</span>
+              <span>大小/类型</span>
+              <span
+                class="file-list-sort-trigger"
+                role="button"
+                tabindex="0"
+                :title="`按修改时间${leftPane.modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}排列`"
+                :aria-label="`左侧修改时间，当前${leftPane.modifyTimeSortDirection === 'asc' ? '正序' : '倒序'}，点击切换为${leftPane.modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}`"
+                @click.stop="togglePaneModifyTimeSort(leftPane)"
+                @keydown.enter.prevent="togglePaneModifyTimeSort(leftPane)"
+                @keydown.space.prevent="togglePaneModifyTimeSort(leftPane)">
+                <span>修改时间</span>
+                <img
+                  :class="['file-list-sort-arrow', { descending: leftPane.modifyTimeSortDirection === 'desc' }]"
+                  :src="sortArrowIcon"
+                  alt="" />
+              </span>
+            </div>
+            <RemoteFileList
+              :nodes="leftVisibleNodes as RemoteFileListNode[]"
+              :aria-label="isLocalPane(leftPane) ? '本地文件列表' : '左侧远程文件列表'"
+              list-class="transfer-file-list-inner"
+              row-class="transfer-file-row"
+              :selected-paths="leftPane.selectedPaths"
+              :deleting-paths="leftPane.deletingPaths"
+              :drop-target-path="transferDrag.targetPath"
+              :renaming-path="getPaneRenamingPath('left')"
+              :renaming-value="getPaneRenamingValue('left')"
+              empty-text="当前目录为空"
+              @select-node="(event, node) => selectPaneNode(event, 'left', node)"
+              @select-all="selectAllInPane(leftPane)"
+              @clear-selection="clearPaneSelection('left')"
+              @marquee-select="selectPaneNodesByPaths('left', $event)"
+              @open-context-menu="
+                (event, node) => openTransferContextMenu(event, 'left', node)
+              "
+              @open-node="openNodeByDoubleClick(leftPane, $event)"
+              @drag-start-node="
+                (event, node) => startTransferDrag(event, 'left', node)
+              "
+              @drag-over-node="
+                (event, node) => dragOverTransferNode(event, 'left', node)
+              "
+              @drag-leave-node="dragLeaveTransferNode"
+              @drop-node="(event, node) => dropTransferNode(event, 'left', node)"
+              @drag-end-node="clearTransferDrag()"
+              @update-rename-value="updatePaneRenameValue('left', $event)"
+              @commit-rename="commitRename"
+              @cancel-rename="cancelRename"
+            />
+          </template>
         </div>
       </section>
 
@@ -1569,38 +1622,61 @@ onUnmounted(() => {
           <div v-else-if="rightPane.error" class="transfer-state error">
             {{ rightPane.error }}
           </div>
-          <RemoteFileList
-            v-else
-            :nodes="getVisibleNodes(rightPane) as RemoteFileListNode[]"
-            list-class="transfer-file-list-inner"
-            row-class="transfer-file-row"
-            :selected-paths="rightPane.selectedPaths"
-            :deleting-paths="rightPane.deletingPaths"
-            :drop-target-path="transferDrag.targetPath"
-            :renaming-path="getPaneRenamingPath('right')"
-            :renaming-value="getPaneRenamingValue('right')"
-            empty-text="当前目录为空"
-            @select-node="(event, node) => selectPaneNode(event, 'right', node)"
-            @select-all="selectAllInPane(rightPane)"
-            @clear-selection="clearPaneSelection('right')"
-            @marquee-select="selectPaneNodesByPaths('right', $event)"
-            @open-context-menu="
-              (event, node) => openTransferContextMenu(event, 'right', node)
-            "
-            @open-node="openNodeByDoubleClick(rightPane, $event)"
-            @drag-start-node="
-              (event, node) => startTransferDrag(event, 'right', node)
-            "
-            @drag-over-node="
-              (event, node) => dragOverTransferNode(event, 'right', node)
-            "
-            @drag-leave-node="dragLeaveTransferNode"
-            @drop-node="(event, node) => dropTransferNode(event, 'right', node)"
-            @drag-end-node="clearTransferDrag()"
-            @update-rename-value="updatePaneRenameValue('right', $event)"
-            @commit-rename="commitRename"
-            @cancel-rename="cancelRename"
-          />
+          <template v-else>
+            <div
+              v-if="rightVisibleNodes.length > 0"
+              class="transfer-file-list-header">
+              <span>名称</span>
+              <span>大小/类型</span>
+              <span
+                class="file-list-sort-trigger"
+                role="button"
+                tabindex="0"
+                :title="`按修改时间${rightPane.modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}排列`"
+                :aria-label="`右侧修改时间，当前${rightPane.modifyTimeSortDirection === 'asc' ? '正序' : '倒序'}，点击切换为${rightPane.modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}`"
+                @click.stop="togglePaneModifyTimeSort(rightPane)"
+                @keydown.enter.prevent="togglePaneModifyTimeSort(rightPane)"
+                @keydown.space.prevent="togglePaneModifyTimeSort(rightPane)">
+                <span>修改时间</span>
+                <img
+                  :class="['file-list-sort-arrow', { descending: rightPane.modifyTimeSortDirection === 'desc' }]"
+                  :src="sortArrowIcon"
+                  alt="" />
+              </span>
+            </div>
+            <RemoteFileList
+              :nodes="rightVisibleNodes as RemoteFileListNode[]"
+              :aria-label="isLocalPane(rightPane) ? '本地文件列表' : '右侧远程文件列表'"
+              list-class="transfer-file-list-inner"
+              row-class="transfer-file-row"
+              :selected-paths="rightPane.selectedPaths"
+              :deleting-paths="rightPane.deletingPaths"
+              :drop-target-path="transferDrag.targetPath"
+              :renaming-path="getPaneRenamingPath('right')"
+              :renaming-value="getPaneRenamingValue('right')"
+              empty-text="当前目录为空"
+              @select-node="(event, node) => selectPaneNode(event, 'right', node)"
+              @select-all="selectAllInPane(rightPane)"
+              @clear-selection="clearPaneSelection('right')"
+              @marquee-select="selectPaneNodesByPaths('right', $event)"
+              @open-context-menu="
+                (event, node) => openTransferContextMenu(event, 'right', node)
+              "
+              @open-node="openNodeByDoubleClick(rightPane, $event)"
+              @drag-start-node="
+                (event, node) => startTransferDrag(event, 'right', node)
+              "
+              @drag-over-node="
+                (event, node) => dragOverTransferNode(event, 'right', node)
+              "
+              @drag-leave-node="dragLeaveTransferNode"
+              @drop-node="(event, node) => dropTransferNode(event, 'right', node)"
+              @drag-end-node="clearTransferDrag()"
+              @update-rename-value="updatePaneRenameValue('right', $event)"
+              @commit-rename="commitRename"
+              @cancel-rename="cancelRename"
+            />
+          </template>
         </div>
       </section>
     </div>
