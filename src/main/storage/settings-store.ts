@@ -184,6 +184,8 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
 
   return {
     enabled: Boolean(value?.enabled),
+    // 旧版本没有该字段，只有明确保存为 true 时才允许跨服务器操作。
+    allowCrossServerOperations: value?.allowCrossServerOperations === true,
     shareTerminalContext: value?.shareTerminalContext === true,
     presetPrompt: normalizeAiPresetPrompt(value?.presetPrompt),
     activeConfigId,

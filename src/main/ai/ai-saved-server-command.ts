@@ -1,8 +1,13 @@
 import { getServerAuthConfig, listServers } from '../storage/server-store.js'
+import { getSettings } from '../storage/settings-store.js'
 import { executeSshTerminalCommand } from '../ssh/terminal-command.js'
 import { createSshClient } from '../sftp/sftp-transfer-common.js'
 import type { AiCommandResult, AiMode } from '../../shared/ai.js'
-import { resolveSavedServerCommandPermission } from './ai-permission-policy.js'
+import {
+  CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE,
+  CROSS_SERVER_OPERATIONS_DISABLED_REASON,
+  resolveSavedServerCommandPermission
+} from './ai-permission-policy.js'
 import { evaluateAiCommand } from './command-policy.js'
 
 function normalizeServerReference(value: string): string {
@@ -48,12 +53,17 @@ export async function executeSavedServerCommand(
 ): Promise<{ serverName: string; result: AiCommandResult }> {
   const policy = evaluateAiCommand(input.command)
   const permission = resolveSavedServerCommandPermission(
+    // 建立连接前读取最新设置，防止审批期间关闭开关后继续执行。
+    getSettings().ai.allowCrossServerOperations,
     input.mode,
     input.risk,
     policy,
     input.approvalGranted ?? false
   )
   if (permission.decision !== 'execute') {
+    if (permission.reason === CROSS_SERVER_OPERATIONS_DISABLED_REASON) {
+      throw new Error(CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE)
+    }
     throw new Error(`跨服务器命令未获得执行权限：${permission.reason}`)
   }
 

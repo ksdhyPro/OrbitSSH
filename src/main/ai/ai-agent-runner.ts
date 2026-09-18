@@ -201,6 +201,7 @@ export async function runAgentLoop(
     const actionStartedAt = Date.now();
     const execution = await executeAgentAction({
       input,
+      allowCrossServerOperations: settings.ai.allowCrossServerOperations,
       signal,
       emit,
       action,

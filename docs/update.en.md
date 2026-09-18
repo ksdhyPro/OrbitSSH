@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.7
+
+1. Added a global “Allow cross-server operations” AI setting that is disabled by default. When disabled, local policy blocks AI access to other saved servers and clearly directs the user to the setting.
+2. Strengthened cross-server execution checks so no permission mode or existing approval can bypass the global switch. The latest setting is checked again before opening an SSH connection, while enabled operations still require per-command approval.
+
 ## v1.10.6
 
 1. Added per-server custom-command groups with create, rename, and delete operations, plus drag-and-drop and menu-based movement between groups and the ungrouped section. Groups and command assignments are persisted locally.

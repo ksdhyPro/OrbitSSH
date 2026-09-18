@@ -14,8 +14,12 @@ import type {
   LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
 import type { AgentEmitter } from "./ai-agent-events.js";
-import { resolveAiCommandPermission } from "./ai-permission-policy.js";
-import { resolveSavedServerCommandPermission } from "./ai-permission-policy.js";
+import {
+  CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE,
+  CROSS_SERVER_OPERATIONS_DISABLED_REASON,
+  resolveAiCommandPermission,
+  resolveSavedServerCommandPermission,
+} from "./ai-permission-policy.js";
 import type {
   ParsedAiCommand,
   ParsedAssistantResponse,
@@ -65,6 +69,7 @@ export type AgentActionResult =
 
 export interface ExecuteAgentActionInput {
   input: AiChatInput;
+  allowCrossServerOperations: boolean;
   signal: AbortSignal;
   emit?: AgentEmitter;
   action: EvaluatedAiAction;
@@ -537,13 +542,19 @@ export async function executeAgentAction(
     request.action.type !== "saved_server" &&
     containsRemoteShellCommand(request.action.command)
   ) {
+    const disabled = !request.allowCrossServerOperations;
+    const error = disabled
+      ? CROSS_SERVER_OPERATIONS_DISABLED_REASON
+      : "跨服务器操作必须使用已保存服务器工具，不能通过当前终端跳转 SSH";
     const card = createCard(request.input, request.action, "rejected", {
-      error: "跨服务器操作必须使用已保存服务器工具，不能通过当前终端跳转 SSH",
+      error,
     });
     request.emit?.sendCommandCard(card);
     request.messages.push(
       createAssistantMessage(
-        "已拦截通过当前服务器跳转 SSH 的命令。请使用已保存服务器名称，我会通过本地受控连接执行。",
+        disabled
+          ? CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE
+          : "已拦截通过当前服务器跳转 SSH 的命令。请使用已保存服务器名称，我会通过本地受控连接执行。",
       ),
     );
     return {
@@ -557,6 +568,7 @@ export async function executeAgentAction(
 
   const permission = request.action.type === "saved_server"
     ? resolveSavedServerCommandPermission(
+        request.allowCrossServerOperations,
         request.input.mode,
         request.action.risk,
         request.action.policy,
@@ -575,6 +587,13 @@ export async function executeAgentAction(
         error: permission.reason,
       });
       request.emit?.sendCommandCard(card);
+      request.messages.push(
+        createAssistantMessage(
+          permission.reason === CROSS_SERVER_OPERATIONS_DISABLED_REASON
+            ? CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE
+            : `跨服务器命令已被本地策略拒绝：${permission.reason}`,
+        ),
+      );
       return {
         status: "return",
         result: {

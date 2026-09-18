@@ -53,12 +53,27 @@ test("跨服务器命令在所有模式下都必须逐次明确批准", () => {
   const policy = evaluateAiCommand("uptime");
   for (const mode of ["ask", "auto", "full_access"]) {
     assert.equal(
-      resolveSavedServerCommandPermission(mode, "low", policy, false).decision,
+      resolveSavedServerCommandPermission(true, mode, "low", policy, false).decision,
       "requires_approval",
     );
     assert.equal(
-      resolveSavedServerCommandPermission(mode, "low", policy, true).decision,
+      resolveSavedServerCommandPermission(true, mode, "low", policy, true).decision,
       "execute",
     );
+  }
+});
+
+test("关闭跨服务器开关后任何权限档位和历史审批都不能绕过", () => {
+  const policy = evaluateAiCommand("uptime");
+  for (const mode of ["ask", "auto", "full_access"]) {
+    const permission = resolveSavedServerCommandPermission(
+      false,
+      mode,
+      "low",
+      policy,
+      true,
+    );
+    assert.equal(permission.decision, "deny");
+    assert.match(permission.reason, /全局 AI 设置/);
   }
 });

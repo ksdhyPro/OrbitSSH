@@ -396,6 +396,8 @@ export async function runApprovedAiCommand(
     );
     const execution = await executeAgentAction({
       input: resumedInput,
+      // 审批恢复使用当前设置，关闭总开关后不能继续执行旧审批。
+      allowCrossServerOperations: settings.ai.allowCrossServerOperations,
       signal,
       emit,
       action,

@@ -570,6 +570,25 @@ function removeAiConfig(configId: string): void {
             </label>
           </div>
 
+          <div class="settings-field">
+            <div>
+              <h3>是否允许跨服务器执行操作</h3>
+              <p>开启后，AI 可以请求操作其他已保存服务器；每次跨服务器命令仍需单独确认。</p>
+            </div>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                :checked="appSettings.ai.allowCrossServerOperations"
+                @change="
+                  emit(
+                    'updateAiSetting',
+                    'allowCrossServerOperations',
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                " />
+            </label>
+          </div>
+
           <div
             class="settings-field settings-field-link"
             role="button"

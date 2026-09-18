@@ -55,6 +55,7 @@ export const useSettingsStore = defineStore("settings", () => {
       },
       ai: {
         enabled: appSettings.ai.enabled,
+        allowCrossServerOperations: appSettings.ai.allowCrossServerOperations,
         shareTerminalContext: appSettings.ai.shareTerminalContext,
         presetPrompt: appSettings.ai.presetPrompt,
         activeConfigId: appSettings.ai.activeConfigId,
@@ -134,6 +135,7 @@ export const useSettingsStore = defineStore("settings", () => {
   async function updateAiSettings(value: AiSettings): Promise<void> {
     Object.assign(appSettings.ai, {
       enabled: value.enabled,
+      allowCrossServerOperations: value.allowCrossServerOperations,
       shareTerminalContext: value.shareTerminalContext,
       presetPrompt: value.presetPrompt,
       activeConfigId: value.activeConfigId,
@@ -189,6 +191,8 @@ export const useSettingsStore = defineStore("settings", () => {
         terminal: savedSettings.terminal,
         ai: {
           enabled: savedSettings.ai.enabled,
+          allowCrossServerOperations:
+            savedSettings.ai.allowCrossServerOperations,
           shareTerminalContext: savedSettings.ai.shareTerminalContext,
           activeConfigId: savedSettings.ai.activeConfigId,
           configCount: savedSettings.ai.configs.length,
