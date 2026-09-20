@@ -29,6 +29,7 @@ import {
 } from "./sftp/sftp-managed-task-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
 import { closeAllPortForwards } from "./ssh/port-forward-manager.js";
+import { startMcpIpcServer, stopMcpIpcServer } from "./mcp/mcp-ipc-server.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -393,6 +394,13 @@ if (!hasSingleInstanceLock) {
     // 任务不跨进程恢复，启动时清除上次异常退出遗留的中转文件。
     void cleanupManagedTransferTempFiles();
     registerBaseIpc();
+    // MCP 本地代理始终监听，以便区分“客户端未启动”和“访问开关未开启”。
+    void startMcpIpcServer().catch(error => {
+      writeStartupDiagnostic("MCP 本地代理启动失败", {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+    });
     mainWindow = createMainWindow();
     registerCloseToTray(mainWindow);
     createTray();
@@ -433,6 +441,7 @@ app.on("before-quit", (event) => {
   }
 
   isQuitting = true;
+  void stopMcpIpcServer();
   cleanupConnections();
 });
 

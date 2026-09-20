@@ -111,8 +111,10 @@
   max-width: 100%;
 }
 
-.ai-preset-prompt-field {
+/* 使用内容高度参与外层网格计算，文本框拖拽后同步撑开后续设置项。 */
+.settings-page .ai-preset-prompt-field {
   grid-template-columns: minmax(0, 1fr);
+  height: max-content;
   align-items: start;
 }
 

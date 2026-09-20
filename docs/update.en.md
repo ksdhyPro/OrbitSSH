@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.8
+
+1. Added OrbitSSH MCP integration, allowing third-party AI clients to inspect servers and execute remote commands through saved connections only while OrbitSSH is running and access has been explicitly enabled. Connection passwords and private keys are never exposed to third-party processes.
+2. Added a companion Codex Skill and local MCP setup guidance covering client-not-running, access-disabled, and unavailable-connection states, with local communication support for Windows and macOS.
+3. Fixed the AI preset-prompt save button overlapping the default-mode controls. Vertically resizing the prompt now expands the settings row and moves subsequent options correctly.
+
 ## v1.10.7
 
 1. Added a global “Allow cross-server operations” AI setting that is disabled by default. When disabled, local policy blocks AI access to other saved servers and clearly directs the user to the setting.

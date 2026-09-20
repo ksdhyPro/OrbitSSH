@@ -17,4 +17,5 @@ Thumbs.db
 .agents.md
 *.md
 !docs/*.md
+!.agents/skills/orbitssh-mcp/SKILL.md
 .scratch

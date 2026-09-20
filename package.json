@@ -1,6 +1,6 @@
 {
   "name": "orbitssh",
-  "version": "1.10.7",
+  "version": "1.10.8",
   "description": "SSH client",
   "main": "dist-electron/main/bootstrap.js",
   "private": true,
@@ -10,6 +10,8 @@
     "dev:electron": "node scripts/dev-electron.cjs",
     "build": "vue-tsc --noEmit && vite build && tsc -p tsconfig.electron.json && node scripts/generate-build-info.cjs && node scripts/copy-preload.cjs",
     "test:ai": "tsc -p tsconfig.electron.json && node --test tests/ai/*.test.mjs",
+    "test:mcp": "tsc -p tsconfig.electron.json && node --test tests/mcp/*.test.mjs",
+    "mcp:stdio": "node dist-electron/mcp/standalone.js",
     "test:renderer": "node --test tests/renderer/*.test.mjs",
     "test:sftp": "tsc -p tsconfig.electron.json && node --test tests/sftp/*.test.mjs",
     "version:sync": "node scripts/sync-version-from-update.cjs",
@@ -32,6 +34,12 @@
       "build/icon.ico",
       "build/logo.png",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".agents/skills/orbitssh-mcp",
+        "to": "skills/orbitssh-mcp"
+      }
     ],
     "mac": {
       "icon": "build/icon.icns",
@@ -115,6 +123,7 @@
     "@codemirror/state": "^6.7.0",
     "@codemirror/view": "^6.43.2",
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
@@ -126,7 +135,8 @@
     "pinia": "^3.0.4",
     "ssh2": "^1.17.0",
     "ssh2-sftp-client": "^12.1.1",
-    "vue": "^3.5.17"
+    "vue": "^3.5.17",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

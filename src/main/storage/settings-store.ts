@@ -186,6 +186,8 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     enabled: Boolean(value?.enabled),
     // 旧版本没有该字段，只有明确保存为 true 时才允许跨服务器操作。
     allowCrossServerOperations: value?.allowCrossServerOperations === true,
+    // MCP 拥有完整远程命令执行能力，旧版本和未显式开启时必须保持关闭。
+    allowMcpAccess: value?.allowMcpAccess === true,
     shareTerminalContext: value?.shareTerminalContext === true,
     presetPrompt: normalizeAiPresetPrompt(value?.presetPrompt),
     activeConfigId,

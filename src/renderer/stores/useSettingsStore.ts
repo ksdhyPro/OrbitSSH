@@ -56,6 +56,7 @@ export const useSettingsStore = defineStore("settings", () => {
       ai: {
         enabled: appSettings.ai.enabled,
         allowCrossServerOperations: appSettings.ai.allowCrossServerOperations,
+        allowMcpAccess: appSettings.ai.allowMcpAccess,
         shareTerminalContext: appSettings.ai.shareTerminalContext,
         presetPrompt: appSettings.ai.presetPrompt,
         activeConfigId: appSettings.ai.activeConfigId,
@@ -136,6 +137,7 @@ export const useSettingsStore = defineStore("settings", () => {
     Object.assign(appSettings.ai, {
       enabled: value.enabled,
       allowCrossServerOperations: value.allowCrossServerOperations,
+      allowMcpAccess: value.allowMcpAccess,
       shareTerminalContext: value.shareTerminalContext,
       presetPrompt: value.presetPrompt,
       activeConfigId: value.activeConfigId,
