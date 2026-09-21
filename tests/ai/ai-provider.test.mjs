@@ -19,6 +19,17 @@ test("承诺执行但未调用工具的回复不会被判定为完成", () => {
 
   assert.equal(result.outcome, "protocol_error");
   assert.equal(result.retryable, true);
+  assert.equal(result.fallbackReply, "好的，我来帮你检查 nginx 配置。");
+});
+
+test("纯文本回复会保留原文而不是生成内部协议说明", () => {
+  const result = evaluateAssistantTurnProtocol(
+    "当前信息不足，建议先确认服务名称。",
+    [],
+  );
+
+  assert.equal(result.fallbackReply, "当前信息不足，建议先确认服务名称。");
+  assert.doesNotMatch(result.fallbackReply, /有效工具动作|重新规划/);
 });
 
 test("finish_response 明确标记 Agent 正常完成", () => {
@@ -174,4 +185,16 @@ test("AI 请求日志明确记录 Token 统计来源和用量", async () => {
   assert.match(providerSource, /AI Token 用量：本地估算/);
   assert.match(providerSource, /promptTokens: resolvedUsage\.promptTokens/);
   assert.match(providerSource, /totalTokens: resolvedUsage\.totalTokens/);
+});
+
+test("Agent 的 Responses 和 Chat 请求都强制模型调用工具", async () => {
+  const providerSource = await readFile(
+    new URL("../../src/main/ai/ai-provider.ts", import.meta.url),
+    "utf8",
+  );
+  const requiredToolChoiceCount = providerSource.match(
+    /tool_choice:\s*"required"/g,
+  )?.length ?? 0;
+
+  assert.equal(requiredToolChoiceCount, 2);
 });

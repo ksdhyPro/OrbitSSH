@@ -46,6 +46,8 @@ export interface EvaluatedAssistantTurnProtocol {
   outcome: "tool_call" | "finish" | "protocol_error";
   retryable: boolean;
   finalReply?: string;
+  /** 协议重试耗尽后可直接展示的模型原始正文。 */
+  fallbackReply?: string;
 }
 
 export type AssistantTurnPhase = "normal" | "long_command_running";
@@ -55,12 +57,18 @@ export type AssistantTurnPhase = "normal" | "long_command_running";
  * 纯文本不能隐式代表完成，避免“准备检查”之类的占位回复提前终止流程。
  */
 export function evaluateAssistantTurnProtocol(
-  _reply: string,
+  reply: string,
   rawToolCalls: RawToolCall[],
   phase: AssistantTurnPhase = "normal",
 ): EvaluatedAssistantTurnProtocol {
   if (rawToolCalls.length !== 1) {
-    return { outcome: "protocol_error", retryable: true };
+    return {
+      outcome: "protocol_error",
+      retryable: true,
+      fallbackReply: rawToolCalls.length === 0
+        ? reply.trim()
+        : undefined,
+    };
   }
 
   const toolCall = rawToolCalls[0]!;

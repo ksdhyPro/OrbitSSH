@@ -38,6 +38,10 @@ import {
   isResponsesApiUnsupported,
   parseResponsesPayload,
 } from "./ai-responses-adapter.js";
+import {
+  requestAiJsonWithCompatibilityFallback,
+  type AiCompatibilityFallbackParameter,
+} from "./ai-provider-compatibility.js";
 import { MAX_AI_PROVIDER_REQUEST_MS } from "./ai-limits.js";
 
 export type {
@@ -164,6 +168,7 @@ const aiTools = [
 const maxAiResponseAttempts = 2;
 type AiApiProtocol = "responses" | "chat_completions";
 const unsupportedResponsesConfigs = new Set<string>();
+const unsupportedToolChoiceConfigs = new Set<string>();
 
 type AiTurnAttemptResult = ParsedAssistantResponse & {
   // 仅供请求层判断是否需要重试，不向渲染层暴露。
@@ -257,19 +262,47 @@ async function requestPreferredApi(
     Authorization: `Bearer ${activeConfig.apiKey}`,
     "Content-Type": "application/json",
   };
+  const createCompatibilityFallbackHandler = (
+    protocol: AiApiProtocol,
+    toolChoiceCompatibilityKey: string,
+  ) => (parameter: AiCompatibilityFallbackParameter) => {
+    if (parameter === "tool_choice") {
+      // 同一接口和模型在当前运行期内不再重复发送已确认不支持的参数。
+      unsupportedToolChoiceConfigs.add(toolChoiceCompatibilityKey);
+    }
+    writeAppLog({
+      scope: "main.ai",
+      level: "warn",
+      message: "AI 请求参数不受支持，已回退兼容模式",
+      data: {
+        provider: providerName,
+        model: activeConfig.model,
+        tabId,
+        api: protocol,
+        parameter,
+      },
+    });
+  };
   const compatibilityKey = `${activeConfig.baseUrl}\n${activeConfig.model}`;
   if (!unsupportedResponsesConfigs.has(compatibilityKey)) {
-    const response = await fetch(`${activeConfig.baseUrl}/responses`, {
-      method: "POST",
+    const responsesToolChoiceKey = `${compatibilityKey}\nresponses`;
+    if (unsupportedToolChoiceConfigs.has(responsesToolChoiceKey)) {
+      delete responsesBody.tool_choice;
+    }
+    const responsesResult = await requestAiJsonWithCompatibilityFallback(
+      `${activeConfig.baseUrl}/responses`,
       headers,
-      body: JSON.stringify(responsesBody),
+      responsesBody,
       signal,
-    });
+      false,
+      fetch,
+      createCompatibilityFallbackHandler("responses", responsesToolChoiceKey),
+    );
+    const { response, responseText } = responsesResult;
     if (response.ok) {
       return { response, protocol: "responses", responseText: "", requestBody: responsesBody };
     }
 
-    const responseText = await response.text().catch(() => "");
     if (!isResponsesApiUnsupported(response.status, responseText)) {
       return { response, protocol: "responses", responseText, requestBody: responsesBody };
     }
@@ -289,30 +322,23 @@ async function requestPreferredApi(
   }
 
   const requestUrl = `${activeConfig.baseUrl}/chat/completions`;
-  const requestOptions = {
-    method: "POST",
-    headers,
-    body: JSON.stringify(chatBody),
-    signal,
-  } satisfies RequestInit;
-  let response = await fetch(requestUrl, requestOptions);
-  let responseText = "";
-  if (!response.ok && chatBody.stream && response.status === 400) {
-    responseText = await response.text().catch(() => "");
-    if (/stream[_ -]?options|include[_ -]?usage/i.test(responseText)) {
-      // 部分兼容接口不支持流式 usage 参数，移除后保持原有流式能力。
-      delete chatBody.stream_options;
-      response = await fetch(requestUrl, {
-        ...requestOptions,
-        body: JSON.stringify(chatBody),
-      });
-      responseText = "";
-    }
+  const chatToolChoiceKey = `${compatibilityKey}\nchat_completions`;
+  if (unsupportedToolChoiceConfigs.has(chatToolChoiceKey)) {
+    delete chatBody.tool_choice;
   }
+  const chatResult = await requestAiJsonWithCompatibilityFallback(
+    requestUrl,
+    headers,
+    chatBody,
+    signal,
+    Boolean(chatBody.stream),
+    fetch,
+    createCompatibilityFallbackHandler("chat_completions", chatToolChoiceKey),
+  );
   return {
-    response,
+    response: chatResult.response,
     protocol: "chat_completions",
-    responseText,
+    responseText: chatResult.responseText,
     requestBody: chatBody,
   };
 }
@@ -425,6 +451,7 @@ async function requestAiTurnOnce(
       model: activeConfig.model,
       messages: requestMessages,
       tools: aiTools,
+      tool_choice: "required",
     };
     if (sendChunk) {
       chatBody.stream = true;
@@ -435,6 +462,7 @@ async function requestAiTurnOnce(
       model: activeConfig.model,
       input: buildResponsesInput(requestMessages),
       tools: buildResponsesTools(aiTools),
+      tool_choice: "required",
       stream: Boolean(sendChunk),
       store: false,
       parallel_tool_calls: false,
@@ -550,7 +578,8 @@ async function requestAiTurnOnce(
         },
       });
     } else if (normalizedToolCalls.length === 0 && protocolError) {
-      reply = "模型只返回了说明文字，没有产生有效工具动作，已请求模型重新规划。";
+      // 保留模型正文供最终重试耗尽时展示；纠错过程只记录到内部日志。
+      reply = protocolEvaluation.fallbackReply ?? "";
       writeAppLog({
         scope: "main.ai",
         level: "warn",

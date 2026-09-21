@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.9
+
+1. Improved AI tool-call enforcement. Responses API and Chat Completions requests now require the model to call either a command tool or the final-response tool, reducing replies that describe an action without executing it.
+2. Added compatibility fallback for AI request parameters. When an endpoint explicitly rejects `tool_choice` or streaming usage options, OrbitSSH removes the unsupported parameter, retries automatically, and caches the compatibility result for the current runtime.
+3. Fixed reply handling after AI tool-protocol retries are exhausted. If the model still returns text without a tool call, the original response is now shown instead of an internal replanning message.
+
 ## v1.10.8
 
 1. Added OrbitSSH MCP integration, allowing third-party AI clients to inspect servers and execute remote commands through saved connections only while OrbitSSH is running and access has been explicitly enabled. Connection passwords and private keys are never exposed to third-party processes.
