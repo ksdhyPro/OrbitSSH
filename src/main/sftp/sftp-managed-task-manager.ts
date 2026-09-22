@@ -64,7 +64,7 @@ const batches = new Map<string, ManagedBatchState>()
 const batchOrder: string[] = []
 const activeTargetKeys = new Set<string>()
 let activeWorkerCount = 0
-let nextBatchIndex = 0
+let activeBatchId: string | undefined
 let maxWorkers: number = appConfig.sftp.transfer.maxConcurrentTasks
 
 function emitToSender(sender: WebContents, event: SftpManagedTaskEvent): void {
@@ -446,22 +446,22 @@ async function runNode(batch: ManagedBatchState, node: ManagedNodeState): Promis
 
 function runScheduler(): void {
   while (activeWorkerCount < maxWorkers && batchOrder.length > 0) {
-    let selectedBatch: ManagedBatchState | undefined
-    let selectedNode: ManagedNodeState | undefined
-
-    for (let offset = 0; offset < batchOrder.length; offset += 1) {
-      const index = (nextBatchIndex + offset) % batchOrder.length
-      const batch = batches.get(batchOrder[index])
-      if (!batch) continue
-      const node = getNextRunnableNode(batch)
-      if (!node) continue
-      selectedBatch = batch
-      selectedNode = node
-      nextBatchIndex = (index + 1) % Math.max(batchOrder.length, 1)
-      break
+    const selectedBatchId = activeBatchId ?? batchOrder[0]
+    const selectedBatch = batches.get(selectedBatchId)
+    if (!selectedBatch) {
+      // 已删除批次的工作线程彻底退出前，不允许下一批提前启动。
+      if (activeWorkerCount > 0) return
+      activeBatchId = undefined
+      const invalidIndex = batchOrder.indexOf(selectedBatchId)
+      if (invalidIndex >= 0) batchOrder.splice(invalidIndex, 1)
+      continue
     }
 
-    if (!selectedBatch || !selectedNode) return
+    // 同一时间只调度最早批次；该批次彻底完成或被删除后才会进入下一批。
+    activeBatchId = selectedBatchId
+    const selectedNode = getNextRunnableNode(selectedBatch)
+
+    if (!selectedNode) return
 
     activeWorkerCount += 1
     void runNode(selectedBatch, selectedNode)
@@ -479,6 +479,9 @@ function runScheduler(): void {
       })
       .finally(() => {
         activeWorkerCount = Math.max(activeWorkerCount - 1, 0)
+        if (activeWorkerCount === 0 && activeBatchId && !batches.has(activeBatchId)) {
+          activeBatchId = undefined
+        }
         runScheduler()
       })
   }

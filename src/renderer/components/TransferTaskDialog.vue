@@ -72,9 +72,8 @@ function appendRows(
 
 function visibleRows(batch: SftpManagedTaskBatch): VisibleRow[] {
   const rows: VisibleRow[] = [];
-  if (expandedIds.value.has(`batch:${batch.taskId}`)) {
-    appendRows(batch.taskId, undefined, 0, rows);
-  }
+  // 批次不再作为树节点展示，根文件和目录直接从第一层开始排列。
+  appendRows(batch.taskId, undefined, 0, rows);
   return rows;
 }
 
@@ -153,32 +152,7 @@ function sendAction(
     <div class="transfer-task-list">
       <div v-if="batches.length === 0" class="transfer-task-empty">暂无传输任务</div>
       <section v-for="batch in batches" :key="batch.taskId" class="transfer-task-batch">
-        <header class="transfer-task-batch-header">
-          <button class="transfer-tree-toggle" type="button" @click="toggleExpanded(`batch:${batch.taskId}`)">
-            <img :src="expandedIds.has(`batch:${batch.taskId}`) ? chevronDownIcon : chevronRightIcon" alt="" />
-          </button>
-          <div class="transfer-task-title" :title="`${batch.sourceLabel} → ${batch.targetLabel}`">
-            <strong>{{ batch.name }}</strong>
-            <small>{{ batch.sourceLabel }} → {{ batch.targetLabel }}</small>
-          </div>
-          <div class="transfer-task-summary">
-            <span>{{ formatFileSize(batch.transferredBytes) }} / {{ formatFileSize(batch.totalBytes) }}</span>
-            <span class="transfer-inline-progress" :title="`${Math.round(progressPercent(batch))}%`">
-              <span><i :style="{ width: `${progressPercent(batch)}%` }"></i></span>
-              <small>{{ Math.round(progressPercent(batch)) }}%</small>
-            </span>
-            <span>{{ formatTransferSpeed(batch.speedBytesPerSecond) }}</span>
-            <span>{{ statusText(batch.status) }}</span>
-          </div>
-          <div class="transfer-task-actions">
-            <button v-if="batch.status === 'paused'" type="button" title="继续" @click="sendAction(batch, 'resume')"><img :src="continueIcon" alt="继续" /></button>
-            <button v-else-if="batch.status !== 'failed'" type="button" title="暂停" @click="sendAction(batch, 'pause')"><img :src="pauseIcon" alt="暂停" /></button>
-            <button v-if="batch.status === 'failed'" type="button" title="重试" @click="sendAction(batch, 'retry')"><img :src="refreshIcon" alt="重试" /></button>
-            <button class="danger" type="button" title="删除" @click="sendAction(batch, 'delete')"><img :src="trashIcon" alt="删除" /></button>
-          </div>
-        </header>
-
-        <div v-if="expandedIds.has(`batch:${batch.taskId}`)" class="transfer-task-children">
+        <div class="transfer-task-children">
           <div
             v-for="row in visibleRows(batch)"
             :key="row.node.id"

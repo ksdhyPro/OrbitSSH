@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.10.10
+
+1. Simplified the file-transfer task list by removing outer batch cards and summary rows. Selected files and directories now appear directly at the first level, with separators between batches.
+2. Changed file-transfer batch scheduling so only the earliest unfinished batch can run at a time. The next batch starts only after the current batch completes or is deleted, while transfers within a batch remain concurrent.
+
 ## v1.10.9
 
 1. Improved AI tool-call enforcement. Responses API and Chat Completions requests now require the model to call either a command tool or the final-response tool, reducing replies that describe an action without executing it.

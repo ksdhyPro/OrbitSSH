@@ -25,51 +25,20 @@
 }
 
 .transfer-task-batch {
-  margin-bottom: 10px;
-  overflow: hidden;
-  border: 1px solid var(--transfer-card-border);
-  border-radius: 8px;
+  min-width: 860px;
 }
 
-.transfer-task-batch-header,
+.transfer-task-batch + .transfer-task-batch {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--transfer-card-border);
+}
+
 .transfer-task-row {
   position: relative;
   display: grid;
   align-items: center;
   min-width: 860px;
-}
-
-.transfer-task-batch-header {
-  grid-template-columns: 28px minmax(220px, 1fr) minmax(350px, auto) 92px;
-  gap: 8px;
-  min-height: 58px;
-  padding: 6px 10px;
-  background: var(--bg-elevated-1);
-}
-
-.transfer-task-title {
-  min-width: 0;
-}
-
-.transfer-task-title strong,
-.transfer-task-title small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.transfer-task-title small {
-  margin-top: 4px;
-  color: var(--text-muted);
-}
-
-.transfer-task-summary {
-  display: grid;
-  grid-template-columns: 170px 120px 105px 60px;
-  gap: 12px;
-  color: var(--text-secondary);
-  font-size: 12px;
 }
 
 .transfer-task-row {
@@ -79,6 +48,10 @@
   padding: 5px 10px 5px calc(10px + var(--tree-depth) * 18px);
   border-top: 1px solid var(--transfer-row-divider);
   font-size: 12px;
+}
+
+.transfer-task-row:first-child {
+  border-top: 0;
 }
 
 .transfer-task-row.selected {
