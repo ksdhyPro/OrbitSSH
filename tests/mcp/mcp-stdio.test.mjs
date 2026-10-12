@@ -83,8 +83,25 @@ test('MCP STDIO 入口只暴露受控的 OrbitSSH 工具', async () => {
 
     assert.deepEqual(
       tools.map(tool => tool.name).sort(),
-      ['execute_command', 'get_status', 'list_connections']
+      [
+        'download_file',
+        'execute_command',
+        'get_status',
+        'get_transfer_status',
+        'list_connections',
+        'upload_file'
+      ]
     )
+
+    const uploadTool = tools.find(tool => tool.name === 'upload_file')
+    const downloadTool = tools.find(tool => tool.name === 'download_file')
+    const statusTool = tools.find(tool => tool.name === 'get_transfer_status')
+    assert.deepEqual(uploadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
+    assert.deepEqual(downloadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
+    assert.deepEqual(statusTool.inputSchema.required, ['id'])
+    assert.equal(uploadTool.annotations.destructiveHint, true)
+    assert.equal(downloadTool.annotations.destructiveHint, true)
+    assert.equal(statusTool.annotations.readOnlyHint, true)
   } finally {
     child.stdin.end()
     child.kill()

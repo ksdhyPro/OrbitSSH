@@ -591,7 +591,7 @@ function removeAiConfig(configId: string): void {
 
           <div class="settings-field">
             <div>
-              <h3>允许第三方 AI 通过 MCP 访问</h3>
+              <h3>允许第三方 AI 通过 MCP 使用 SSH</h3>
               <p>默认关闭。开启后，本机第三方 AI 可使用已保存连接自由执行远程命令，不经过 OrbitSSH 的命令策略和逐条审批，但不会获得密码或私钥。</p>
             </div>
             <label class="settings-toggle">
@@ -602,6 +602,25 @@ function removeAiConfig(configId: string): void {
                   emit(
                     'updateAiSetting',
                     'allowMcpAccess',
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                " />
+            </label>
+          </div>
+
+          <div class="settings-field">
+            <div>
+              <h3>允许第三方 AI 通过 MCP 使用 SFTP</h3>
+              <p>默认关闭。开启后，调用方可使用已保存连接在指定的本地路径和远程路径之间上传或下载单文件，完成后会覆盖同名目标文件。</p>
+            </div>
+            <label class="settings-toggle">
+              <input
+                type="checkbox"
+                :checked="appSettings.ai.allowMcpSftpAccess"
+                @change="
+                  emit(
+                    'updateAiSetting',
+                    'allowMcpSftpAccess',
                     ($event.target as HTMLInputElement).checked,
                   )
                 " />

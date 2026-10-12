@@ -63,8 +63,10 @@ export interface AiSettings {
   enabled: boolean
   /** 是否允许 AI 请求操作其他已保存服务器，默认关闭。 */
   allowCrossServerOperations: boolean
-  /** 是否允许本机第三方 AI 通过 MCP 使用已保存连接，默认关闭。 */
+  /** 是否允许本机第三方 AI 通过 MCP 使用 SSH，默认关闭。 */
   allowMcpAccess: boolean
+  /** 是否允许本机第三方 AI 通过 MCP 使用 SFTP 传输本地文件，默认关闭。 */
+  allowMcpSftpAccess: boolean
   /** 是否允许把脱敏后的最近终端输出发送给在线模型。 */
   shareTerminalContext: boolean
   /** 每次 AI 对话请求都会附带的用户自定义预提示词。 */
@@ -138,6 +140,7 @@ export const defaultAppSettings: AppSettings = {
     enabled: false,
     allowCrossServerOperations: false,
     allowMcpAccess: false,
+    allowMcpSftpAccess: false,
     shareTerminalContext: false,
     presetPrompt: '',
     activeConfigId: '',

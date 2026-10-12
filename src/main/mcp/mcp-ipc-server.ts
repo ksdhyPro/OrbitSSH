@@ -18,6 +18,11 @@ import {
   listMcpConnections,
   OrbitSshMcpError
 } from './mcp-command-service.js'
+import {
+  getMcpSftpTransferStatus,
+  startMcpSftpDownload,
+  startMcpSftpUpload
+} from './mcp-sftp-transfer-service.js'
 
 const MAX_REQUEST_BYTES = 128 * 1024
 
@@ -64,6 +69,12 @@ async function handleRequest(request: OrbitSshMcpRequest): Promise<unknown> {
       return listMcpConnections()
     case 'execute_command':
       return executeMcpCommand(request.params ?? {})
+    case 'upload_file':
+      return startMcpSftpUpload(request.params ?? {})
+    case 'download_file':
+      return startMcpSftpDownload(request.params ?? {})
+    case 'get_transfer_status':
+      return getMcpSftpTransferStatus(request.params ?? {})
     default:
       throw new OrbitSshMcpError('METHOD_NOT_FOUND', '不支持的 OrbitSSH MCP 方法')
   }

@@ -21,11 +21,21 @@ export class OrbitSshMcpError extends Error {
   }
 }
 
-function assertMcpAccessEnabled(): void {
+function assertMcpSshAccessEnabled(): void {
   if (!getSettings().ai.allowMcpAccess) {
     throw new OrbitSshMcpError(
       'MCP_ACCESS_DISABLED',
-      '请先在 OrbitSSH 客户端的“设置 → AI”中开启“允许第三方 AI 通过 MCP 访问”'
+      '请先在 OrbitSSH 客户端的“设置 → AI”中开启“允许第三方 AI 通过 MCP 使用 SSH”'
+    )
+  }
+}
+
+function assertAnyMcpAccessEnabled(): void {
+  const settings = getSettings().ai
+  if (!settings.allowMcpAccess && !settings.allowMcpSftpAccess) {
+    throw new OrbitSshMcpError(
+      'MCP_ACCESS_DISABLED',
+      '请先在 OrbitSSH 客户端的“设置 → AI”中开启 SSH 或 SFTP MCP 访问'
     )
   }
 }
@@ -52,19 +62,29 @@ function normalizeTimeoutMs(value: unknown): number {
   return timeoutMs
 }
 
-export function getMcpAccessStatus(): { available: boolean; message: string } {
-  const available = getSettings().ai.allowMcpAccess
+export function getMcpAccessStatus(): {
+  available: boolean
+  sshAvailable: boolean
+  sftpAvailable: boolean
+  message: string
+} {
+  const settings = getSettings().ai
+  const sshAvailable = settings.allowMcpAccess
+  const sftpAvailable = settings.allowMcpSftpAccess
+  const available = sshAvailable || sftpAvailable
 
   return {
     available,
+    sshAvailable,
+    sftpAvailable,
     message: available
-      ? 'OrbitSSH 客户端已连接，MCP 访问已开启'
-      : '请先在 OrbitSSH 客户端的“设置 → AI”中开启“允许第三方 AI 通过 MCP 访问”'
+      ? `OrbitSSH 客户端已连接，SSH MCP ${sshAvailable ? '已开启' : '未开启'}，SFTP MCP ${sftpAvailable ? '已开启' : '未开启'}`
+      : '请先在 OrbitSSH 客户端的“设置 → AI”中开启 SSH 或 SFTP MCP 访问'
   }
 }
 
 export function listMcpConnections(): OrbitSshMcpConnectionSummary[] {
-  assertMcpAccessEnabled()
+  assertAnyMcpAccessEnabled()
 
   // MCP 只暴露连接标识和显示名称，不序列化密码索引、私钥路径或认证信息。
   return listServers().map(server => ({
@@ -80,7 +100,7 @@ export function listMcpConnections(): OrbitSshMcpConnectionSummary[] {
 export async function executeMcpCommand(
   params: Record<string, unknown>
 ): Promise<OrbitSshMcpCommandResult> {
-  assertMcpAccessEnabled()
+  assertMcpSshAccessEnabled()
 
   const connectionId = normalizeRequiredString(params.connectionId, 'connectionId')
   const command = normalizeRequiredString(params.command, 'command')

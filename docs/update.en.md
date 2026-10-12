@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.11
+
+1. Added MCP SFTP single-file uploads and downloads. Callers can provide exact local absolute and remote paths, start transfers asynchronously, and query status, byte progress, speed, and errors by task ID.
+2. Added an independent SFTP MCP access switch beside the SSH MCP switch, disabled by default. Connection credentials remain confined to the OrbitSSH main process and are never returned to third-party AI clients.
+3. MCP SFTP transfers reuse `.download` temporary files and overwrite the final target only after completion. Repeating a transfer with the same paths after an unexpected exit resumes the unfinished data while reusing the existing concurrency queue and connection pool.
+
 ## v1.10.10
 
 1. Simplified the file-transfer task list by removing outer batch cards and summary rows. Selected files and directories now appear directly at the first level, with separators between batches.

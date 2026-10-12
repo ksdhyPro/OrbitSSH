@@ -128,10 +128,11 @@ npm run build
 
 第三方 Codex 等 MCP Host 通过独立 STDIO 进程连接 OrbitSSH。STDIO 进程不读取连接存储，而是通过 Windows Named Pipe 或 macOS/Linux Unix Domain Socket 请求正在运行的 Electron 主进程。
 
-- “设置 → AI → 允许第三方 AI 通过 MCP 访问”默认关闭。
+- “设置 → AI → 允许第三方 AI 通过 MCP 使用 SSH”和“允许第三方 AI 通过 MCP 使用 SFTP”均默认关闭。
 - 客户端未运行时，MCP 返回“请先打开 OrbitSSH 客户端”。
-- 开关开启后，MCP 命令不进入本章前述的内置 AI 命令策略、数据策略和逐条审批流程。
-- 主进程仅向 MCP 返回连接 ID、显示名称和命令结果；密码、私钥及其本地路径不会跨越主进程边界。
+- SSH MCP 开启后，远程命令不进入本章前述的内置 AI 命令策略、数据策略和逐条审批流程。
+- SFTP MCP 开启后，调用方可按本地绝对路径和远程路径发起单文件上传、下载，并通过任务 ID 查询进度。
+- 主进程仅向 MCP 返回连接摘要、命令结果和传输状态；密码、私钥及其本地路径不会跨越主进程边界。
 - 每次应用启动生成新的本地端点和随机会话令牌，Unix Domain Socket 与端点文件限制为当前用户访问。
 
 安装和配置方式见 `docs/mcp-integration.md`。

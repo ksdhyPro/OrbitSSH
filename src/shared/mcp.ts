@@ -1,7 +1,13 @@
-export const ORBITSSH_MCP_PROTOCOL_VERSION = 1
+export const ORBITSSH_MCP_PROTOCOL_VERSION = 2
 export const ORBITSSH_MCP_DESCRIPTOR_FILE = 'orbitssh-mcp-endpoint.json'
 
-export type OrbitSshMcpMethod = 'get_status' | 'list_connections' | 'execute_command'
+export type OrbitSshMcpMethod =
+  | 'get_status'
+  | 'list_connections'
+  | 'execute_command'
+  | 'upload_file'
+  | 'download_file'
+  | 'get_transfer_status'
 
 export interface OrbitSshMcpEndpointDescriptor {
   version: typeof ORBITSSH_MCP_PROTOCOL_VERSION
@@ -40,4 +46,28 @@ export interface OrbitSshMcpCommandResult {
   exitCode: number | null
   timedOut: boolean
   durationMs: number
+}
+
+export type OrbitSshMcpTransferDirection = 'upload' | 'download'
+export type OrbitSshMcpTransferStatus =
+  | 'queued'
+  | 'transferring'
+  | 'completed'
+  | 'failed'
+
+export interface OrbitSshMcpTransferResult {
+  id: string
+  direction: OrbitSshMcpTransferDirection
+  status: OrbitSshMcpTransferStatus
+  connectionId: string
+  connectionName: string
+  localPath: string
+  remotePath: string
+  transferredBytes: number
+  totalBytes: number
+  speedBytesPerSecond: number
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+  error?: string
 }

@@ -188,6 +188,8 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     allowCrossServerOperations: value?.allowCrossServerOperations === true,
     // MCP 拥有完整远程命令执行能力，旧版本和未显式开启时必须保持关闭。
     allowMcpAccess: value?.allowMcpAccess === true,
+    // SFTP MCP 可读写本地文件，必须由用户独立显式开启。
+    allowMcpSftpAccess: value?.allowMcpSftpAccess === true,
     shareTerminalContext: value?.shareTerminalContext === true,
     presetPrompt: normalizeAiPresetPrompt(value?.presetPrompt),
     activeConfigId,
