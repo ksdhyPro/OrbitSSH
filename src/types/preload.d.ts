@@ -2,6 +2,7 @@ export {};
 
 import type { SystemStats } from "../main/ipc/system-ipc";
 import type { AppMenuAction } from "../shared/app-menu";
+import type { OrbitSshMcpInstallInfo } from "../shared/mcp";
 import type {
   LocalDirectoryInput,
   LocalDirectoryResult,
@@ -95,6 +96,7 @@ declare global {
         version: string;
         platform: string;
       }>;
+      getMcpInstallInfo: () => Promise<OrbitSshMcpInstallInfo>;
       logger: {
         write: (payload: LogPayload) => Promise<boolean>;
         getPath: () => Promise<string>;

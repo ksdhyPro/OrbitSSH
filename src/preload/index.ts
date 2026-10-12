@@ -27,6 +27,7 @@ import type {
   UpdateStatusInfo,
 } from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
+import type { OrbitSshMcpInstallInfo } from "../shared/mcp.js";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -97,6 +98,8 @@ const orbitSSHApi = {
       version: string;
       platform: string;
     }>,
+  getMcpInstallInfo: () =>
+    ipcRenderer.invoke("mcp:get-install-info") as Promise<OrbitSshMcpInstallInfo>,
   logger: {
     write: (payload: LogPayload) =>
       ipcRenderer.invoke("logger:write", payload) as Promise<boolean>,

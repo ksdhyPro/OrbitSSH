@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.12
+
+1. Added a direct MCP mode to the packaged app. The OrbitSSH executable now starts the MCP server with a single `--mcp-stdio` argument through its bundled runtime, removing the dependency on a system Node.js installation and the `ELECTRON_RUN_AS_NODE` environment variable, which simplifies third-party AI client configuration.
+2. Added a "How to install to your Agent?" entry in Settings → AI that generates an installation prompt with machine-specific paths for the MCP server and Skill directory. Copying it to any AI client with local STDIO MCP support registers the server and installs the Skill without manual path lookup.
+3. Fixed context-menu positioning inside the file-transfer dialog. Menus are now mounted at the document root and follow viewport coordinates directly, no longer affected by dialog offsets or open/close animations.
+
 ## v1.10.11
 
 1. Added MCP SFTP single-file uploads and downloads. Callers can provide exact local absolute and remote paths, start transfers asynchronously, and query status, byte progress, speed, and errors by task ID.

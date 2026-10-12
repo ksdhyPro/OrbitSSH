@@ -6,14 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
-test('MCP STDIO 入口只暴露受控的 OrbitSSH 工具', async () => {
-  const runtimeCommand = process.env.ORBITSSH_MCP_TEST_COMMAND ?? process.execPath
-  const runtimeEntry = process.env.ORBITSSH_MCP_TEST_ENTRY ?? 'dist-electron/mcp/standalone.js'
-  const childEnvironment = { ...process.env }
-  if (process.env.ORBITSSH_MCP_TEST_COMMAND) {
-    childEnvironment.ELECTRON_RUN_AS_NODE = '1'
-  }
-  const child = spawn(runtimeCommand, [runtimeEntry], {
+async function readMcpTools(runtimeCommand, runtimeArgs, childEnvironment = process.env) {
+  const child = spawn(runtimeCommand, runtimeArgs, {
     cwd: projectRoot,
     env: childEnvironment,
     stdio: ['pipe', 'pipe', 'pipe']
@@ -81,29 +75,56 @@ test('MCP STDIO 入口只暴露受控的 OrbitSSH 工具', async () => {
       })}\n`)
     })
 
-    assert.deepEqual(
-      tools.map(tool => tool.name).sort(),
-      [
-        'download_file',
-        'execute_command',
-        'get_status',
-        'get_transfer_status',
-        'list_connections',
-        'upload_file'
-      ]
-    )
-
-    const uploadTool = tools.find(tool => tool.name === 'upload_file')
-    const downloadTool = tools.find(tool => tool.name === 'download_file')
-    const statusTool = tools.find(tool => tool.name === 'get_transfer_status')
-    assert.deepEqual(uploadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
-    assert.deepEqual(downloadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
-    assert.deepEqual(statusTool.inputSchema.required, ['id'])
-    assert.equal(uploadTool.annotations.destructiveHint, true)
-    assert.equal(downloadTool.annotations.destructiveHint, true)
-    assert.equal(statusTool.annotations.readOnlyHint, true)
+    return tools
   } finally {
     child.stdin.end()
     child.kill()
   }
+}
+
+function assertOrbitSshTools(tools) {
+  assert.deepEqual(
+    tools.map(tool => tool.name).sort(),
+    [
+      'download_file',
+      'execute_command',
+      'get_status',
+      'get_transfer_status',
+      'list_connections',
+      'upload_file'
+    ]
+  )
+
+  const uploadTool = tools.find(tool => tool.name === 'upload_file')
+  const downloadTool = tools.find(tool => tool.name === 'download_file')
+  const statusTool = tools.find(tool => tool.name === 'get_transfer_status')
+  assert.deepEqual(uploadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
+  assert.deepEqual(downloadTool.inputSchema.required.sort(), ['connectionId', 'localPath', 'remotePath'])
+  assert.deepEqual(statusTool.inputSchema.required, ['id'])
+  assert.equal(uploadTool.annotations.destructiveHint, true)
+  assert.equal(downloadTool.annotations.destructiveHint, true)
+  assert.equal(statusTool.annotations.readOnlyHint, true)
+}
+
+test('MCP STDIO 入口只暴露受控的 OrbitSSH 工具', async () => {
+  const tools = await readMcpTools(process.execPath, ['dist-electron/mcp/standalone.js'])
+  assertOrbitSshTools(tools)
+})
+
+test('OrbitSSH 主程序可直接进入 MCP 模式且不依赖系统 Node.js', async () => {
+  const packagedExecutable = process.env.ORBITSSH_MCP_TEST_APP_COMMAND
+  const electronExecutable = packagedExecutable ?? (process.platform === 'win32'
+    ? path.join(projectRoot, 'node_modules/electron/dist/electron.exe')
+    : process.platform === 'darwin'
+      ? path.join(projectRoot, 'node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
+      : path.join(projectRoot, 'node_modules/electron/dist/electron'))
+  const childEnvironment = { ...process.env }
+  delete childEnvironment.ELECTRON_RUN_AS_NODE
+
+  const tools = await readMcpTools(
+    electronExecutable,
+    packagedExecutable ? ['--mcp-stdio'] : [projectRoot, '--mcp-stdio'],
+    childEnvironment
+  )
+  assertOrbitSshTools(tools)
 })

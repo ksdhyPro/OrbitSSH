@@ -9,6 +9,7 @@ import {
   type AppSettings,
   type AppThemeMode,
 } from "../../shared/settings";
+import type { OrbitSshMcpInstallInfo } from "../../shared/mcp";
 import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
 import chevronRightIcon from "../assets/icons/chevron-right.svg";
@@ -72,6 +73,10 @@ const aiModeDescriptions: Record<AiSettings["defaultMode"], string> = {
 const aiConfigDraft = ref<AiModelConfig[]>([]);
 // 模型列表弹窗
 const isAiConfigDialogOpen = ref(false);
+const isMcpInstallDialogOpen = ref(false);
+const mcpInstallPrompt = ref("");
+const mcpInstallMessage = ref("");
+const isMcpInstallLoading = ref(false);
 // 新增/编辑表单子弹窗（与列表弹窗分离，避免常驻表单撑高弹窗）
 const isAiConfigFormDialogOpen = ref(false);
 const editingAiConfigId = ref<string | null>(null);
@@ -205,6 +210,62 @@ function validateAiConfigForm(
 // 预提示词只在点击保存后写入全局设置，编辑过程保持为本地草稿。
 function resetAiPresetPromptDraft(): void {
   aiPresetPromptDraft.value = props.appSettings.ai.presetPrompt;
+}
+
+function buildMcpInstallPrompt(info: OrbitSshMcpInstallInfo): string {
+  return [
+    "请帮我将 OrbitSSH 的 Skill 和 MCP 安装到当前 AI 客户端，保存为当前用户的持久配置，让以后新建的会话也能使用。",
+    "",
+    "OrbitSSH MCP 信息：",
+    `- 名称：${info.name}`,
+    `- 传输方式：${info.transport}`,
+    `- 启动命令：${JSON.stringify(info.command)}`,
+    `- 启动参数：${JSON.stringify(info.args)}`,
+    `- Skill 目录：${JSON.stringify(info.skillDirectory)}`,
+    "",
+    "请完成以下操作：",
+    "1. 判断当前 AI 客户端是否支持本地 STDIO MCP，并确认它实际使用的用户级配置位置。",
+    "2. 在保留全部现有配置的前提下，注册名为 orbitssh 的 MCP；不得删除或覆盖其他 MCP 服务。",
+    "3. 如果客户端支持 Skill，把上述 Skill 目录安装到用户级 Skill 目录；如果不支持，则将 SKILL.md 中的规则转换成当前客户端支持的 Agent 指令。",
+    "4. 验证 MCP 是否能发现 get_status、list_connections、execute_command、upload_file、download_file、get_transfer_status 六个工具。",
+    "5. 不得读取、导出或询问 SSH 密码、私钥和口令，也不得替我开启 OrbitSSH 设置中的 SSH/SFTP MCP 授权开关。",
+    "6. 如果当前客户端不支持本地 MCP，或你没有本地文件修改能力，请明确说明，并给出适用于当前客户端的完整手动配置，不要声称已经安装成功。",
+    "7. 完成后说明修改了哪些配置，以及是否需要重启客户端或新建会话。",
+    "",
+    "OrbitSSH 必须保持运行；实际使用 SSH 或 SFTP 前，我会在 OrbitSSH 的“设置 → AI”中手动开启对应授权。",
+  ].join("\n");
+}
+
+async function openMcpInstallDialog(): Promise<void> {
+  isMcpInstallDialogOpen.value = true;
+  isMcpInstallLoading.value = true;
+  mcpInstallMessage.value = "";
+  mcpInstallPrompt.value = "";
+
+  try {
+    const info = await window.orbitSSH.getMcpInstallInfo();
+    mcpInstallPrompt.value = buildMcpInstallPrompt(info);
+  } catch (error) {
+    mcpInstallMessage.value = `生成安装提示词失败：${error instanceof Error ? error.message : String(error)}`;
+  } finally {
+    isMcpInstallLoading.value = false;
+  }
+}
+
+function closeMcpInstallDialog(): void {
+  isMcpInstallDialogOpen.value = false;
+  mcpInstallMessage.value = "";
+}
+
+async function copyMcpInstallPrompt(): Promise<void> {
+  if (!mcpInstallPrompt.value) return;
+
+  try {
+    await window.orbitSSH.clipboard.writeText(mcpInstallPrompt.value);
+    mcpInstallMessage.value = "安装提示词已复制。";
+  } catch (error) {
+    mcpInstallMessage.value = `复制失败：${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 function saveAiPresetPrompt(): void {
@@ -631,6 +692,23 @@ function removeAiConfig(configId: string): void {
             class="settings-field settings-field-link"
             role="button"
             tabindex="0"
+            aria-label="如何安装到 Agent"
+            @click="openMcpInstallDialog"
+            @keydown.enter="openMcpInstallDialog"
+            @keydown.space.prevent="openMcpInstallDialog">
+            <div>
+              <h3>如何安装到 Agent？</h3>
+              <p>复制适配提示词，交给支持本地 MCP 的 AI 客户端完成配置。</p>
+            </div>
+            <span class="settings-row-arrow" aria-hidden="true">
+              <img :src="chevronRightIcon" alt="" />
+            </span>
+          </div>
+
+          <div
+            class="settings-field settings-field-link"
+            role="button"
+            tabindex="0"
             aria-label="查看模型配置"
             @click="openAiConfigDialog"
             @keydown.enter="openAiConfigDialog"
@@ -745,6 +823,38 @@ function removeAiConfig(configId: string): void {
       </div>
     </section>
   </Teleport>
+
+  <AppDialog
+    v-if="isMcpInstallDialogOpen"
+    title="如何安装到 Agent？"
+    description="复制下面的提示词并发送给你的 AI 客户端。"
+    width="large"
+    @close="closeMcpInstallDialog">
+    <div class="mcp-install-dialog">
+      <p class="mcp-install-tip">
+        适用于支持本地 STDIO MCP 的 AI 客户端。安装完成后，通常需要重启客户端或新建会话。
+      </p>
+      <textarea
+        class="mcp-install-prompt"
+        :value="mcpInstallPrompt"
+        readonly
+        spellcheck="false"
+        aria-label="OrbitSSH Agent 安装提示词"
+        :placeholder="isMcpInstallLoading ? '正在生成安装提示词…' : ''" />
+      <div class="mcp-install-actions">
+        <span :class="{ 'is-error': mcpInstallMessage.includes('失败') }">
+          {{ mcpInstallMessage }}
+        </span>
+        <button
+          type="button"
+          class="settings-primary-button"
+          :disabled="isMcpInstallLoading || !mcpInstallPrompt"
+          @click="copyMcpInstallPrompt">
+          复制提示词
+        </button>
+      </div>
+    </div>
+  </AppDialog>
 
   <AppDialog
     v-if="isAiConfigDialogOpen"

@@ -16,13 +16,12 @@ npm run build
 codex mcp add orbitssh -- node I:\OrbitSSH\dist-electron\mcp\standalone.js
 ```
 
-安装版需要使用 OrbitSSH 自带的 Electron 运行时以 Node 模式启动 MCP 入口。Windows 配置示例：
+安装版直接通过 OrbitSSH 主程序的 MCP 模式启动，不依赖系统 Node.js。Windows 配置示例：
 
 ```toml
 [mcp_servers.orbitssh]
 command = "C:\\Program Files\\OrbitSSH\\OrbitSSH.exe"
-args = ["C:\\Program Files\\OrbitSSH\\resources\\app.asar\\dist-electron\\mcp\\standalone.js"]
-env = { ELECTRON_RUN_AS_NODE = "1" }
+args = ["--mcp-stdio"]
 ```
 
 macOS 配置示例：
@@ -30,11 +29,10 @@ macOS 配置示例：
 ```toml
 [mcp_servers.orbitssh]
 command = "/Applications/OrbitSSH.app/Contents/MacOS/OrbitSSH"
-args = ["/Applications/OrbitSSH.app/Contents/Resources/app.asar/dist-electron/mcp/standalone.js"]
-env = { ELECTRON_RUN_AS_NODE = "1" }
+args = ["--mcp-stdio"]
 ```
 
-实际安装目录不同时，需要把示例路径替换为本机路径。
+实际安装目录不同时，只需替换主程序路径。AI 客户端启动 MCP 进程后，所有实际 SSH/SFTP 操作仍由正在运行的 OrbitSSH 主进程处理，并实时校验“设置 → AI”中的对应开关。
 
 ## 行为边界
 

@@ -17,6 +17,7 @@ import { registerAiIpc } from "./ipc/ai-ipc.js";
 import { registerAboutIpc } from "./ipc/about-ipc.js";
 import { openHelpLink, registerHelpIpc } from "./ipc/help-ipc.js";
 import { registerAutomationIpc } from "./ipc/automation-ipc.js";
+import { registerMcpSetupIpc } from "./ipc/mcp-setup-ipc.js";
 import { initUpdateManager } from "./update/index.js";
 import { writeAppLog } from "./logger.js";
 import { writeStartupDiagnostic } from "./startup-diagnostics.js";
@@ -358,6 +359,7 @@ function registerBaseIpc(): void {
   registerAboutIpc();
   registerHelpIpc();
   registerLoggerIpc();
+  registerMcpSetupIpc();
   registerClipboardIpc();
   registerDialogIpc();
   registerLocalFilesIpc();

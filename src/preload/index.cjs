@@ -12,6 +12,7 @@ const orbitSSHApi = {
   },
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
   getAppInfo: () => ipcRenderer.invoke("app:get-info"),
+  getMcpInstallInfo: () => ipcRenderer.invoke("mcp:get-install-info"),
   logger: {
     write: payload => ipcRenderer.invoke("logger:write", payload),
     getPath: () => ipcRenderer.invoke("logger:get-path"),

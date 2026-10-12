@@ -9,6 +9,7 @@ import FloatingMenu from "./FloatingMenu.vue";
 const props = defineProps<{
   menu: ContextMenuState;
   items: ContextMenuItem[];
+  menuClass?: string;
 }>();
 
 const emit = defineEmits<{
@@ -107,7 +108,7 @@ onUnmounted(clearSubmenuCloseTimer);
     :open="menu.open"
     :x="menu.x"
     :y="menu.y"
-    class="context-menu"
+    :class="['context-menu', menuClass]"
     role="menu"
     prevent-context-menu
     @mouseenter="emit('menuEnter')"
@@ -150,7 +151,7 @@ onUnmounted(clearSubmenuCloseTimer);
   <Teleport to="body">
     <ContextMenu
       v-if="subMenu.open"
-      class="context-submenu"
+      menu-class="context-submenu"
       :menu="subMenu"
       :items="items.find(item => item.key === activeSubmenuKey)?.children ?? []"
       @select="emit('select', $event)"

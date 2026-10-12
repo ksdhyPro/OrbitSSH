@@ -496,8 +496,8 @@
 }
 
 .data-transfer-context-menu {
-  /* 此菜单使用弹窗局部坐标，必须覆盖通用菜单的 fixed 定位规则。 */
-  position: absolute !important;
+  /* 菜单挂载到 body，与 clientX/clientY 保持同一视口坐标系。 */
+  position: fixed !important;
   z-index: 10001;
 }
 

@@ -1,6 +1,14 @@
 export const ORBITSSH_MCP_PROTOCOL_VERSION = 2
 export const ORBITSSH_MCP_DESCRIPTOR_FILE = 'orbitssh-mcp-endpoint.json'
 
+export interface OrbitSshMcpInstallInfo {
+  name: 'orbitssh'
+  transport: 'stdio'
+  command: string
+  args: string[]
+  skillDirectory: string
+}
+
 export type OrbitSshMcpMethod =
   | 'get_status'
   | 'list_connections'
