@@ -615,20 +615,24 @@ function removeAiConfig(configId: string): void {
           </header>
           <div class="settings-field">
             <div>
-              <h3>启用 AI</h3>
+              <h3>工作模式</h3>
+              <p>普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过标签右键「打开 SSH」查看终端。</p>
             </div>
-            <label class="settings-toggle">
-              <input
-                type="checkbox"
-                :checked="appSettings.ai.enabled"
-                @change="
-                  emit(
-                    'updateAiSetting',
-                    'enabled',
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                " />
-            </label>
+            <!-- 工作模式直接映射 ai.enabled：普通模式关闭 AI，AI 模式开启 AI 并切换为对话主视图。 -->
+            <div class="theme-mode-control" aria-label="工作模式">
+              <button
+                type="button"
+                :class="['theme-mode-option', { active: !appSettings.ai.enabled }]"
+                @click="emit('updateAiSetting', 'enabled', false)">
+                普通模式
+              </button>
+              <button
+                type="button"
+                :class="['theme-mode-option', { active: appSettings.ai.enabled }]"
+                @click="emit('updateAiSetting', 'enabled', true)">
+                AI 模式
+              </button>
+            </div>
           </div>
 
           <div class="settings-field">

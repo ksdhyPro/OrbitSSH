@@ -52,7 +52,11 @@ const props = defineProps<{
   context: AiContextInput;
   configs: AiModelConfig[];
   activeConfigId: string;
+  /** panel：终端右侧可折叠面板；workspace：AI 模式下作为主视图，历史记录固定在右侧。 */
+  layout?: "panel" | "workspace";
 }>();
+
+const isWorkspace = computed(() => props.layout === "workspace");
 
 const emit = defineEmits<{
   toggle: [];
@@ -205,10 +209,13 @@ watch(
       emit("selectModel", props.configs[0].id);
     }
   },
+  // 主视图布局始终展开，需要在挂载时同样校正失效的模型选择。
+  { immediate: true },
 );
 
 // ----- 历史对话列表 -----
-const historyOpen = ref(false);
+// 主视图布局下历史记录作为右侧栏默认展开，面板布局下仍为按需弹出的浮层。
+const historyOpen = ref(props.layout === "workspace");
 
 function toggleHistory(): void {
   historyOpen.value = !historyOpen.value;
@@ -221,7 +228,9 @@ const canSwitchConversation = computed(
 
 function handleSwitchConversation(conversationId: string): void {
   if (!canSwitchConversation.value) return;
-  historyOpen.value = false;
+  if (!isWorkspace.value) {
+    historyOpen.value = false;
+  }
   emit("switchConversation", conversationId);
 }
 
@@ -623,7 +632,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside :class="['ai-panel', { collapsed: !open }]">
+  <aside
+    :class="[
+      'ai-panel',
+      {
+        collapsed: !open,
+        'ai-panel-workspace': isWorkspace,
+        'history-open': isWorkspace && historyOpen,
+      },
+    ]">
     <button
       v-if="!open"
       type="button"
@@ -649,9 +666,13 @@ onBeforeUnmount(() => {
         <div class="ai-panel-header-actions">
           <button
             type="button"
-            class="ai-new-conversation-btn ai-history-toggle-btn"
-            title="历史对话"
-            :disabled="!context.tabId"
+            :class="[
+              'ai-new-conversation-btn',
+              'ai-history-toggle-btn',
+              { active: isWorkspace && historyOpen },
+            ]"
+            :title="isWorkspace && historyOpen ? '收起历史记录' : '历史对话'"
+            :disabled="!isWorkspace && !context.tabId"
             @click="toggleHistory">
             历史
           </button>
@@ -668,7 +689,11 @@ onBeforeUnmount(() => {
             @click="emit('startNewConversation')">
             新对话
           </button>
-          <button type="button" title="收起面板" @click="emit('toggle')">
+          <button
+            v-if="!isWorkspace"
+            type="button"
+            title="收起面板"
+            @click="emit('toggle')">
             <img :src="collapseIcon" alt="收起" />
           </button>
         </div>
@@ -677,11 +702,17 @@ onBeforeUnmount(() => {
       <div v-if="historyOpen" class="ai-history-list">
         <header class="ai-history-header">
           <span>历史对话</span>
-          <button type="button" title="收起列表" @click="historyOpen = false">
+          <button
+            type="button"
+            :title="isWorkspace ? '收起历史记录' : '收起列表'"
+            @click="historyOpen = false">
             <img :src="closeIcon" alt="收起" />
           </button>
         </header>
-        <p v-if="conversations.length === 0" class="ai-history-empty">
+        <p v-if="isWorkspace && !context.tabId" class="ai-history-empty">
+          点击左侧服务器后显示该服务器的历史对话
+        </p>
+        <p v-else-if="conversations.length === 0" class="ai-history-empty">
           暂无历史对话
         </p>
         <ul v-else>
@@ -718,7 +749,7 @@ onBeforeUnmount(() => {
         class="ai-message-list"
         :aria-busy="isSending">
         <div v-if="!enabled" class="ai-empty">
-          请先在设置中启用 AI 后再使用所选 AI 服务。常见诊断仍会提供本地建议。
+          请先在设置中切换到 AI 模式后再使用所选 AI 服务。常见诊断仍会提供本地建议。
         </div>
         <div v-else-if="messages.length === 0" class="ai-empty ai-welcome">
           <p>

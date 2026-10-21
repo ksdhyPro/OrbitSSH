@@ -61,6 +61,18 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.app-dialog-terminal {
+  width: min(1180px, 96vw);
+  height: min(760px, calc(100vh - 82px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+/* 终端弹窗内容区直接承载终端区域，不额外留白。 */
+.app-dialog-terminal > .app-dialog-body {
+  padding: 0;
+}
+
 .app-dialog-header {
   display: flex;
   align-items: flex-start;

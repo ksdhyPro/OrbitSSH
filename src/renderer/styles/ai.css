@@ -998,3 +998,59 @@
 .ai-command-card.is-running {
   border-color: var(--brand);
 }
+
+/* ----- AI 模式主视图：对话区居中，历史记录固定在右侧且可收起 ----- */
+.ai-panel.ai-panel-workspace {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  border-left: 0;
+}
+
+.ai-panel-workspace > .ai-panel-header {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.ai-panel-workspace > .ai-message-list {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.ai-panel-workspace > .ai-compose {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+/* 宽屏下限制对话内容宽度，避免长文本行宽过大影响阅读。 */
+.ai-panel-workspace > .ai-message-list {
+  padding-inline: max(18px, calc((100% - 880px) / 2));
+}
+
+.ai-panel-workspace > .ai-compose {
+  margin-inline: max(16px, calc((100% - 880px) / 2));
+}
+
+.ai-panel-workspace > .ai-history-list {
+  position: static;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  width: 260px;
+  max-height: none;
+  min-height: 0;
+  border: 0;
+  border-left: 1px solid var(--border-subtle);
+  border-radius: 0;
+  background: var(--bg-elevated-1);
+  box-shadow: none;
+}
+
+.ai-panel-workspace > .ai-history-list .ai-history-header {
+  min-height: 44px;
+  height: 44px;
+}
+
+.ai-panel-header .ai-history-toggle-btn.active {
+  background: var(--accent-hover);
+  color: var(--text-primary);
+}

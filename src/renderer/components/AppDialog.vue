@@ -5,7 +5,7 @@ withDefaults(
   defineProps<{
     title: string;
     description?: string;
-    width?: "small" | "medium" | "large" | "editor" | "transfer";
+    width?: "small" | "medium" | "large" | "editor" | "transfer" | "terminal";
   }>(),
   {
     description: "",

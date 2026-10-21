@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
 import arrowDownIcon from "../assets/icons/arrow-down.svg";
 import arrowUpIcon from "../assets/icons/arrow-up.svg";
 import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
@@ -35,6 +35,8 @@ const props = defineProps<{
   hasClipboardText: () => boolean | Promise<boolean>;
   copyActiveTerminalSelection: () => void | Promise<void>;
   pasteClipboardTextToActiveTerminal: () => void | Promise<void>;
+  /** AI 模式：主区域显示 AI 对话，终端在后台运行并通过弹窗查看。 */
+  aiWorkspace?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -54,6 +56,16 @@ const serversStore = useServersStore();
 
 const searchInput = ref<HTMLInputElement | null>(null);
 const sessionTabsElement = ref<HTMLElement | null>(null);
+const terminalStageSlot = ref<HTMLElement | null>(null);
+const terminalStage = ref<HTMLElement | null>(null);
+const terminalDialogStage = ref<HTMLElement | null>(null);
+const isTerminalDialogVisible = computed(
+  () => Boolean(props.aiWorkspace) && terminalsStore.isTerminalDialogOpen,
+);
+const terminalDialogTitle = computed(() => {
+  const tab = getActiveTerminalTab();
+  return tab ? `SSH · ${tab.title}` : "SSH";
+});
 const terminalContextMenu = reactive({
   open: false,
   x: 0,
@@ -127,6 +139,9 @@ const tabContextMenuItems = computed<ContextMenuItem[]>(() => {
   const targetIndex = props.tabs.findIndex(tab => tab.id === tabContextMenu.targetTabId);
 
   return [
+    ...(props.aiWorkspace
+      ? [{ key: "open-ssh", label: "打开 SSH" }]
+      : []),
     {
       key: "close-all",
       label: "关闭全部",
@@ -287,6 +302,11 @@ function selectTabContextMenuItem(item: ContextMenuItem): void {
   const targetIndex = props.tabs.findIndex(tab => tab.id === targetTabId);
   closeTabContextMenu();
 
+  if (item.key === "open-ssh" && targetTabId) {
+    void terminalsStore.openTerminalDialog(targetTabId);
+    return;
+  }
+
   if (item.key === "close-all") {
     emit("closeTabs", props.tabs.map(tab => tab.id));
     return;
@@ -352,6 +372,47 @@ function searchPreviousByBackwardTab(event: KeyboardEvent): void {
   emit("search", "previous");
 }
 
+// 终端节点只创建一次：弹窗打开时把整个终端区域移入弹窗，关闭后移回原位，
+// 保持 xterm 实例、会话和交互不变。终端区域独占占位容器，手动移动不会打乱 Vue 的兄弟节点锚点。
+watch(
+  terminalDialogStage,
+  async dialogStage => {
+    const stage = terminalStage.value;
+    if (!stage) {
+      return;
+    }
+
+    const nextParent = dialogStage ?? terminalStageSlot.value;
+    if (nextParent && stage.parentElement !== nextParent) {
+      nextParent.appendChild(stage);
+    }
+
+    await nextTick();
+    terminalsStore.scheduleTerminalFit();
+    if (dialogStage) {
+      requestAnimationFrame(() => terminalsStore.focusActiveTerminal());
+    }
+  },
+  { flush: "post" },
+);
+
+// 退出 AI 模式或标签全部关闭时同步关闭弹窗，避免终端停留在已卸载的弹窗中。
+watch(
+  () => [props.aiWorkspace, props.tabs.length] as const,
+  ([aiWorkspace, tabCount]) => {
+    if ((!aiWorkspace || tabCount === 0) && terminalsStore.isTerminalDialogOpen) {
+      terminalsStore.closeTerminalDialog();
+    }
+    void nextTick(() => terminalsStore.scheduleTerminalFit());
+  },
+);
+
+onBeforeUnmount(() => {
+  if (terminalsStore.isTerminalDialogOpen) {
+    terminalsStore.closeTerminalDialog();
+  }
+});
+
 // 搜索栏显示后在子组件内聚焦，避免父组件直接持有内部 DOM。
 watch(
   () => props.isTerminalSearchOpen,
@@ -369,7 +430,7 @@ watch(
 
 <template>
   <section class="workspace">
-    <section class="terminal-area">
+    <section :class="['terminal-area', { 'ai-workspace': aiWorkspace }]">
       <nav
         ref="sessionTabsElement"
         class="session-tabs"
@@ -411,80 +472,92 @@ watch(
         </div>
       </nav>
 
-      <div v-if="isTerminalSearchOpen" class="terminal-search">
-        <input
-          ref="searchInput"
-          :value="terminalSearchKeyword"
-          type="search"
-          placeholder="搜索终端内容"
-          @input="
-            emit(
-              'update:terminalSearchKeyword',
-              ($event.target as HTMLInputElement).value,
-            );
-            emit('search');
-          "
-          @keydown.enter.prevent="
-            emit('search', $event.shiftKey ? 'previous' : 'next')
-          "
-          @keydown.tab="searchPreviousByBackwardTab"
-          @keydown.esc.prevent="emit('closeSearch')" />
-        <span class="terminal-search-count">
-          {{ terminalSearchResult.index }}/{{ terminalSearchResult.total }}
-        </span>
-        <button
-          type="button"
-          :class="[
-            'terminal-search-tool',
-            { active: isTerminalSearchCaseSensitive },
-          ]"
-          aria-label="区分大小写"
-          title="区分大小写"
-          @click="emit('toggleCaseSensitive')">
-          <img :src="caseSensitiveIcon" alt="" />
-        </button>
-        <button
-          type="button"
-          class="terminal-search-tool"
-          aria-label="上一个"
-          title="上一个"
-          @click="emit('search', 'previous')">
-          <img :src="arrowUpIcon" alt="" />
-        </button>
-        <button
-          type="button"
-          class="terminal-search-tool"
-          aria-label="下一个"
-          title="下一个"
-          @click="emit('search', 'next')">
-          <img :src="arrowDownIcon" alt="" />
-        </button>
-        <button
-          type="button"
-          class="terminal-search-tool"
-          aria-label="关闭搜索"
-          title="关闭搜索"
-          @click="emit('closeSearch')">
-          <img :src="closeIcon" alt="" />
-        </button>
+      <div v-if="aiWorkspace" class="ai-workspace-main">
+        <slot />
       </div>
 
-      <div v-if="tabs.length === 0" class="terminal-empty">
-        <p class="eyebrow">READY</p>
-        <h2>选择服务器开始 SSH 会话</h2>
-        <p>点击左侧服务器建立 SSH shell。</p>
-        <button type="button" @click="emit('openConnectionDialog')">
-          新增连接
-        </button>
-      </div>
-      <div v-else class="terminal-hosts">
-        <div
-          v-for="tab in tabs"
-          :key="tab.id"
-          :ref="element => setTerminalHost(tab.id, element)"
-          class="terminal-host"
-          v-show="tab.id === activeTabId"
-          @contextmenu="void openTerminalContextMenu($event)"></div>
+      <div
+        ref="terminalStageSlot"
+        :class="['terminal-stage-slot', { 'is-background': aiWorkspace }]"
+        :aria-hidden="aiWorkspace && !isTerminalDialogVisible">
+        <div ref="terminalStage" class="terminal-stage">
+          <div v-if="isTerminalSearchOpen" class="terminal-search">
+            <input
+              ref="searchInput"
+              :value="terminalSearchKeyword"
+              type="search"
+              placeholder="搜索终端内容"
+              @input="
+                emit(
+                  'update:terminalSearchKeyword',
+                  ($event.target as HTMLInputElement).value,
+                );
+                emit('search');
+              "
+              @keydown.enter.prevent="
+                emit('search', $event.shiftKey ? 'previous' : 'next')
+              "
+              @keydown.tab="searchPreviousByBackwardTab"
+              @keydown.esc.prevent="emit('closeSearch')" />
+            <span class="terminal-search-count">
+              {{ terminalSearchResult.index }}/{{ terminalSearchResult.total }}
+            </span>
+            <button
+              type="button"
+              :class="[
+                'terminal-search-tool',
+                { active: isTerminalSearchCaseSensitive },
+              ]"
+              aria-label="区分大小写"
+              title="区分大小写"
+              @click="emit('toggleCaseSensitive')">
+              <img :src="caseSensitiveIcon" alt="" />
+            </button>
+            <button
+              type="button"
+              class="terminal-search-tool"
+              aria-label="上一个"
+              title="上一个"
+              @click="emit('search', 'previous')">
+              <img :src="arrowUpIcon" alt="" />
+            </button>
+            <button
+              type="button"
+              class="terminal-search-tool"
+              aria-label="下一个"
+              title="下一个"
+              @click="emit('search', 'next')">
+              <img :src="arrowDownIcon" alt="" />
+            </button>
+            <button
+              type="button"
+              class="terminal-search-tool"
+              aria-label="关闭搜索"
+              title="关闭搜索"
+              @click="emit('closeSearch')">
+              <img :src="closeIcon" alt="" />
+            </button>
+          </div>
+
+          <div v-if="tabs.length === 0" class="terminal-empty">
+            <p class="eyebrow">READY</p>
+            <h2>选择服务器开始 SSH 会话</h2>
+            <p>点击左侧服务器建立 SSH shell。</p>
+            <button type="button" @click="emit('openConnectionDialog')">
+              新增连接
+            </button>
+          </div>
+          <div v-else class="terminal-hosts">
+            <div
+              v-for="tab in tabs"
+              :key="tab.id"
+              :ref="element => setTerminalHost(tab.id, element)"
+              class="terminal-host"
+              v-show="tab.id === activeTabId"
+              @contextmenu="void openTerminalContextMenu($event)"></div>
+          </div>
+          <StatusBar :active-tab-id="activeTabId" />
+        </div>
       </div>
 
       <ContextMenu
@@ -536,7 +609,13 @@ watch(
           </footer>
         </section>
       </AppDialog>
-      <StatusBar :active-tab-id="activeTabId" />
+      <AppDialog
+        v-if="isTerminalDialogVisible"
+        :title="terminalDialogTitle"
+        width="terminal"
+        @close="terminalsStore.closeTerminalDialog">
+        <div ref="terminalDialogStage" class="terminal-dialog-stage"></div>
+      </AppDialog>
     </section>
   </section>
 </template>

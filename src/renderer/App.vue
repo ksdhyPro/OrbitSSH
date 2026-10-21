@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   computed,
+  nextTick,
   onMounted,
   onUnmounted,
   reactive,
@@ -63,7 +64,6 @@ const appPlatform = ref("");
 const isDataTransferDialogOpen = ref(false);
 const isPortForwardDialogOpen = ref(false);
 const isUpdateDialogOpen = ref(false);
-const contentShellElement = ref<HTMLElement | null>(null);
 const sidebarPanelsElement = ref<HTMLElement | null>(null);
 const sidebarPanelsHeight = ref(0);
 const isResizingSidebarPanels = ref(false);
@@ -83,12 +83,12 @@ const SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28;
 const SIDEBAR_PANEL_MIN_HEIGHT = 160;
 const SIDEBAR_PANEL_RESIZER_HEIGHT = 10;
 
-/** 返回 AI 分隔条拖拽时应使用的内容区右边界。 */
-function getContentShellRightBoundary(): number {
-  return contentShellElement.value?.getBoundingClientRect().right ?? window.innerWidth;
-}
-
 const sidebarPanelOrder = computed(() => appSettings.sidebar.panelOrder);
+// AI 模式（即开启 AI）以对话为主视图，左侧仅保留服务器列表。
+const isAiWorkspace = computed(() => appSettings.ai.enabled);
+const displayedSidebarPanels = computed<SidebarPanel[]>(() =>
+  isAiWorkspace.value ? ["servers"] : sidebarPanelOrder.value,
+);
 const draggedSidebarPanel = ref<SidebarPanel | null>(null);
 
 function isLastSidebarPanel(panel: SidebarPanel): boolean {
@@ -420,13 +420,8 @@ const { isWindowMaximized, isWindowFullScreen } = storeToRefs(windowStore);
 const { minimizeWindow, toggleMaximizeWindow, closeWindow } = windowStore;
 
 // sidebar
-const {
-  sidebarWidth,
-  isResizingSidebar,
-  aiPanelWidth,
-  isResizingAiPanel,
-} = storeToRefs(sidebarStore);
-const { startSidebarResize, startAiPanelResize } = sidebarStore;
+const { sidebarWidth, isResizingSidebar } = storeToRefs(sidebarStore);
+const { startSidebarResize } = sidebarStore;
 
 // downloads
 const {
@@ -474,13 +469,13 @@ const {
   activeTabId,
   activeTab,
   isTerminalSearchOpen,
+  isTerminalDialogOpen,
   isTerminalSearchCaseSensitive,
   terminalSearchKeyword,
   terminalSearchResult,
 } = storeToRefs(terminalsStore);
 
 const {
-  isPanelOpen: isAiPanelOpen,
   mode: aiMode,
   inputText: aiInputText,
   isSending: isAiSending,
@@ -494,7 +489,6 @@ const {
 } = storeToRefs(aiStore);
 
 const {
-  togglePanel: toggleAiPanel,
   setMode: setAiMode,
   setActiveTabId: setAiActiveTabId,
   startNewConversation: startNewAiConversation,
@@ -635,6 +629,11 @@ function handleGlobalKeydown(event: KeyboardEvent): void {
 
     if (isFileEditorOpen.value) {
       void openFileEditorSearch();
+      return;
+    }
+
+    // AI 模式下终端隐藏在后台，仅在 SSH 弹窗打开时响应终端搜索。
+    if (isAiWorkspace.value && !isTerminalDialogOpen.value) {
       return;
     }
 
@@ -872,18 +871,11 @@ watch(sidebarWidth, () => {
   scheduleTerminalFit();
 });
 
-// AI 面板宽度、折叠或启用状态变化都会改变终端可用宽度，需要重新 fit。
-watch(
-  [aiPanelWidth, isAiPanelOpen, () => appSettings.ai.enabled],
-  ([, , aiEnabled]) => {
-    // 禁用 AI 时终止可能仍在进行的拖拽，避免残留全局鼠标状态。
-    if (!aiEnabled) {
-      sidebarStore.stopAiPanelResize();
-    }
-
-    scheduleTerminalFit();
-  },
-);
+// 切换普通/AI 模式会改变左侧面板与终端所在区域，需要重新计算侧栏高度。
+watch(isAiWorkspace, async () => {
+  await nextTick();
+  refreshSidebarPanelsHeight();
+});
 
 watch(
   tabs,
@@ -957,7 +949,6 @@ onUnmounted(() => {
   window.removeEventListener("resize", handleWindowResize);
   window.removeEventListener("keydown", handleGlobalKeydown);
   sidebarStore.stopSidebarResize();
-  sidebarStore.stopAiPanelResize();
   stopSidebarPanelResize();
 });
 </script>
@@ -996,33 +987,22 @@ onUnmounted(() => {
       @close="isPortForwardDialogOpen = false" />
 
     <div
-      ref="contentShellElement"
       class="content-shell"
-      :style="{
-        '--sidebar-width': `${sidebarWidth}px`,
-        '--ai-panel-width': `${aiPanelWidth}px`,
-        '--ai-panel-track-width': !appSettings.ai.enabled
-          ? '0px'
-          : isAiPanelOpen
-            ? `${aiPanelWidth}px`
-            : '42px',
-        '--ai-panel-resizer-width':
-          appSettings.ai.enabled && isAiPanelOpen ? '6px' : '0px',
-      }">
+      :style="{ '--sidebar-width': `${sidebarWidth}px` }">
       <aside ref="sidebarPanelsElement" class="sidebar">
-        <template v-for="panel in sidebarPanelOrder" :key="panel">
+        <template v-for="panel in displayedSidebarPanels" :key="panel">
           <div
-            draggable="true"
+            :draggable="!isAiWorkspace"
             :class="[
               'sidebar-panel-slot',
               `sidebar-panel-slot-${panel}`,
               {
-                collapsed: appSettings.sidebar[panel].collapsed,
-                'is-last': isLastSidebarPanel(panel),
+                collapsed: !isAiWorkspace && appSettings.sidebar[panel].collapsed,
+                'is-last': isAiWorkspace || isLastSidebarPanel(panel),
                 dragging: draggedSidebarPanel === panel,
               },
             ]"
-            :style="getSidebarPanelStyle(panel)"
+            :style="isAiWorkspace ? undefined : getSidebarPanelStyle(panel)"
             @dragstart="startSidebarPanelDrag($event, panel)"
             @dragover.prevent
             @drop="finishSidebarPanelDrag($event, panel)"
@@ -1036,7 +1016,7 @@ onUnmounted(() => {
               :list-error="listError"
               :has-servers="hasServers"
               :active-server-id="activeTab?.serverId ?? ''"
-              :collapsed="appSettings.sidebar.servers.collapsed"
+              :collapsed="!isAiWorkspace && appSettings.sidebar.servers.collapsed"
               @open-connection-dialog="openConnectionDialog"
               @open-server-terminal="openServerTerminal"
               @edit-server="editServer"
@@ -1047,7 +1027,7 @@ onUnmounted(() => {
               @set-server-color="setServerColor"
               @set-server-pinned="setServerPinned"
               @delete-server="deleteServer"
-              @toggle-collapsed="toggleSidebarPanel('servers')" />
+              @toggle-collapsed="!isAiWorkspace && toggleSidebarPanel('servers')" />
 
             <AutomationSidebar
               v-else-if="panel === 'automation'"
@@ -1105,7 +1085,7 @@ onUnmounted(() => {
           </div>
 
           <div
-            v-if="!isLastSidebarPanel(panel)"
+            v-if="!isAiWorkspace && !isLastSidebarPanel(panel)"
             :class="[
               'sidebar-panel-resizer',
               {
@@ -1127,6 +1107,7 @@ onUnmounted(() => {
         @mousedown="startSidebarResize"></div>
 
       <TerminalPanel
+        :ai-workspace="isAiWorkspace"
         :tabs="tabs"
         :active-tab-id="activeTabId"
         :is-terminal-search-open="isTerminalSearchOpen"
@@ -1145,54 +1126,35 @@ onUnmounted(() => {
         @search="searchActiveTerminal"
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"
         @close-search="closeTerminalSearch"
-        @open-connection-dialog="openConnectionDialog" />
-
-      <div
-        v-if="appSettings.ai.enabled"
-        :class="[
-          'ai-panel-resizer',
-          { active: isResizingAiPanel, collapsed: !isAiPanelOpen },
-        ]"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="调整 AI 面板宽度"
-        :aria-hidden="!isAiPanelOpen"
-        @mousedown="
-          isAiPanelOpen &&
-          startAiPanelResize(
-            $event,
-            getContentShellRightBoundary(),
-          )
-        "></div>
-
-      <AiPanel
-        v-if="appSettings.ai.enabled"
-        :open="isAiPanelOpen"
-        :enabled="appSettings.ai.enabled"
-        :mode="aiMode"
-        :input-text="aiInputText"
-        :is-sending="isAiSending"
-        :error="aiError"
-        :messages="aiMessages"
-        :command-cards="aiCommandCards"
-        :context-usage="aiContextUsage"
-        :should-suggest-new-conversation="shouldSuggestNewConversation"
-        :conversations="aiConversations"
-        :active-conversation-id="aiActiveConversationId"
-        :context="aiContext"
-        :configs="appSettings.ai.configs"
-        :active-config-id="appSettings.ai.activeConfigId"
-        @toggle="toggleAiPanel"
-        @set-mode="setAiMode"
-        @update-input-text="aiInputText = $event"
-        @send="sendAiMessage(aiContext)"
-        @stop="cancelAiMessage(aiContext)"
-        @start-new-conversation="startNewAiConversation(activeTabId)"
-        @switch-conversation="switchAiConversation($event)"
-        @delete-conversation="deleteAiConversation($event)"
-        @run-approved="runAiApprovedCommand"
-        @reject-approval="rejectAiApproval"
-        @select-model="updateAiSetting('activeConfigId', $event)" />
+        @open-connection-dialog="openConnectionDialog">
+        <AiPanel
+          layout="workspace"
+          :open="true"
+          :enabled="appSettings.ai.enabled"
+          :mode="aiMode"
+          :input-text="aiInputText"
+          :is-sending="isAiSending"
+          :error="aiError"
+          :messages="aiMessages"
+          :command-cards="aiCommandCards"
+          :context-usage="aiContextUsage"
+          :should-suggest-new-conversation="shouldSuggestNewConversation"
+          :conversations="aiConversations"
+          :active-conversation-id="aiActiveConversationId"
+          :context="aiContext"
+          :configs="appSettings.ai.configs"
+          :active-config-id="appSettings.ai.activeConfigId"
+          @set-mode="setAiMode"
+          @update-input-text="aiInputText = $event"
+          @send="sendAiMessage(aiContext)"
+          @stop="cancelAiMessage(aiContext)"
+          @start-new-conversation="startNewAiConversation(activeTabId)"
+          @switch-conversation="switchAiConversation($event)"
+          @delete-conversation="deleteAiConversation($event)"
+          @run-approved="runAiApprovedCommand"
+          @reject-approval="rejectAiApproval"
+          @select-model="updateAiSetting('activeConfigId', $event)" />
+      </TerminalPanel>
     </div>
 
     <ConnectionDialog

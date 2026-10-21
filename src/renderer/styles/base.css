@@ -321,12 +321,11 @@ input[type="number"] {
 
 .content-shell {
   display: grid;
+  /* AI 模式下对话区位于终端标签页下方的主视图，不再单独占用右侧列。 */
   grid-template-columns:
     var(--sidebar-width, 320px)
     6px
-    minmax(0, 1fr)
-    var(--ai-panel-resizer-width, 6px)
-    minmax(0, var(--ai-panel-track-width, 42px));
+    minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;

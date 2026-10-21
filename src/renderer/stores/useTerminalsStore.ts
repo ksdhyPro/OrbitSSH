@@ -55,6 +55,8 @@ export const useTerminalsStore = defineStore("terminals", () => {
   const tabs = ref<TerminalTab[]>([]);
   const activeTabId = ref("");
   const isTerminalSearchOpen = ref(false);
+  // AI 模式下终端默认隐藏，通过标签右键「打开 SSH」在弹窗中查看当前终端。
+  const isTerminalDialogOpen = ref(false);
   const isTerminalSearchCaseSensitive = ref(false);
   const terminalSearchKeyword = ref("");
   const terminalSearchInput = ref<HTMLInputElement | null>(null);
@@ -798,6 +800,22 @@ export const useTerminalsStore = defineStore("terminals", () => {
     });
   }
 
+  async function openTerminalDialog(tabId: string): Promise<void> {
+    await activateTerminalTab(tabId);
+    isTerminalDialogOpen.value = true;
+  }
+
+  function closeTerminalDialog(): void {
+    if (isTerminalSearchOpen.value) {
+      void closeTerminalSearch();
+    }
+    isTerminalDialogOpen.value = false;
+  }
+
+  function focusActiveTerminal(): void {
+    terminalInstances.get(activeTabId.value)?.terminal.focus();
+  }
+
   async function activateTerminalTab(tabId: string): Promise<void> {
     activeTabId.value = tabId;
     await nextTick();
@@ -960,6 +978,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     activeTabId,
     activeTab,
     isTerminalSearchOpen,
+    isTerminalDialogOpen,
     isTerminalSearchCaseSensitive,
     terminalSearchKeyword,
     terminalSearchInput,
@@ -985,6 +1004,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
     openTerminalAutomation,
     openLocalTerminal,
     activateTerminalTab,
+    openTerminalDialog,
+    closeTerminalDialog,
+    focusActiveTerminal,
     closeTerminalTab,
     reconnectTerminal,
     handleTerminalData,
