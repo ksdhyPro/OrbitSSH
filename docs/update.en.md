@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.13
+
+1. Replaced the "Enable AI" switch in Settings → AI with a "Normal mode / AI mode" choice. Normal mode keeps the terminal-focused interface with AI disabled; AI mode enables AI and switches to a conversation-focused workspace.
+2. Added the AI mode workspace: the left side shows only the server list, the main view is the AI conversation, and conversation history sits on the right and can be collapsed. Terminal tabs stay at the top and switch normally, with the AI conversation following the server of the active tab.
+3. In AI mode, clicking a server connects SSH in the background and only hides the terminal view. The new "Open SSH" button in the AI assistant title bar shows the current terminal in a dialog with the same search, context menu, paste confirmation, and status bar behavior as normal mode, and the session keeps running after the dialog closes.
+
 ## v1.10.12
 
 1. Added a direct MCP mode to the packaged app. The OrbitSSH executable now starts the MCP server with a single `--mcp-stdio` argument through its bundled runtime, removing the dependency on a system Node.js installation and the `ELECTRON_RUN_AS_NODE` environment variable, which simplifies third-party AI client configuration.
