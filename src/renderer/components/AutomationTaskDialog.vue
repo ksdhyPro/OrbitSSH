@@ -37,8 +37,8 @@ const emit = defineEmits<{ close: []; submit: [] }>()
       <p class="automation-task-hint">每个非空行是一条 Shell 命令，执行前会再次展示内容供确认。</p>
       <p v-if="error" class="form-error">{{ error }}</p>
       <footer class="dialog-actions">
-        <button type="button" class="ghost-button" @click="emit('close')">取消</button>
-        <button type="submit" class="primary-button" :disabled="isSubmitting">
+        <button type="button" class="btn btn-ghost" @click="emit('close')">取消</button>
+        <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
           {{ isSubmitting ? '保存中…' : editing ? '保存修改' : '保存任务' }}
         </button>
       </footer>

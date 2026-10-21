@@ -24,10 +24,10 @@
   width: 30px;
   height: 54px;
   border: 1px solid var(--border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated-3);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 800;
   writing-mode: vertical-rl;
 }
@@ -59,8 +59,8 @@
 }
 
 .ai-panel-header h2 {
-  font-size: 16px;
-  font-weight: 100;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-regular);
 }
 
 /* 标题与当前连接保持单行，头部高度与终端标签栏一致。 */
@@ -93,10 +93,10 @@
   padding: 0 8px;
   overflow: hidden;
   border: 1px solid var(--border-default);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--bg-elevated-3);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -112,7 +112,7 @@
 .ai-panel-header button {
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-muted);
   display: flex;
@@ -131,8 +131,8 @@
   min-width: 58px;
   padding: 0 9px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   white-space: nowrap;
 }
 
@@ -172,7 +172,7 @@
   flex-direction: column;
   max-height: min(60%, 320px);
   border: 1px solid var(--border-default);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated-2);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
   overflow: hidden;
@@ -186,7 +186,7 @@
   padding: 0 6px 0 12px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-history-header button {
@@ -197,7 +197,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
 }
@@ -216,7 +216,7 @@
   margin: 0;
   padding: 12px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-history-list ul {
@@ -231,7 +231,7 @@
   display: flex;
   align-items: stretch;
   gap: 2px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .ai-history-list li:hover,
@@ -259,14 +259,14 @@
 .ai-history-title {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .ai-history-meta {
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .ai-history-delete {
@@ -278,7 +278,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: none;
   color: var(--text-muted);
   opacity: 0;
@@ -316,9 +316,9 @@
 .ai-empty {
   padding: 12px;
   border: 1px dashed var(--border-dashed);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -338,10 +338,10 @@
   width: 34px;
   height: 34px;
   margin: 0 auto 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--accent-fill);
   color: var(--accent-bright);
-  font-size: 16px;
+  font-size: var(--font-size-xl);
   content: "✦";
   animation: ai-welcome-pulse 2.8s ease-in-out infinite;
 }
@@ -377,10 +377,10 @@
   min-height: 32px;
   padding: 6px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated-3);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.35;
   text-align: left;
   transition:
@@ -392,7 +392,7 @@
 .ai-prompt-suggestions button::after {
   flex: 0 0 auto;
   color: var(--text-faint);
-  font-size: 16px;
+  font-size: var(--font-size-xl);
   line-height: 1;
   content: "›";
 }
@@ -414,7 +414,7 @@
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--border-default);
-  border-radius: 11px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated-2);
   transition:
     background-color 120ms ease,
@@ -438,7 +438,7 @@
   height: 24px;
   flex: 0 0 auto;
   padding: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   color: var(--text-tertiary);
   background: none;
   opacity: 0;
@@ -474,7 +474,7 @@
 
 .ai-copy-success {
   color: var(--success, #4caf78);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1;
 }
 
@@ -484,7 +484,7 @@
   margin-left: 28px;
   padding: 10px 14px;
   border-color: var(--border-input);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--bg-elevated-2);
   box-shadow: none;
 }
@@ -507,14 +507,14 @@
 .ai-message strong,
 .ai-command-card strong {
   color: var(--text-heading);
-  font-size: 14px;
-  font-weight: 100;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
 }
 
 .ai-message p,
 .ai-command-card p {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -522,7 +522,7 @@
 .ai-markdown {
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1.7;
   overflow-wrap: anywhere;
 }
@@ -536,7 +536,7 @@
 .ai-markdown h3,
 .ai-markdown h4 {
   color: var(--text-heading);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1.45;
 }
 
@@ -567,11 +567,11 @@
 }
 
 .ai-markdown code {
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--bg-deep);
   color: var(--text-primary);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-markdown :not(pre) > code {
@@ -592,7 +592,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated-3) url("../assets/icons/copy-ai.svg") center / 17px 17px no-repeat;
   color: var(--text-tertiary);
   user-select: none;
@@ -617,7 +617,7 @@
 .ai-code-copy-btn[data-copied="true"]::before {
   content: "✓";
   color: var(--success, #4caf78);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1;
 }
 
@@ -627,7 +627,7 @@
   overflow: auto;
   padding: 10px 38px 10px 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--bg-deep);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
 }
@@ -693,13 +693,13 @@
 
 .ai-command-card .ai-command-hint {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-process-line {
   padding: 0 4px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-process-line > summary {
@@ -710,7 +710,7 @@
   min-height: 36px;
   padding: 0 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated-3);
   cursor: pointer;
   list-style: none;
@@ -754,7 +754,7 @@
 .ai-process-duration {
   flex: 0 0 auto;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -764,7 +764,7 @@
   margin-top: 6px;
   padding: 10px;
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated-3);
 }
 
@@ -788,7 +788,7 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-process-item code,
@@ -796,11 +796,11 @@
   display: block;
   max-width: 100%;
   overflow: auto;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--bg-deep);
   color: var(--text-primary);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
   padding: 8px;
   white-space: pre-wrap;
@@ -816,7 +816,7 @@
 .ai-approval-popover p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -833,7 +833,7 @@
 .ai-loading-dots span {
   width: 4px;
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--text-tertiary);
   animation: ai-loading-dot 1s infinite ease-in-out;
 }
@@ -869,7 +869,7 @@
 
 .ai-command-card header span {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-transform: uppercase;
 }
 
@@ -885,11 +885,11 @@
   display: block;
   max-width: 100%;
   overflow: auto;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--bg-deep);
   color: var(--text-primary);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.45;
 }
 
@@ -910,48 +910,16 @@
   flex-wrap: wrap;
 }
 
-.ai-command-actions button {
-  height: 32px;
-  border-radius: 8px;
-  padding: 0 12px;
-  background: var(--brand);
-  color: var(--brand-ink);
-  font-size: 12px;
-  /* font-weight: 700; */
-  transition:
-    filter 120ms ease,
-    transform 100ms ease;
-}
-
 /* 命令步骤独立成可审查工作单元，突出执行对象但不增加额外按钮噪声。 */
 .ai-command-process-item {
   padding: 8px;
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated-2);
 }
 
 .ai-command-process-item + .ai-command-process-item {
   margin-top: 2px;
-}
-
-.ai-command-actions button:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.ai-command-actions button:active:not(:disabled) {
-  transform: scale(0.96);
-}
-
-.ai-command-actions button.secondary {
-  border: 1px solid var(--border-input);
-  background: var(--bg-input);
-  color: var(--text-secondary);
-}
-
-.ai-command-actions button.secondary:hover {
-  background: var(--bg-elevated-3);
-  color: var(--text-primary);
 }
 
 /* 命令输出折叠区：stdout/stderr/退出码元信息 */
@@ -962,7 +930,7 @@
 
 .ai-command-output summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   user-select: none;
 }
@@ -974,10 +942,10 @@
 .ai-command-output pre {
   margin: 0;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-elevated-3);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
@@ -991,7 +959,7 @@
 
 .ai-exit-meta {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--text-tertiary);
 }
 

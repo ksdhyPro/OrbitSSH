@@ -14,7 +14,7 @@ const emit = defineEmits<{ close: []; submit: []; updateName: [name: string] }>(
         <span>分组名称</span>
         <input :value="name" type="text" maxlength="100" autofocus placeholder="例如：生产环境" @input="emit('updateName', ($event.target as HTMLInputElement).value)" />
       </label>
-      <footer class="dialog-actions"><button type="button" class="ghost-button" @click="emit('close')">取消</button><button type="submit" class="primary-button">{{ editing ? '保存' : '创建' }}</button></footer>
+      <footer class="dialog-actions"><button type="button" class="btn btn-ghost" @click="emit('close')">取消</button><button type="submit" class="btn btn-primary">{{ editing ? '保存' : '创建' }}</button></footer>
     </form>
   </AppDialog>
 </template>

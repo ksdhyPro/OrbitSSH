@@ -59,8 +59,8 @@ async function copyTaskScript(task: ServerAutomationTask | null): Promise<void> 
         </button>
       </div>
       <footer class="dialog-actions">
-        <button type="button" class="ghost-button" @click="emit('close')">取消</button>
-        <button type="button" class="primary-button" @click="emit('start')">新建终端并执行</button>
+        <button type="button" class="btn btn-ghost" @click="emit('close')">取消</button>
+        <button type="button" class="btn btn-primary" @click="emit('start')">新建终端并执行</button>
       </footer>
     </section>
   </AppDialog>

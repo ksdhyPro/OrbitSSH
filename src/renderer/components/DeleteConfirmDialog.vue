@@ -24,12 +24,12 @@ const emit = defineEmits<{
     <section class="confirm-dialog-content delete-confirm-content">
       <p class="delete-confirm-message">{{ message }}</p>
       <footer class="dialog-actions">
-        <button type="button" class="ghost-button" @click="emit('cancel')">
+        <button type="button" class="btn btn-ghost" @click="emit('cancel')">
           取消
         </button>
         <button
           type="button"
-          :class="danger === false ? 'primary-button' : 'danger-button'"
+          :class="['btn', danger === false ? 'btn-primary' : 'btn-danger']"
           @click="emit('confirm')">
           {{ confirmLabel ?? "删除" }}
         </button>

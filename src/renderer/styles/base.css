@@ -57,7 +57,7 @@ input {
   width: 100%;
   height: 38px;
   border: 1px solid var(--border-input);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   outline: none;
   padding: 0 11px;
   background: var(--bg-input);
@@ -92,16 +92,17 @@ input::placeholder {
   gap: 8px;
   width: 100%;
   min-width: 0;
-  height: 34px;
+  height: var(--control-height-md);
   border: 1px solid var(--border-input);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   outline: none;
   padding: 0 34px 0 10px;
   background:
     linear-gradient(180deg, var(--surface-gloss), transparent), var(--bg-input);
   color: var(--text-primary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   text-align: left;
   transition:
     border-color 120ms ease,
@@ -140,6 +141,13 @@ input::placeholder {
   color: var(--text-placeholder);
 }
 
+.app-select-detail {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
 .app-select-chevron {
   display: block;
   flex: 0 0 auto;
@@ -170,7 +178,7 @@ input::placeholder {
   overflow-y: auto;
   padding: 5px;
   border: 1px solid var(--border-menu);
-  border-radius: 11px;
+  border-radius: var(--radius-lg);
   background: var(--surface-floating-strong);
   box-shadow: var(--shadow-popover);
   backdrop-filter: blur(24px) saturate(1.12);
@@ -178,16 +186,17 @@ input::placeholder {
 
 .app-select-option {
   display: flex;
+  font-weight: var(--font-weight-regular);
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   width: 100%;
   min-height: 34px;
   padding: 6px 9px 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-align: left;
   transition:
     background-color 100ms ease,
@@ -229,8 +238,8 @@ input::placeholder {
   width: 18px;
   height: 18px;
   color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 100;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
   opacity: 0;
 }
 
@@ -279,7 +288,7 @@ input[type="number"] {
 
 *::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--border-strong);
   background-clip: padding-box;
 }
@@ -392,7 +401,7 @@ input[type="number"] {
   left: 50%;
   width: 48px;
   height: 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
   content: "";
   opacity: 0;
@@ -430,7 +439,7 @@ input[type="number"] {
   left: 1px;
   width: 3px;
   height: 48px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
   content: "";
   opacity: 0;
@@ -469,7 +478,7 @@ input[type="number"] {
   left: 2px;
   width: 3px;
   height: 48px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--accent);
   content: "";
   opacity: 0;
@@ -508,7 +517,7 @@ input[type="number"] {
 .brand-mark {
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: block;
   object-fit: cover;
   box-shadow:
@@ -525,15 +534,15 @@ input[type="number"] {
 }
 
 .header-brand h1 {
-  font-size: 14px;
-  font-weight: 100;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
   line-height: 1.1;
 }
 
 .header-brand p {
   margin-top: 2px;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
 }
 
 .header-menu {
@@ -549,10 +558,10 @@ input[type="number"] {
   height: 24px;
   min-width: 36px;
   padding: 0 7px;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-md);
   transition:
     background-color 120ms ease,
     color 120ms ease;
@@ -626,8 +635,8 @@ input[type="number"] {
 
 .panel-header h2 {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   letter-spacing: 0.01em;
 }
 
@@ -636,7 +645,7 @@ input[type="number"] {
   place-items: center;
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-muted);
   transition:
@@ -797,7 +806,7 @@ input[type="number"] {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
 }
 
@@ -821,14 +830,14 @@ input[type="number"] {
   display: grid;
   gap: 8px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-md);
 }
 
 .server-group-dialog-form input {
   width: 100%;
   min-height: 36px;
   border: 1px solid var(--border-default);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   padding: 0 10px;
   background: var(--bg-input);
   color: var(--text-primary);
@@ -838,7 +847,7 @@ input[type="number"] {
   width: 100%;
   height: 44px;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: pointer;
 }
@@ -850,14 +859,14 @@ input[type="number"] {
 }
 
 .group-add-button span {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* 服务器与快捷指令共用同一套分组骨架和拖拽状态。 */
 .grouped-section {
   position: relative;
   margin: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-subtle);
   outline: 1px solid transparent;
   outline-offset: -1px;
@@ -931,8 +940,8 @@ input[type="number"] {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.01em;
 }
 
@@ -943,10 +952,10 @@ input[type="number"] {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--bg-badge);
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: var(--font-size-2xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -962,7 +971,7 @@ input[type="number"] {
   margin: 0;
   padding: 6px 8px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .color-picker {
@@ -987,10 +996,10 @@ input[type="number"] {
   margin: 8px;
   padding: 16px 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated-3);
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
@@ -1006,7 +1015,7 @@ input[type="number"] {
   gap: 12px;
   padding: 0 4px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   cursor: default;
   transition:
@@ -1020,8 +1029,8 @@ input[type="number"] {
 
 .grouped-section .server-item strong {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.35;
 }
 
@@ -1056,11 +1065,11 @@ input[type="number"] {
   min-height: 44px;
   margin: 0;
   border: 1px dashed var(--accent);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elevated-2) 94%, transparent);
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   pointer-events: auto;
   transition:
     background-color 120ms ease,
@@ -1103,7 +1112,7 @@ input[type="number"] {
 .automation-sidebar-empty {
   margin: 4px 8px;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 
@@ -1118,7 +1127,7 @@ input[type="number"] {
   gap: 8px;
   min-height: 34px;
   padding: 3px 8px 3px 10px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
 }
 
 .automation-sidebar-item:hover {
@@ -1139,8 +1148,8 @@ input[type="number"] {
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1151,7 +1160,7 @@ input[type="number"] {
   flex: 0 0 auto;
   width: 28px;
   height: 28px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
 }
 
@@ -1203,8 +1212,8 @@ input[type="number"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  font-weight: 100;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
   line-height: 1.35;
 }
 
@@ -1213,7 +1222,7 @@ input[type="number"] {
 .empty-hint,
 .file-node {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.4;
 }
 
@@ -1287,7 +1296,7 @@ input[type="number"] {
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   transition:
     background-color 120ms ease,
@@ -1334,5 +1343,5 @@ input[type="number"] {
 .empty-hint small {
   margin-top: 3px;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }

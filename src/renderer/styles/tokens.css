@@ -108,6 +108,34 @@
   --icon-filter: none; /* 静态 SVG 图标的主题适配 */
   --file-icon-filter: grayscale(1) brightness(1.18); /* 文件图标统一为中性灰 */
 
+  /* ===== 圆角刻度 ===== */
+  --radius-xs: 4px; /* 徽标、滚动条、细小色块 */
+  --radius-sm: 6px; /* 菜单项、紧凑列表项 */
+  --radius-md: 8px; /* 按钮、输入框、标签等常规控件 */
+  --radius-lg: 10px; /* 浮层、下拉菜单、卡片 */
+  --radius-xl: 12px; /* 对话框、大面板 */
+  --radius-full: 999px; /* 胶囊、圆点 */
+
+  /* ===== 字号刻度 ===== */
+  --font-size-2xs: 10px; /* 角标、计数 */
+  --font-size-xs: 11px; /* 元信息、快捷键 */
+  --font-size-sm: 12px; /* 控件、列表等界面默认字号 */
+  --font-size-md: 13px; /* 正文、表单内容 */
+  --font-size-lg: 14px; /* 对话框主按钮、小标题 */
+  --font-size-xl: 16px; /* 区块标题 */
+  --font-size-2xl: 24px; /* 页面标题 */
+
+  /* ===== 字重 ===== */
+  --font-weight-regular: 100; /* 项目沿用的轻字重，界面正文与控件默认使用 */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* ===== 控件高度 ===== */
+  --control-height-xs: 24px; /* 行内迷你操作 */
+  --control-height-sm: 28px; /* 表格、工具条内的紧凑按钮 */
+  --control-height-md: 34px; /* 按钮、输入框、下拉选择的默认高度 */
+  --icon-button-size: 30px; /* 工具条图标按钮 */
+
   color-scheme: dark;
   color: var(--text-primary);
   background: var(--bg-base);

@@ -21,7 +21,7 @@ const emit = defineEmits<{
     @close="emit('close')">
     <section class="confirm-dialog-content">
       <footer class="dialog-actions">
-        <button type="button" class="primary-button" @click="emit('close')">
+        <button type="button" class="btn btn-primary" @click="emit('close')">
           知道了
         </button>
       </footer>

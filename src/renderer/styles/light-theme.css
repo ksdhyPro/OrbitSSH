@@ -155,10 +155,6 @@
   box-shadow: none;
 }
 
-:root[data-theme="light"] .settings-primary-button:hover:not(:disabled) {
-  border-color: var(--brand);
-}
-
 :root[data-theme="light"] .settings-content {
   background: #fbfbf9;
 }

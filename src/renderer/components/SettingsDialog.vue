@@ -14,7 +14,7 @@ import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
 import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import AppDialog from "./AppDialog.vue";
-import AppSelect, { type AppSelectOption } from "./AppSelect.vue";
+import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 import NumberStepper from "./NumberStepper.vue";
 
 const props = defineProps<{
@@ -760,7 +760,7 @@ function removeAiConfig(configId: string): void {
               <span>{{ aiPresetPromptDraft.length }} / {{ AI_PRESET_PROMPT_MAX_CHARS }}</span>
               <button
                 type="button"
-                class="settings-primary-button"
+                class="btn btn-primary"
                 :disabled="!isAiPresetPromptDirty"
                 @click="saveAiPresetPrompt">
                 保存
@@ -851,7 +851,7 @@ function removeAiConfig(configId: string): void {
         </span>
         <button
           type="button"
-          class="settings-primary-button"
+          class="btn btn-primary"
           :disabled="isMcpInstallLoading || !mcpInstallPrompt"
           @click="copyMcpInstallPrompt">
           复制提示词
@@ -871,7 +871,7 @@ function removeAiConfig(configId: string): void {
         <div class="ai-config-actions">
           <button
             type="button"
-            class="settings-primary-button"
+            class="btn btn-primary"
             @click="startAddAiConfig">
             新增模型
           </button>
@@ -928,7 +928,7 @@ function removeAiConfig(configId: string): void {
                 <button
                   v-else
                   type="button"
-                  class="ai-config-mini-button"
+                  class="btn btn-secondary btn-sm"
                   @click="selectAiConfig(config.id)">
                   使用
                 </button>
@@ -937,13 +937,13 @@ function removeAiConfig(configId: string): void {
                 <div class="ai-config-actions">
                   <button
                     type="button"
-                    class="ai-config-mini-button"
+                    class="btn btn-secondary btn-sm"
                     @click="startEditAiConfig(config)">
                     编辑
                   </button>
                   <button
                     type="button"
-                    class="ai-config-mini-button ai-config-danger-button"
+                    class="btn btn-danger-soft btn-sm"
                     @click="removeAiConfig(config.id)">
                     删除
                   </button>
@@ -1012,13 +1012,13 @@ function removeAiConfig(configId: string): void {
       <div class="ai-config-form-actions">
         <button
           type="button"
-          class="ai-config-mini-button"
+          class="btn btn-ghost"
           @click="closeAiConfigFormDialog">
           取消
         </button>
         <button
           type="submit"
-          class="settings-primary-button"
+          class="btn btn-primary"
           :disabled="!canSaveAiConfigForm">
           保存
         </button>

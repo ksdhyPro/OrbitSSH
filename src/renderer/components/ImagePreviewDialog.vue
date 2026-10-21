@@ -34,12 +34,12 @@ const emit = defineEmits<{
       <footer class="file-editor-footer">
         <span>{{ imagePreview.mimeType || "图片文件" }}</span>
         <div class="dialog-actions">
-          <button type="button" class="ghost-button" @click="emit('close')">
+          <button type="button" class="btn btn-ghost" @click="emit('close')">
             关闭
           </button>
           <button
             type="button"
-            class="primary-button"
+            class="btn btn-primary"
             :disabled="imagePreview.loading || !imagePreview.path"
             @click="emit('download')">
             下载

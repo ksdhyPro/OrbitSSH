@@ -636,8 +636,8 @@ watch(
 
 .panel-toggle h2 {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
 }
 </style>

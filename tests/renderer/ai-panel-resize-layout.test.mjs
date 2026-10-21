@@ -79,7 +79,7 @@ test('AI 头部与终端标签栏等高且当前连接使用 Tag 展示', async 
 
   assert.match(headerRule ?? '', /height:\s*44px/)
   assert.match(componentSource, /class="ai-context-tag"/)
-  assert.match(contextTagRule ?? '', /border-radius:\s*999px/)
+  assert.match(contextTagRule ?? '', /border-radius:\s*var\(--radius-full\)/)
   assert.match(contextTagRule ?? '', /text-overflow:\s*ellipsis/)
 })
 

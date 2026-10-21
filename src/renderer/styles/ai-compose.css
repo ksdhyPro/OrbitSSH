@@ -6,10 +6,10 @@
   gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated-2);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   overflow: hidden;
 }
 
@@ -37,7 +37,7 @@
   margin: 0 16px 14px;
   padding: 10px 12px;
   border: 1px solid var(--border-input);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   background: var(--bg-input);
   box-shadow: none;
   transition: border-color 140ms ease, box-shadow 140ms ease;
@@ -53,14 +53,14 @@
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-floating-strong);
   box-shadow: var(--shadow-popover);
 }
 
 .ai-approval-popover header strong {
   color: var(--text-heading);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-compose-actions {
@@ -77,10 +77,10 @@
   gap: 5px;
   height: 28px;
   padding: 0 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   transition: background-color 120ms ease, color 120ms ease;
 }
 
@@ -234,13 +234,13 @@
   min-height: 50px;
   resize: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   padding: 7px 8px;
   background: transparent;
   color: var(--text-primary);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-compose textarea:focus {
@@ -254,5 +254,5 @@
 
 .ai-error {
   color: var(--danger) !important;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }

@@ -1,0 +1,98 @@
+/* ===== 通用文字按钮 =====
+ * 结构：.btn + 变体（.btn-primary / .btn-secondary / .btn-ghost / .btn-danger / .btn-danger-soft）
+ *      + 可选尺寸（.btn-sm）。业务样式只调整宽度、间距等布局属性，不再重复定义颜色与尺寸。
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  height: var(--control-height-md);
+  min-width: 0;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    filter 140ms ease,
+    transform 100ms ease;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btn-sm {
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+/* 主操作：每个区域只保留一个。 */
+.btn-primary {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* 次级操作：带底色的中性按钮，用于表格行、工具条内的常规操作。 */
+.btn-secondary {
+  border-color: var(--border-input);
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--border-hover-strong);
+  background: var(--bg-hover-cool);
+}
+
+/* 弱操作：取消、关闭等不需要强调的动作。 */
+.btn-ghost {
+  border-color: var(--border-input);
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--border-hover-strong);
+  background: var(--accent-hover);
+  color: var(--text-primary);
+}
+
+/* 危险主操作：删除确认等不可逆动作。 */
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger-ink);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+/* 危险次级操作：列表行内的删除等。 */
+.btn-danger-soft {
+  border-color: var(--danger-border);
+  background: var(--danger-overlay);
+  color: var(--danger);
+}
+
+.btn-danger-soft:hover:not(:disabled) {
+  filter: brightness(1.12);
+}

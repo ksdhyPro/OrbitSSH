@@ -14,7 +14,7 @@
 .ai-config-form-tip {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .ai-config-form-tip.is-error {
@@ -25,8 +25,8 @@
   display: grid;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
 }
 
 .ai-config-number-input {
@@ -45,8 +45,8 @@
   justify-content: flex-end;
   gap: 10px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
 }
 
 /* AI 设置的启用态使用暖橙色，完全访问选项持续保留风险提示。 */
@@ -62,7 +62,7 @@
   height: 22px;
   appearance: none;
   border: 1px solid var(--border-input);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 0;
   background: var(--bg-elevated-3);
   box-shadow: none;
@@ -126,7 +126,7 @@
   resize: vertical;
   padding: 9px 11px;
   border: 1px solid var(--border-input);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   background: var(--bg-input);
   color: var(--text-primary);
@@ -152,13 +152,8 @@
 
 .ai-preset-prompt-actions span {
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-}
-
-.ai-preset-prompt-actions .settings-primary-button {
-  min-width: 72px;
-  padding: 0 18px;
 }
 
 .ai-settings-content .theme-mode-option.active:not(.is-full-access) {
@@ -203,7 +198,7 @@
 .mcp-install-tip {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
@@ -213,12 +208,12 @@
   resize: none;
   padding: 12px;
   border: 1px solid var(--border-input);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   outline: none;
   background: var(--bg-input);
   color: var(--text-primary);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
@@ -236,7 +231,7 @@
 
 .mcp-install-actions span {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .mcp-install-actions span.is-error {

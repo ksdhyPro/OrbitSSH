@@ -478,8 +478,8 @@ function confirmGroupDelete(): void {
 
 .panel-toggle h2 {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.02em;
 }
 
@@ -491,7 +491,7 @@ function confirmGroupDelete(): void {
 .server-item {
   position: relative;
   padding: 0 4px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
 }
 
 /* .server-item.active::before {
@@ -507,8 +507,8 @@ function confirmGroupDelete(): void {
 
 .server-item strong {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
   line-height: 1.35;
 }
 

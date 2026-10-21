@@ -1,4 +1,14 @@
-<script setup lang="ts">
+<script lang="ts">
+export interface AppSelectOption<T extends string = string> {
+  value: T;
+  label: string;
+  /** 选项右侧的辅助说明，例如单位或补充信息。 */
+  detail?: string;
+  disabled?: boolean;
+}
+</script>
+
+<script setup lang="ts" generic="T extends string">
 import {
   computed,
   nextTick,
@@ -10,21 +20,15 @@ import {
 } from "vue";
 import chevronDownIcon from "../../assets/icons/chevron-down.svg";
 
-export interface AppSelectOption {
-  value: string;
-  label: string;
-  disabled?: boolean;
-}
-
 const props = defineProps<{
-  options: AppSelectOption[];
+  options: AppSelectOption<T>[];
   placeholder?: string;
   title?: string;
   ariaLabel: string;
   disabled?: boolean;
 }>();
 
-const model = defineModel<string>({ required: true });
+const model = defineModel<T | "">({ required: true });
 const rootElement = ref<HTMLElement | null>(null);
 const triggerElement = ref<HTMLButtonElement | null>(null);
 const listboxElement = ref<HTMLElement | null>(null);
@@ -33,7 +37,7 @@ const activeIndex = ref(-1);
 const selectId = useId();
 const listboxId = `${selectId}-listbox`;
 
-const renderedOptions = computed<AppSelectOption[]>(() => {
+const renderedOptions = computed<AppSelectOption<T | "">[]>(() => {
   if (!props.placeholder) {
     return props.options;
   }
@@ -137,7 +141,7 @@ function moveToBoundary(position: "first" | "last"): void {
   scrollActiveOptionIntoView();
 }
 
-function selectOption(option: AppSelectOption): void {
+function selectOption(option: AppSelectOption<T | "">): void {
   if (option.disabled) {
     return;
   }
@@ -258,6 +262,9 @@ onBeforeUnmount(() => {
       <span :class="['app-select-value', { placeholder: isPlaceholder }]">
         {{ displayLabel }}
       </span>
+      <small v-if="selectedOption?.detail" class="app-select-detail">
+        {{ selectedOption.detail }}
+      </small>
       <img
         class="app-select-chevron"
         :class="{ rotated: isOpen }"
@@ -294,6 +301,9 @@ onBeforeUnmount(() => {
           @mousedown.prevent
           @click="selectOption(option)">
           <span>{{ option.label }}</span>
+          <small v-if="option.detail" class="app-select-detail">
+            {{ option.detail }}
+          </small>
           <span
             class="app-select-option-check"
             :class="{ visible: option.value === model }"

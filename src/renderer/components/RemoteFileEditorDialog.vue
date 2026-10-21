@@ -162,12 +162,12 @@ function searchPreviousByBackwardTab(event: KeyboardEvent): void {
           {{ isDirty ? "有未保存修改" : "已保存" }}
         </span>
         <div class="dialog-actions">
-          <button type="button" class="ghost-button" @click="emit('requestClose')">
+          <button type="button" class="btn btn-ghost" @click="emit('requestClose')">
             关闭
           </button>
           <button
             type="button"
-            class="primary-button"
+            class="btn btn-primary"
             :disabled="editor.loading || editor.saving || !isDirty"
             @click="emit('save')">
             {{ editor.saving ? "保存中..." : "保存" }}
@@ -185,18 +185,18 @@ function searchPreviousByBackwardTab(event: KeyboardEvent): void {
     @close="emit('updateCloseConfirmOpen', false)">
     <section class="confirm-dialog-content">
       <footer class="dialog-actions">
-        <button type="button" class="ghost-button" @click="emit('discard')">
+        <button type="button" class="btn btn-ghost" @click="emit('discard')">
           不保存
         </button>
         <button
           type="button"
-          class="ghost-button"
+          class="btn btn-ghost"
           @click="emit('updateCloseConfirmOpen', false)">
           取消
         </button>
         <button
           type="button"
-          class="primary-button"
+          class="btn btn-primary"
           :disabled="editor.saving"
           @click="emit('saveAndClose')">
           {{ editor.saving ? "保存中..." : "保存并关闭" }}

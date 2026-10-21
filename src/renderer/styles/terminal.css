@@ -8,7 +8,7 @@
   overflow: auto;
   border: 1px solid var(--border-input);
   padding: 5px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   background: var(--surface-floating-strong);
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-tasklist);
@@ -28,8 +28,8 @@
   justify-content: space-between;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-heading);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   background: var(--surface-floating-strong);
   backdrop-filter: blur(18px) saturate(140%);
 }
@@ -38,16 +38,16 @@
 .tasklist-item p,
 .tasklist-item small {
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .tasklist-empty {
   margin: 6px;
   padding: 24px 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--bg-elevated-3);
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   text-align: center;
 }
 
@@ -56,7 +56,7 @@
 }
 
 .tasklist-item {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease;
@@ -78,8 +78,8 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -90,11 +90,11 @@
   height: 18px;
   margin-right: 6px;
   padding: 0 6px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: var(--bg-badge);
   color: var(--text-badge);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
 }
 
 .tasklist-item p {
@@ -108,7 +108,7 @@
   height: 5px;
   margin-top: 8px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--bg-hover-item);
 }
 
@@ -153,9 +153,9 @@
   min-width: 24px;
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   background: none;
   cursor: pointer;
 }
@@ -227,7 +227,7 @@
 }
 
 .session-tabs::-webkit-scrollbar-thumb {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--border-strong);
 }
 
@@ -241,7 +241,7 @@
   height: 32px;
   padding: 0 8px 0 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-tab);
   color: var(--text-tab);
   transition:
@@ -305,11 +305,11 @@
   margin-left: 8px;
   padding: 0 6px;
   border: 1px solid rgba(231, 72, 86, 0.32);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: rgba(231, 72, 86, 0.1);
   color: #e74856;
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   line-height: 1;
 }
 
@@ -321,7 +321,7 @@
   height: 22px;
   padding: 0;
   line-height: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   opacity: 0;
   transition:
@@ -352,7 +352,7 @@
   flex: 0 0 auto;
   width: 22px;
   height: 22px;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   background: transparent;
   opacity: 0.72;
   transition:
@@ -386,7 +386,7 @@
   align-items: center;
   padding: 6px;
   border: 1px solid var(--border-float);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   background: var(--surface-floating);
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-popover);
@@ -419,7 +419,7 @@
   width: 100%;
   height: 30px;
   border: 1px solid var(--border-input);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
   background: var(--bg-input);
@@ -435,7 +435,7 @@
   min-width: 48px;
   color: var(--text-tertiary);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -445,7 +445,7 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: transparent;
   transition:
     background-color 100ms ease,
@@ -529,7 +529,7 @@
 
 .terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--border-strong);
   background-clip: padding-box;
 }
@@ -547,8 +547,8 @@
   align-items: center;
   gap: 7px;
   color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 100;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
   letter-spacing: 0.08em;
 }
 
@@ -561,8 +561,8 @@
 }
 
 .terminal-empty h2 {
-  font-size: 24px;
-  font-weight: 100;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-regular);
 }
 
 .terminal-empty p {
@@ -574,10 +574,10 @@
 .terminal-empty button {
   height: 38px;
   padding: 0 18px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--brand);
   color: var(--brand-ink);
-  font-weight: 100;
+  font-weight: var(--font-weight-regular);
   box-shadow:
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.14),
     0 1px 3px rgba(0, 0, 0, 0.18);

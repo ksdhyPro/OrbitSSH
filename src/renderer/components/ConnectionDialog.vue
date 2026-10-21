@@ -112,7 +112,7 @@ function setAuthType(authType: ServerAuthType): void {
               placeholder="请选择 SSH 密钥文件" />
             <button
               type="button"
-              class="ghost-button browse-button"
+              class="btn btn-ghost browse-button"
               @click="emit('selectPrivateKey')">
               浏览
             </button>
@@ -134,10 +134,10 @@ function setAuthType(authType: ServerAuthType): void {
       <p v-if="formError" class="form-error">{{ formError }}</p>
 
       <footer class="dialog-actions">
-        <button type="button" class="ghost-button" @click="emit('close')">
+        <button type="button" class="btn btn-ghost" @click="emit('close')">
           取消
         </button>
-        <button type="submit" class="primary-button" :disabled="isSubmittingServer">
+        <button type="submit" class="btn btn-primary" :disabled="isSubmittingServer">
           {{
             isSubmittingServer
               ? "保存中..."

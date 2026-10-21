@@ -38,6 +38,7 @@ const emit = defineEmits<{
           <button
             v-if="status !== 'downloading'"
             type="button"
+            class="btn btn-ghost"
             :disabled="status === 'checking'"
             @click="emit('check')">
             {{ status === 'checking' ? '检查中…' : '检查更新' }}
@@ -79,13 +80,14 @@ const emit = defineEmits<{
           <button
             v-if="status === 'update-available'"
             type="button"
+            class="btn btn-primary"
             @click="emit('download')">
             下载更新
           </button>
           <button
             v-if="status === 'downloaded'"
             type="button"
-            class="update-install-btn"
+            class="btn btn-primary"
             @click="emit('install')">
             安装并重启
           </button>

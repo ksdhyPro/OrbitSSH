@@ -588,13 +588,13 @@ watch(
           <footer class="dialog-actions">
             <button
               type="button"
-              class="ghost-button"
+              class="btn btn-ghost"
               @click="terminalsStore.cancelTerminalPaste">
               取消
             </button>
             <button
               type="button"
-              class="primary-button"
+              class="btn btn-primary"
               @click="terminalsStore.confirmTerminalPaste">
               确认粘贴（{{ terminalsStore.pendingTerminalPaste.lineCount }} 行）
             </button>

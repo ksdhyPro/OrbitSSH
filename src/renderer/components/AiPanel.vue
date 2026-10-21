@@ -903,12 +903,13 @@ onBeforeUnmount(() => {
           <div class="ai-command-actions">
             <button
               type="button"
+              class="btn btn-primary btn-sm"
               @click="emit('runApproved', pendingApprovalCard)">
               批准执行
             </button>
             <button
               type="button"
-              class="secondary"
+              class="btn btn-secondary btn-sm"
               @click="emit('rejectApproval', pendingApprovalCard)">
               拒绝
             </button>

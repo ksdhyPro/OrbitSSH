@@ -141,7 +141,7 @@ function onKeydown(event: KeyboardEvent): void {
   height: 34px;
   min-width: 0;
   border: 1px solid var(--border-input);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0 10px;
   outline: none;
   background: var(--bg-input);
