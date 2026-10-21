@@ -70,6 +70,7 @@ const emit = defineEmits<{
   runApproved: [card: AiCommandCard];
   rejectApproval: [card: AiCommandCard];
   selectModel: [configId: string];
+  openSsh: [];
 }>();
 
 const modeOptions: Array<{ value: AiMode; label: string; icon: string }> = [
@@ -664,6 +665,15 @@ onBeforeUnmount(() => {
           </span>
         </div>
         <div class="ai-panel-header-actions">
+          <button
+            v-if="isWorkspace"
+            type="button"
+            class="ai-new-conversation-btn"
+            title="在弹窗中查看当前标签的终端"
+            :disabled="!context.tabId"
+            @click="emit('openSsh')">
+            打开 SSH
+          </button>
           <button
             type="button"
             :class="[

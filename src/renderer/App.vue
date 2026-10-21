@@ -516,6 +516,7 @@ const {
   openServerTerminal: openTerminalFromStore,
   openLocalTerminal,
   activateTerminalTab,
+  openTerminalDialog,
   closeTerminalTab: closeTerminalTabFromStore,
 } = terminalsStore;
 
@@ -1153,7 +1154,8 @@ onUnmounted(() => {
           @delete-conversation="deleteAiConversation($event)"
           @run-approved="runAiApprovedCommand"
           @reject-approval="rejectAiApproval"
-          @select-model="updateAiSetting('activeConfigId', $event)" />
+          @select-model="updateAiSetting('activeConfigId', $event)"
+          @open-ssh="openTerminalDialog(activeTabId)" />
       </TerminalPanel>
     </div>
 

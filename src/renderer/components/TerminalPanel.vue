@@ -139,9 +139,6 @@ const tabContextMenuItems = computed<ContextMenuItem[]>(() => {
   const targetIndex = props.tabs.findIndex(tab => tab.id === tabContextMenu.targetTabId);
 
   return [
-    ...(props.aiWorkspace
-      ? [{ key: "open-ssh", label: "打开 SSH" }]
-      : []),
     {
       key: "close-all",
       label: "关闭全部",
@@ -301,11 +298,6 @@ function selectTabContextMenuItem(item: ContextMenuItem): void {
   const targetTabId = tabContextMenu.targetTabId;
   const targetIndex = props.tabs.findIndex(tab => tab.id === targetTabId);
   closeTabContextMenu();
-
-  if (item.key === "open-ssh" && targetTabId) {
-    void terminalsStore.openTerminalDialog(targetTabId);
-    return;
-  }
 
   if (item.key === "close-all") {
     emit("closeTabs", props.tabs.map(tab => tab.id));

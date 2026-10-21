@@ -616,7 +616,7 @@ function removeAiConfig(configId: string): void {
           <div class="settings-field">
             <div>
               <h3>工作模式</h3>
-              <p>普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过标签右键「打开 SSH」查看终端。</p>
+              <p>普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过 AI 助手标题栏的「打开 SSH」查看终端。</p>
             </div>
             <!-- 工作模式直接映射 ai.enabled：普通模式关闭 AI，AI 模式开启 AI 并切换为对话主视图。 -->
             <div class="theme-mode-control" aria-label="工作模式">
