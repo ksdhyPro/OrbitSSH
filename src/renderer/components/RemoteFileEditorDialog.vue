@@ -58,7 +58,8 @@ function bindSearchBar(instance: unknown): void {
     :title="title"
     :description="editor.path"
     width="editor"
-    @close="emit('requestClose')">
+    @close="emit('requestClose')"
+  >
     <section class="file-editor-shell">
       <div v-if="isSearchOpen" class="file-editor-toolbar">
         <SearchBar
@@ -78,12 +79,11 @@ function bindSearchBar(instance: unknown): void {
           @toggle-case-sensitive="emit('toggleCaseSensitive')"
           @replace-current="emit('replaceCurrent')"
           @replace-all="emit('replaceAll')"
-          @close="emit('closeSearch')" />
+          @close="emit('closeSearch')"
+        />
       </div>
 
-      <div v-if="editor.loading" class="file-editor-loading">
-        正在读取文件...
-      </div>
+      <div v-if="editor.loading" class="file-editor-loading">正在读取文件...</div>
       <div v-else :ref="setEditorContainer" class="file-editor-body"></div>
 
       <p v-if="error" class="form-error">{{ error }}</p>
@@ -93,14 +93,13 @@ function bindSearchBar(instance: unknown): void {
           {{ isDirty ? "有未保存修改" : "已保存" }}
         </span>
         <div class="dialog-actions">
-          <button type="button" class="btn btn-ghost" @click="emit('requestClose')">
-            关闭
-          </button>
+          <button type="button" class="btn btn-ghost" @click="emit('requestClose')">关闭</button>
           <button
             type="button"
             class="btn btn-primary"
             :disabled="editor.loading || editor.saving || !isDirty"
-            @click="emit('save')">
+            @click="emit('save')"
+          >
             {{ editor.saving ? "保存中..." : "保存" }}
           </button>
         </div>
@@ -113,23 +112,20 @@ function bindSearchBar(instance: unknown): void {
     title="保存修改？"
     description="当前文件有未保存修改，关闭前请选择如何处理。"
     width="medium"
-    @close="emit('updateCloseConfirmOpen', false)">
+    @close="emit('updateCloseConfirmOpen', false)"
+  >
     <section class="confirm-dialog-content">
       <footer class="dialog-actions">
-        <button type="button" class="btn btn-ghost" @click="emit('discard')">
-          不保存
-        </button>
-        <button
-          type="button"
-          class="btn btn-ghost"
-          @click="emit('updateCloseConfirmOpen', false)">
+        <button type="button" class="btn btn-ghost" @click="emit('discard')">不保存</button>
+        <button type="button" class="btn btn-ghost" @click="emit('updateCloseConfirmOpen', false)">
           取消
         </button>
         <button
           type="button"
           class="btn btn-primary"
           :disabled="editor.saving"
-          @click="emit('saveAndClose')">
+          @click="emit('saveAndClose')"
+        >
           {{ editor.saving ? "保存中..." : "保存并关闭" }}
         </button>
       </footer>

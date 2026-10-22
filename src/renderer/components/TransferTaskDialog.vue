@@ -48,9 +48,7 @@ const nodesByTask = computed(() => {
 });
 
 function childrenOf(taskId: string, parentId?: string): SftpManagedTaskNode[] {
-  return (nodesByTask.value.get(taskId) ?? []).filter(
-    (node) => node.parentId === parentId,
-  );
+  return (nodesByTask.value.get(taskId) ?? []).filter(node => node.parentId === parentId);
 }
 
 function appendRows(
@@ -103,16 +101,13 @@ function statusText(status: SftpManagedTaskStatus): string {
   return "等待中";
 }
 
-function progressPercent(item: {
-  transferredBytes: number;
-  totalBytes: number;
-}): number {
+function progressPercent(item: { transferredBytes: number; totalBytes: number }): number {
   if (item.totalBytes <= 0) return 0;
   return Math.min(100, Math.max(0, (item.transferredBytes / item.totalBytes) * 100));
 }
 
 function selectRow(event: MouseEvent, batch: SftpManagedTaskBatch, nodeId: string): void {
-  const rowIds = visibleRows(batch).map((row) => row.node.id);
+  const rowIds = visibleRows(batch).map(row => row.node.id);
   const next = new Set(event.ctrlKey || event.metaKey ? selectedIds.value : []);
 
   if (event.shiftKey && lastSelectedId.value) {
@@ -139,12 +134,12 @@ function sendAction(
   nodeId?: string,
 ): void {
   const selectedInBatch = props.nodes
-    .filter((node) => node.taskId === batch.taskId && selectedIds.value.has(node.id))
-    .map((node) => node.id);
-  const nodeIds = nodeId && selectedIds.value.has(nodeId) ? selectedInBatch : nodeId ? [nodeId] : undefined;
+    .filter(node => node.taskId === batch.taskId && selectedIds.value.has(node.id))
+    .map(node => node.id);
+  const nodeIds =
+    nodeId && selectedIds.value.has(nodeId) ? selectedInBatch : nodeId ? [nodeId] : undefined;
   emit("control", { taskId: batch.taskId, nodeIds, action });
 }
-
 </script>
 
 <template>
@@ -161,34 +156,92 @@ function sendAction(
             :title="row.node.relativePath"
             @click="selectRow($event, batch, row.node.id)"
           >
-            <button v-if="row.node.type === 'directory' && row.node.childCount" class="transfer-tree-toggle" type="button" @click.stop="toggleExpanded(row.node.id)">
-              <img :src="expandedIds.has(row.node.id) ? chevronDownIcon : chevronRightIcon" alt="" />
+            <button
+              v-if="row.node.type === 'directory' && row.node.childCount"
+              class="transfer-tree-toggle"
+              type="button"
+              @click.stop="toggleExpanded(row.node.id)"
+            >
+              <img
+                :src="expandedIds.has(row.node.id) ? chevronDownIcon : chevronRightIcon"
+                alt=""
+              />
             </button>
             <span v-else class="transfer-tree-spacer"></span>
             <span class="transfer-task-name">
               {{ row.node.name }}
               <button
-                v-if="row.node.type === 'directory' && expandedIds.has(row.node.id) && hasMore(batch.taskId, row.node.id)"
+                v-if="
+                  row.node.type === 'directory' &&
+                  expandedIds.has(row.node.id) &&
+                  hasMore(batch.taskId, row.node.id)
+                "
                 class="transfer-inline-more"
                 type="button"
                 @click.stop="showMore(batch.taskId, row.node.id)"
-              >再显示 300 项</button>
+              >
+                再显示 300 项
+              </button>
             </span>
             <span>{{ formatFileSize(row.node.totalBytes) }}</span>
-            <span class="transfer-inline-progress" :title="`${Math.round(progressPercent(row.node))}%`">
+            <span
+              class="transfer-inline-progress"
+              :title="`${Math.round(progressPercent(row.node))}%`"
+            >
               <span><i :style="{ width: `${progressPercent(row.node)}%` }"></i></span>
               <small>{{ Math.round(progressPercent(row.node)) }}%</small>
             </span>
             <span>{{ formatTransferSpeed(row.node.speedBytesPerSecond) }}</span>
-            <span :class="{ 'is-failed': row.node.status === 'failed' }" :title="row.node.error">{{ statusText(row.node.status) }}</span>
+            <span :class="{ 'is-failed': row.node.status === 'failed' }" :title="row.node.error">{{
+              statusText(row.node.status)
+            }}</span>
             <div class="transfer-task-actions">
-              <button v-if="row.node.status === 'paused'" type="button" title="继续" :disabled="isOperating(batch.taskId, row.node.id)" @click.stop="sendAction(batch, 'resume', row.node.id)"><img :src="continueIcon" alt="继续" /></button>
-              <button v-else-if="row.node.status !== 'failed'" type="button" title="暂停" :disabled="isOperating(batch.taskId, row.node.id)" @click.stop="sendAction(batch, 'pause', row.node.id)"><img :src="pauseIcon" alt="暂停" /></button>
-              <button v-if="row.node.status === 'failed'" type="button" title="重试" :disabled="isOperating(batch.taskId, row.node.id)" @click.stop="sendAction(batch, 'retry', row.node.id)"><img :src="refreshIcon" alt="重试" /></button>
-              <button class="danger" type="button" title="删除" :disabled="isOperating(batch.taskId, row.node.id)" @click.stop="sendAction(batch, 'delete', row.node.id)"><img :src="trashIcon" alt="删除" /></button>
+              <button
+                v-if="row.node.status === 'paused'"
+                type="button"
+                title="继续"
+                :disabled="isOperating(batch.taskId, row.node.id)"
+                @click.stop="sendAction(batch, 'resume', row.node.id)"
+              >
+                <img :src="continueIcon" alt="继续" />
+              </button>
+              <button
+                v-else-if="row.node.status !== 'failed'"
+                type="button"
+                title="暂停"
+                :disabled="isOperating(batch.taskId, row.node.id)"
+                @click.stop="sendAction(batch, 'pause', row.node.id)"
+              >
+                <img :src="pauseIcon" alt="暂停" />
+              </button>
+              <button
+                v-if="row.node.status === 'failed'"
+                type="button"
+                title="重试"
+                :disabled="isOperating(batch.taskId, row.node.id)"
+                @click.stop="sendAction(batch, 'retry', row.node.id)"
+              >
+                <img :src="refreshIcon" alt="重试" />
+              </button>
+              <button
+                class="danger"
+                type="button"
+                title="删除"
+                :disabled="isOperating(batch.taskId, row.node.id)"
+                @click.stop="sendAction(batch, 'delete', row.node.id)"
+              >
+                <img :src="trashIcon" alt="删除" />
+              </button>
             </div>
           </div>
-          <button v-if="hasMore(batch.taskId)" class="transfer-show-more" type="button" @click="showMore(batch.taskId)">再显示 300 项</button>
+          <button
+            v-if="hasMore(batch.taskId)"
+            class="transfer-show-more"
+            type="button"
+            @click="showMore(batch.taskId)"
+          >
+            再显示 300 项
+          </button>
         </div>
       </section>
     </div>

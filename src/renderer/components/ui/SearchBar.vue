@@ -71,7 +71,8 @@ defineExpose({ focus, searchInput, replaceInput });
       @input="updateKeyword"
       @keydown.enter.prevent="emit('search', $event.shiftKey ? 'previous' : 'next')"
       @keydown.tab="searchPreviousByBackwardTab"
-      @keydown.esc.prevent="emit('close')" />
+      @keydown.esc.prevent="emit('close')"
+    />
     <input
       v-if="replaceable"
       ref="replaceInput"
@@ -81,7 +82,8 @@ defineExpose({ focus, searchInput, replaceInput });
       @input="emit('update:replaceText', ($event.target as HTMLInputElement).value)"
       @keydown.enter.prevent="emit('replaceCurrent')"
       @keydown.tab="searchPreviousByBackwardTab"
-      @keydown.esc.prevent="emit('close')" />
+      @keydown.esc.prevent="emit('close')"
+    />
     <span class="search-bar-count">{{ index }}/{{ total }}</span>
     <button
       type="button"
@@ -89,7 +91,8 @@ defineExpose({ focus, searchInput, replaceInput });
       aria-label="区分大小写"
       title="区分大小写"
       :aria-pressed="caseSensitive"
-      @click="emit('toggleCaseSensitive')">
+      @click="emit('toggleCaseSensitive')"
+    >
       <img :src="caseSensitiveIcon" alt="" />
     </button>
     <button
@@ -97,7 +100,8 @@ defineExpose({ focus, searchInput, replaceInput });
       class="icon-btn icon-btn-md"
       aria-label="上一个"
       title="上一个"
-      @click="emit('search', 'previous')">
+      @click="emit('search', 'previous')"
+    >
       <img :src="arrowUpIcon" alt="" />
     </button>
     <button
@@ -105,7 +109,8 @@ defineExpose({ focus, searchInput, replaceInput });
       class="icon-btn icon-btn-md"
       aria-label="下一个"
       title="下一个"
-      @click="emit('search', 'next')">
+      @click="emit('search', 'next')"
+    >
       <img :src="arrowDownIcon" alt="" />
     </button>
     <template v-if="replaceable">
@@ -113,14 +118,16 @@ defineExpose({ focus, searchInput, replaceInput });
         type="button"
         class="btn btn-secondary btn-sm"
         :disabled="!keyword || total === 0"
-        @click="emit('replaceCurrent')">
+        @click="emit('replaceCurrent')"
+      >
         替换
       </button>
       <button
         type="button"
         class="btn btn-secondary btn-sm"
         :disabled="!keyword || total === 0"
-        @click="emit('replaceAll')">
+        @click="emit('replaceAll')"
+      >
         全部
       </button>
     </template>
@@ -129,7 +136,8 @@ defineExpose({ focus, searchInput, replaceInput });
       class="icon-btn icon-btn-md"
       aria-label="关闭搜索"
       title="关闭搜索"
-      @click="emit('close')">
+      @click="emit('close')"
+    >
       <img :src="closeIcon" alt="" />
     </button>
   </div>

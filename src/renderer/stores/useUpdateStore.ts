@@ -42,7 +42,7 @@ export const useUpdateStore = defineStore("update", () => {
     }
 
     // 注册状态变化监听
-    unsubscribe = core.orbitSSHApi?.update.onStatusChanged((info) => {
+    unsubscribe = core.orbitSSHApi?.update.onStatusChanged(info => {
       applyStatusInfo(info);
     });
   }

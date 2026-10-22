@@ -34,9 +34,7 @@ const props = defineProps<{
 const terminalsStore = useTerminalsStore();
 
 // 当前激活 Tab 的连接状态
-const activeTab = computed(() =>
-  terminalsStore.tabs.find(tab => tab.id === props.activeTabId),
-);
+const activeTab = computed(() => terminalsStore.tabs.find(tab => tab.id === props.activeTabId));
 
 const isDisconnected = computed(() => {
   if (!activeTab.value) return false;
@@ -60,7 +58,7 @@ const currentStats = computed<StatsEntry | null>(() => {
 
 const currentHistory = computed<StatsHistory | null>(() => {
   const tabId = props.activeTabId;
-  return tabId ? statsHistory[tabId] ?? null : null;
+  return tabId ? (statsHistory[tabId] ?? null) : null;
 });
 
 function calculateDiskUsage(diskFree: number, diskTotal: number): number {
@@ -96,14 +94,8 @@ function sparklineToneClass(pct: number): string {
   return "sparkline-danger";
 }
 
-function appendHistory(
-  tabId: string,
-  key: StatsHistoryKey,
-  value: number,
-): void {
-  const history =
-    statsHistory[tabId] ??
-    (statsHistory[tabId] = { cpu: [], memory: [], disk: [] });
+function appendHistory(tabId: string, key: StatsHistoryKey, value: number): void {
+  const history = statsHistory[tabId] ?? (statsHistory[tabId] = { cpu: [], memory: [], disk: [] });
   const values = history[key];
 
   values.push(Math.min(100, Math.max(0, value)));
@@ -123,8 +115,7 @@ function sparklinePoints(values: number[] | undefined): string {
   const visibleRange = Math.max(maximum - minimum, MIN_SPARKLINE_RANGE);
   const upperBound = midpoint + visibleRange / 2;
   const toY = (value: number): number =>
-    SPARKLINE_PADDING +
-    ((upperBound - value) / visibleRange) * drawableHeight;
+    SPARKLINE_PADDING + ((upperBound - value) / visibleRange) * drawableHeight;
 
   // 首次或稳定采样显示在中线，避免高占用率让折线长期贴住顶部。
   if (values.length === 1) {
@@ -174,11 +165,7 @@ async function fetchDisk(): Promise<void> {
   try {
     const result = await window.orbitSSH?.system.getStats(tabId);
     if (result && props.activeTabId === tabId) {
-      appendHistory(
-        tabId,
-        "disk",
-        calculateDiskUsage(result.diskFree, result.diskTotal),
-      );
+      appendHistory(tabId, "disk", calculateDiskUsage(result.diskFree, result.diskTotal));
       statsCache[tabId] = {
         cpuUsage: statsCache[tabId]?.cpuUsage ?? result.cpuUsage,
         memoryUsage: statsCache[tabId]?.memoryUsage ?? result.memoryUsage,
@@ -313,8 +300,7 @@ onUnmounted(() => {
         <span class="status-bar-label">内存</span>
         <span class="status-bar-value">
           <template v-if="currentStats">
-            <span
-              :class="['status-dot', dotClass(currentStats.memoryUsage)]"></span>
+            <span :class="['status-dot', dotClass(currentStats.memoryUsage)]"></span>
             {{ currentStats.memoryUsage }}%
             <!-- 暂时隐藏迷你折线，保留实现便于后续直接恢复。 -->
             <!--

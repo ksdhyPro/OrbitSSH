@@ -17,20 +17,13 @@ import type { AiConversationContextManager } from "./ai-context-budget.js";
 function mergeMessages(previous: AiMessage[], next: AiMessage[]): AiMessage[] {
   const byId = new Map(previous.map(message => [message.id, message]));
   next.forEach(message => byId.set(message.id, message));
-  return Array.from(byId.values()).sort(
-    (left, right) => left.createdAt - right.createdAt,
-  );
+  return Array.from(byId.values()).sort((left, right) => left.createdAt - right.createdAt);
 }
 
-function mergeCards(
-  previous: AiCommandCard[],
-  next: AiCommandCard[],
-): AiCommandCard[] {
+function mergeCards(previous: AiCommandCard[], next: AiCommandCard[]): AiCommandCard[] {
   const byId = new Map(previous.map(card => [card.id, card]));
   next.forEach(card => byId.set(card.id, card));
-  return Array.from(byId.values()).sort(
-    (left, right) => left.createdAt - right.createdAt,
-  );
+  return Array.from(byId.values()).sort((left, right) => left.createdAt - right.createdAt);
 }
 
 function createRecord(input: AiChatInput): AiConversationRecord {
@@ -46,10 +39,7 @@ function createRecord(input: AiChatInput): AiConversationRecord {
 }
 
 function getRecord(input: AiChatInput): AiConversationRecord {
-  return getConversationRecord(
-    input.context.serverId,
-    input.conversationId,
-  ) ?? createRecord(input);
+  return getConversationRecord(input.context.serverId, input.conversationId) ?? createRecord(input);
 }
 
 function safelyUpdateConversationState(
@@ -98,10 +88,7 @@ export function beginPersistedAiTurn(input: AiChatInput): void {
 }
 
 /** 主进程合并 Agent 返回内容并落盘，Renderer 只消费结果。 */
-export function completePersistedAiTurn(
-  input: AiChatInput,
-  result: AiChatResult,
-): void {
+export function completePersistedAiTurn(input: AiChatInput, result: AiChatResult): void {
   safelyUpdateConversationState(input, "结果写入", () => {
     const record = getRecord(input);
     saveConversation({
@@ -117,10 +104,7 @@ export function completePersistedAiTurn(
   });
 }
 
-export function updatePersistedAiCommandCard(
-  input: AiChatInput,
-  card: AiCommandCard,
-): void {
+export function updatePersistedAiCommandCard(input: AiChatInput, card: AiCommandCard): void {
   safelyUpdateConversationState(input, "命令卡写入", () => {
     const record = getRecord(input);
     saveConversation({
@@ -142,10 +126,7 @@ export function restoreAiConversationContext(
   safelyUpdateConversationState(input, "上下文恢复", () => {
     contexts.restore(
       input,
-      getConversationRuntimeContext(
-        input.context.serverId,
-        input.conversationId,
-      ),
+      getConversationRuntimeContext(input.context.serverId, input.conversationId),
     );
   });
 }

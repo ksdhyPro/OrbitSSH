@@ -53,7 +53,10 @@ test("模型不可用时明确告知原因", () => {
 
 test("未配置模型时不再伪造回复或建议命令", async () => {
   // ai-provider 依赖 SSH 会话，无法在纯 Node 环境加载，这里确认它不再包含本地兜底命令。
-  const source = await readFile(new URL("../../src/main/ai/ai-provider.ts", import.meta.url), "utf8");
+  const source = await readFile(
+    new URL("../../src/main/ai/ai-provider.ts", import.meta.url),
+    "utf8",
+  );
   assert.doesNotMatch(source, /createLocalFallback/);
   assert.doesNotMatch(source, /command: "df -h"|systemctl status nginx/);
   assert.match(source, /return \{ reply: getAiUnavailableMessage\(settings\), commands: \[\] \}/);

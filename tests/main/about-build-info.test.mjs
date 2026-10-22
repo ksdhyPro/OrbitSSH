@@ -24,16 +24,14 @@ test("构建阶段生成可供正式包读取的提交元数据", async () => {
     });
 
     const buildInfo = JSON.parse(await readFile(outputPath, "utf8"));
-    const expectedCommit = execFileSync(
-      "git",
-      ["rev-parse", "--short", "HEAD"],
-      { cwd: projectRoot, encoding: "utf8" },
-    ).trim();
-    const expectedCommitDate = execFileSync(
-      "git",
-      ["log", "-1", "--format=%cs"],
-      { cwd: projectRoot, encoding: "utf8" },
-    ).trim();
+    const expectedCommit = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }).trim();
+    const expectedCommitDate = execFileSync("git", ["log", "-1", "--format=%cs"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }).trim();
 
     assert.equal(buildInfo.commit, expectedCommit);
     assert.equal(buildInfo.commitDate, expectedCommitDate);

@@ -15,11 +15,13 @@ test("Chat 消息和工具可转换为 Responses API 格式", () => {
     {
       role: "assistant",
       content: "检查磁盘",
-      tool_calls: [{
-        id: "call-1",
-        type: "function",
-        function: { name: "run_shell_command", arguments: '{"command":"df -h"}' },
-      }],
+      tool_calls: [
+        {
+          id: "call-1",
+          type: "function",
+          function: { name: "run_shell_command", arguments: '{"command":"df -h"}' },
+        },
+      ],
     },
     { role: "tool", tool_call_id: "call-1", content: "磁盘正常" },
   ]);
@@ -35,21 +37,28 @@ test("Chat 消息和工具可转换为 Responses API 格式", () => {
     { type: "function_call_output", call_id: "call-1", output: "磁盘正常" },
   ]);
 
-  assert.deepEqual(buildResponsesTools([{
-    type: "function",
-    function: {
-      name: "run_shell_command",
-      description: "执行命令",
-      parameters: { type: "object" },
-      strict: true,
-    },
-  }]), [{
-    type: "function",
-    name: "run_shell_command",
-    description: "执行命令",
-    parameters: { type: "object" },
-    strict: true,
-  }]);
+  assert.deepEqual(
+    buildResponsesTools([
+      {
+        type: "function",
+        function: {
+          name: "run_shell_command",
+          description: "执行命令",
+          parameters: { type: "object" },
+          strict: true,
+        },
+      },
+    ]),
+    [
+      {
+        type: "function",
+        name: "run_shell_command",
+        description: "执行命令",
+        parameters: { type: "object" },
+        strict: true,
+      },
+    ],
+  );
 });
 
 test("Responses 非流式结果可解析文本、工具调用和 usage", () => {
@@ -121,19 +130,31 @@ test("Responses 流式事件同样逐步预览 finish_response 答复", async ()
   const args = JSON.stringify({ message });
   const encoder = new TextEncoder();
   const events = [
-    { type: "response.output_item.added", output_index: 0, item: { type: "function_call", call_id: "call-1", name: "finish_response", arguments: "" } },
-    ...args.match(/[\s\S]{1,4}/g).map(delta => ({ type: "response.function_call_arguments.delta", output_index: 0, delta })),
-    { type: "response.completed", response: { usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } },
+    {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { type: "function_call", call_id: "call-1", name: "finish_response", arguments: "" },
+    },
+    ...args
+      .match(/[\s\S]{1,4}/g)
+      .map(delta => ({ type: "response.function_call_arguments.delta", output_index: 0, delta })),
+    {
+      type: "response.completed",
+      response: { usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
+    },
   ];
   const body = new ReadableStream({
     start(controller) {
-      for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      for (const event of events)
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       controller.close();
     },
   });
   const previews = [];
 
-  await collectResponsesSseStream(body, undefined, { onFinishPreview: text => previews.push(text) });
+  await collectResponsesSseStream(body, undefined, {
+    onFinishPreview: text => previews.push(text),
+  });
 
   assert.ok(previews.length > 2);
   assert.equal(previews.at(-1), message);

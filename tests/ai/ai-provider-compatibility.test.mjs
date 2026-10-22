@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  requestAiJsonWithCompatibilityFallback,
-} from "../../dist-electron/main/ai/ai-provider-compatibility.js";
+import { requestAiJsonWithCompatibilityFallback } from "../../dist-electron/main/ai/ai-provider-compatibility.js";
 
 function createJsonResponse(status, body = {}) {
   return new Response(JSON.stringify(body), {

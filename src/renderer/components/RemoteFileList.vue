@@ -122,7 +122,7 @@ onUnmounted(() => {
 
 watch(
   () => props.renamingPath,
-  (path) => {
+  path => {
     if (path) {
       void focusRenameInput();
     }
@@ -136,9 +136,7 @@ function isDeleting(node: RemoteFileListNode): boolean {
 
 function canDrag(node: RemoteFileListNode): boolean {
   return Boolean(
-    !node.isVirtualParent &&
-      node.path !== props.nonDraggablePath &&
-      !isDeleting(node),
+    !node.isVirtualParent && node.path !== props.nonDraggablePath && !isDeleting(node),
   );
 }
 
@@ -163,8 +161,7 @@ function getMarqueeSelectionRect(): DOMRect {
 
   const rootRect = root.getBoundingClientRect();
   // 选区起点随列表滚动回推到当前视口，保证滚出视口的文件仍属于选区。
-  const startClientX =
-    rootRect.left + marquee.startContentX - root.scrollLeft;
+  const startClientX = rootRect.left + marquee.startContentX - root.scrollLeft;
   const startClientY = rootRect.top + marquee.startContentY - root.scrollTop;
   const left = Math.min(startClientX, marquee.currentClientX);
   const top = Math.min(startClientY, marquee.currentClientY);
@@ -188,12 +185,12 @@ function getMarqueeSelectedPaths(): string[] {
   const selectionRect = getMarqueeSelectionRect();
   const selectableByPath = new Map(
     props.nodes
-      .filter((node) => !node.isVirtualParent && !isDeleting(node))
-      .map((node) => [node.path, node]),
+      .filter(node => !node.isVirtualParent && !isDeleting(node))
+      .map(node => [node.path, node]),
   );
   const paths: string[] = [];
 
-  root.querySelectorAll<HTMLElement>(".remote-file-row").forEach((element) => {
+  root.querySelectorAll<HTMLElement>(".remote-file-row").forEach(element => {
     const path = element.dataset.path;
 
     if (!path || !selectableByPath.has(path)) {
@@ -274,10 +271,7 @@ function continueMarqueeAutoScroll(): void {
 
   const previousScrollTop = root.scrollTop;
   // 框选矩形可能超出内容边界，不能让它增加可滚动范围。
-  root.scrollTop = Math.min(
-    marquee.maxScrollTop,
-    Math.max(0, previousScrollTop + delta),
-  );
+  root.scrollTop = Math.min(marquee.maxScrollTop, Math.max(0, previousScrollTop + delta));
 
   if (root.scrollTop === previousScrollTop) {
     return;
@@ -382,7 +376,8 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
     v-if="nodes.length === 0"
     class="empty-state remote-file-empty"
     @click="emit('clearSelection')"
-    @contextmenu="emit('openBlankContextMenu', $event)">
+    @contextmenu="emit('openBlankContextMenu', $event)"
+  >
     {{ emptyText }}
   </div>
   <ul
@@ -395,9 +390,10 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
     @pointerdown="handleListPointerDown"
     @keydown="
       ($event.ctrlKey || $event.metaKey) &&
-        $event.key.toLowerCase() === 'a' &&
-        ($event.preventDefault(), emit('selectAll'))
-    ">
+      $event.key.toLowerCase() === 'a' &&
+      ($event.preventDefault(), emit('selectAll'))
+    "
+  >
     <li
       v-for="node in nodes"
       :key="node.path"
@@ -425,11 +421,13 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
       @dragover="emit('dragOverNode', $event, node)"
       @dragleave="emit('dragLeaveNode', $event, node)"
       @drop="emit('dropNode', $event, node)"
-      @dragend="emit('dragEndNode')">
+      @dragend="emit('dragEndNode')"
+    >
       <img
         class="remote-file-icon"
         :src="node.type === 'directory' ? folderIcon : fileIcon"
-        alt="" />
+        alt=""
+      />
       <input
         v-if="renamingPath === node.path"
         :ref="setRenameInputElement"
@@ -440,14 +438,13 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
         aria-label="重命名"
         @click.stop
         @dblclick.stop
-        @input="
-          emit('updateRenameValue', ($event.target as HTMLInputElement).value)
-        "
+        @input="emit('updateRenameValue', ($event.target as HTMLInputElement).value)"
         @keydown.enter.prevent="emit('commitRename')"
         @keydown.esc.prevent="emit('cancelRename')"
         @keydown="handleRenameInputKeydown"
         @blur="emit('commitRename')"
-        @contextmenu.prevent.stop />
+        @contextmenu.prevent.stop
+      />
       <span v-else class="remote-file-name">{{ node.name }}</span>
       <small v-if="isDeleting(node)">删除中...</small>
       <small v-else-if="node.type === 'file'">
@@ -467,7 +464,8 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
         top: `${marquee.viewportTop}px`,
         width: `${marquee.viewportWidth}px`,
         height: `${marquee.viewportHeight}px`,
-      }">
+      }"
+    >
       <div
         class="remote-file-marquee"
         :style="{
@@ -475,7 +473,8 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
           top: `${marquee.top}px`,
           width: `${marquee.width}px`,
           height: `${marquee.height}px`,
-        }"></div>
+        }"
+      ></div>
     </div>
   </Teleport>
 </template>

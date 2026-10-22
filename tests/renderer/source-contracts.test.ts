@@ -23,15 +23,19 @@ describe("App 布局与工作模式", () => {
     expect(source).toMatch(/<AiPanel\s+layout="workspace"/);
     expect(source).not.toMatch(/startAiPanelResize/);
     expect(source).toMatch(/:context-usage="aiContextUsage"/);
-    expect(terminalPanel()).toMatch(/<div v-if="aiWorkspace" class="ai-workspace-main">\s*<slot \/>/);
+    expect(terminalPanel()).toMatch(
+      /<div v-if="aiWorkspace" class="ai-workspace-main">\s*<slot \/>/,
+    );
   });
 
-  it("AI 助手标题栏提供打开 SSH，并复用 AppDialog 承载终端区域", () => {
+  it("AI 助手标题栏的打开 SSH 复用 AppDialog 承载终端区域", () => {
+    // 打开 SSH 按钮本身的行为由 ai-panel-approval.test.ts 挂载组件验证。
     const aiPanel = readSource("src/renderer/components/AiPanel.vue");
     expect(aiPanel).toMatch(/class="ai-context-tag"/);
-    expect(aiPanel).toMatch(/v-if="isWorkspace"[\s\S]{0,200}@click="emit\('openSsh'\)">\s*打开 SSH/);
     expect(app()).toMatch(/@open-ssh="openTerminalDialog\(activeTabId\)"/);
-    expect(terminalPanel()).toMatch(/<AppDialog\s+v-if="isTerminalDialogVisible"[\s\S]*?width="terminal"/);
+    expect(terminalPanel()).toMatch(
+      /<AppDialog\s+v-if="isTerminalDialogVisible"[\s\S]*?width="terminal"/,
+    );
     // 终端区域整体在原位与弹窗之间移动，不重新创建 xterm 实例。
     expect(terminalPanel()).toMatch(/nextParent\.appendChild\(stage\)/);
     expect(readSource("src/renderer/stores/useTerminalsStore.ts")).toMatch(
@@ -69,12 +73,18 @@ describe("左侧面板拖拽与尺寸", () => {
 
   it("展开面板时使用当前布局下的最大可用高度", () => {
     const source = app();
-    expect(source).toMatch(/function toggleSidebarPanel\([\s\S]*?const isOpening = appSettings\.sidebar\[panel\]\.collapsed/);
+    expect(source).toMatch(
+      /function toggleSidebarPanel\([\s\S]*?const isOpening = appSettings\.sidebar\[panel\]\.collapsed/,
+    );
     expect(source).toMatch(
       /if \(candidate !== panel && !appSettings\.sidebar\[candidate\]\.collapsed\)[\s\S]*?\.height = SIDEBAR_PANEL_MIN_HEIGHT/,
     );
-    expect(source).toMatch(/if \(isOpening\) \{[\s\S]*?\.height = getSidebarPanelMaxHeight\(panel\)/);
-    expect(source).toMatch(/sidebarPanelOrder\.value\.slice\(0, -1\)[\s\S]*?\.length\s*\* SIDEBAR_PANEL_RESIZER_HEIGHT/);
+    expect(source).toMatch(
+      /if \(isOpening\) \{[\s\S]*?\.height = getSidebarPanelMaxHeight\(panel\)/,
+    );
+    expect(source).toMatch(
+      /sidebarPanelOrder\.value\.slice\(0, -1\)[\s\S]*?\.length\s*\* SIDEBAR_PANEL_RESIZER_HEIGHT/,
+    );
   });
 
   it("侧栏容器高度变化时重新计算面板高度，折叠标题保持 28px", () => {
@@ -88,8 +98,12 @@ describe("左侧面板拖拽与尺寸", () => {
   it("拖动分隔线时在相邻展开面板之间转移高度", () => {
     const source = app();
     expect(source).toMatch(/let resizingAdjacentSidebarPanel: SidebarPanel \| null = null/);
-    expect(source).toMatch(/function getNextSidebarPanel\(panel: SidebarPanel\): SidebarPanel \| null/);
-    expect(source).toMatch(/const adjacentDelta = Math\.min\(appliedDelta, Math\.max\(adjacentSlack, 0\)\)/);
+    expect(source).toMatch(
+      /function getNextSidebarPanel\(panel: SidebarPanel\): SidebarPanel \| null/,
+    );
+    expect(source).toMatch(
+      /const adjacentDelta = Math\.min\(appliedDelta, Math\.max\(adjacentSlack, 0\)\)/,
+    );
     expect(source).toMatch(
       /appSettings\.sidebar\[adjacentPanel\]\.height = resizingAdjacentPanelStartHeight - adjacentDelta/,
     );
@@ -99,8 +113,12 @@ describe("左侧面板拖拽与尺寸", () => {
 describe("文件传输弹窗", () => {
   it("右键菜单使用鼠标视口坐标并挂载到 body", () => {
     const source = dataTransferDialog();
-    expect(source).toMatch(/import\s*\{\s*resolveMenuPlacement\s*\}\s*from\s*"\.\.\/utils\/menu-position"/);
-    expect(source).toMatch(/return resolveMenuPlacement\(\s*\{\s*x:\s*event\.clientX,\s*y:\s*event\.clientY\s*\}/);
+    expect(source).toMatch(
+      /import\s*\{\s*resolveMenuPlacement\s*\}\s*from\s*"\.\.\/utils\/menu-position"/,
+    );
+    expect(source).toMatch(
+      /return resolveMenuPlacement\(\s*\{\s*x:\s*event\.clientX,\s*y:\s*event\.clientY\s*\}/,
+    );
     expect(source).toMatch(
       /<Teleport to="body">[\s\S]*?<ContextMenu[\s\S]*?menu-class="data-transfer-context-menu"[\s\S]*?<\/Teleport>/,
     );
@@ -108,12 +126,18 @@ describe("文件传输弹窗", () => {
 
   it("左右位置下拉均提供本地选项，两侧都为本地时禁止传输", () => {
     const source = dataTransferDialog();
-    const leftOptions = source.match(/const leftServerOptions[\s\S]*?const rightServerOptions/)?.[0];
-    const rightOptions = source.match(/const rightServerOptions[\s\S]*?const transferMenuItems/)?.[0];
+    const leftOptions = source.match(
+      /const leftServerOptions[\s\S]*?const rightServerOptions/,
+    )?.[0];
+    const rightOptions = source.match(
+      /const rightServerOptions[\s\S]*?const transferMenuItems/,
+    )?.[0];
     expect(leftOptions).toMatch(/value:\s*LOCAL_ENDPOINT_ID/);
     expect(rightOptions).toMatch(/value:\s*LOCAL_ENDPOINT_ID/);
 
-    const transferGuard = source.match(/function canTransferFromPane[\s\S]*?function isContextMultiSelection/)?.[0];
+    const transferGuard = source.match(
+      /function canTransferFromPane[\s\S]*?function isContextMultiSelection/,
+    )?.[0];
     expect(transferGuard).toMatch(/hasRemoteEndpoint/);
     expect(transferGuard).toMatch(/!isLocalPane\(sourcePane\)\s*\|\|\s*!isLocalPane\(targetPane\)/);
   });
@@ -190,11 +214,13 @@ describe("状态栏迷你折线", () => {
 
 describe("删除确认", () => {
   function listRendererSources(directory: string): string[] {
-    return readdirSync(path.resolve(process.cwd(), directory), { withFileTypes: true }).flatMap(entry => {
-      const relativePath = `${directory}/${entry.name}`;
-      if (entry.isDirectory()) return listRendererSources(relativePath);
-      return /\.(vue|ts)$/.test(entry.name) ? [relativePath] : [];
-    });
+    return readdirSync(path.resolve(process.cwd(), directory), { withFileTypes: true }).flatMap(
+      entry => {
+        const relativePath = `${directory}/${entry.name}`;
+        if (entry.isDirectory()) return listRendererSources(relativePath);
+        return /\.(vue|ts)$/.test(entry.name) ? [relativePath] : [];
+      },
+    );
   }
 
   it("渲染层不使用原生 confirm，删除操作统一走应用内确认弹窗", () => {

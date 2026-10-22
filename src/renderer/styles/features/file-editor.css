@@ -69,9 +69,7 @@
 
 .image-preview-state.error {
   color: var(--danger);
-  background:
-    linear-gradient(var(--danger-overlay), var(--danger-overlay)),
-    var(--bg-deep);
+  background: linear-gradient(var(--danger-overlay), var(--danger-overlay)), var(--bg-deep);
 }
 
 .file-editor-body {

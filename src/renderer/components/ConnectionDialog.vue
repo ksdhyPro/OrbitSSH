@@ -38,21 +38,16 @@ const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
     v-if="open"
     :title="editingServerId ? '编辑连接' : '新增连接'"
     width="medium"
-    @close="emit('close')">
+    @close="emit('close')"
+  >
     <form class="connection-form" @submit.prevent="emit('submit')">
       <label>
         <span>名称</span>
-        <input
-          v-model="connectionForm.name"
-          type="text"
-          placeholder="Production Gateway" />
+        <input v-model="connectionForm.name" type="text" placeholder="Production Gateway" />
       </label>
       <label>
         <span>Host</span>
-        <input
-          v-model="connectionForm.host"
-          type="text"
-          placeholder="192.168.1.10" />
+        <input v-model="connectionForm.host" type="text" placeholder="192.168.1.10" />
       </label>
       <div class="form-row">
         <label>
@@ -61,21 +56,20 @@ const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
             :model-value="connectionForm.port"
             :min="1"
             :max="65535"
-            @update:model-value="connectionForm.port = $event" />
+            @update:model-value="connectionForm.port = $event"
+          />
         </label>
         <label>
           <span>Username</span>
-          <input
-            v-model="connectionForm.username"
-            type="text"
-          placeholder="root" />
+          <input v-model="connectionForm.username" type="text" placeholder="root" />
         </label>
       </div>
       <SegmentedControl
         v-model="connectionForm.authType"
         :options="authTypeOptions"
         variant="tabs"
-        ariaLabel="认证方式" />
+        ariaLabel="认证方式"
+      />
 
       <template v-if="connectionForm.authType === 'password'">
         <label>
@@ -84,10 +78,9 @@ const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
             v-model="connectionForm.password"
             type="password"
             :placeholder="
-              editingServerId
-                ? '留空表示不修改密码'
-                : '密码会通过 safeStorage 加密保存'
-            " />
+              editingServerId ? '留空表示不修改密码' : '密码会通过 safeStorage 加密保存'
+            "
+          />
         </label>
       </template>
       <template v-else>
@@ -98,11 +91,13 @@ const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
               :value="connectionForm.privateKeyPath"
               type="text"
               readonly
-              placeholder="请选择 SSH 密钥文件" />
+              placeholder="请选择 SSH 密钥文件"
+            />
             <button
               type="button"
               class="btn btn-ghost browse-button"
-              @click="emit('selectPrivateKey')">
+              @click="emit('selectPrivateKey')"
+            >
               浏览
             </button>
           </div>
@@ -112,28 +107,17 @@ const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
           <input
             v-model="connectionForm.passphrase"
             type="password"
-            :placeholder="
-              editingServerId
-                ? '可选，留空表示不修改'
-                : '可选，存在口令时填写'
-            " />
+            :placeholder="editingServerId ? '可选，留空表示不修改' : '可选，存在口令时填写'"
+          />
         </label>
       </template>
 
       <p v-if="formError" class="form-error">{{ formError }}</p>
 
       <footer class="dialog-actions">
-        <button type="button" class="btn btn-ghost" @click="emit('close')">
-          取消
-        </button>
+        <button type="button" class="btn btn-ghost" @click="emit('close')">取消</button>
         <button type="submit" class="btn btn-primary" :disabled="isSubmittingServer">
-          {{
-            isSubmittingServer
-              ? "保存中..."
-              : editingServerId
-                ? "保存修改"
-                : "添加到列表"
-          }}
+          {{ isSubmittingServer ? "保存中..." : editingServerId ? "保存修改" : "添加到列表" }}
         </button>
       </footer>
     </form>

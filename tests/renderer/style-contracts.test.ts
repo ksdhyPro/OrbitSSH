@@ -50,7 +50,9 @@ describe("左侧面板", () => {
   });
 
   it("面板标题可直接拖拽排序", () => {
-    expect(getStyleDeclarations('.panel-header[draggable="true"]')["-webkit-user-drag"]).toBe("element");
+    expect(getStyleDeclarations('.panel-header[draggable="true"]')["-webkit-user-drag"]).toBe(
+      "element",
+    );
   });
 
   it("折叠面板标题紧凑，侧栏底部保留视觉间距", () => {

@@ -14,10 +14,7 @@ export interface GroupedListGroup {
 }
 </script>
 
-<script
-  setup
-  lang="ts"
-  generic="T extends GroupedListItem, G extends GroupedListGroup">
+<script setup lang="ts" generic="T extends GroupedListItem, G extends GroupedListGroup">
 import { computed, ref } from "vue";
 import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import pinIcon from "../assets/icons/pin.svg";
@@ -129,11 +126,7 @@ function toggleSection(group?: G): void {
             'drop-complete': isRecentlyDropped(section.group?.id),
           },
         ]"
-        :style="
-          section.group?.color
-            ? { backgroundColor: section.group.color }
-            : undefined
-        "
+        :style="section.group?.color ? { backgroundColor: section.group.color } : undefined"
         @dragover.prevent
         @dragenter.prevent="
           enterDropTarget(
@@ -143,17 +136,20 @@ function toggleSection(group?: G): void {
           )
         "
         @dragleave="leaveDropTarget($event, section.group?.id)"
-        @drop.prevent="finishDrag(section.group?.id)">
+        @drop.prevent="finishDrag(section.group?.id)"
+      >
         <div class="grouped-section-header">
           <button
             type="button"
             class="grouped-section-toggle"
             :aria-expanded="!isSectionCollapsed(section.group)"
-            @click="toggleSection(section.group)">
+            @click="toggleSection(section.group)"
+          >
             <img
               :class="{ expanded: !isSectionCollapsed(section.group) }"
               :src="chevronRightIcon"
-              alt="" /><strong>{{ section.group?.name ?? "未分组" }}</strong
+              alt=""
+            /><strong>{{ section.group?.name ?? "未分组" }}</strong
             ><span>{{ section.items.length }}</span>
           </button>
           <button
@@ -161,7 +157,8 @@ function toggleSection(group?: G): void {
             type="button"
             class="icon-btn icon-btn-sm grouped-menu-trigger"
             aria-label="分组更多操作"
-            @click="emit('groupMenu', $event, section.group)">
+            @click="emit('groupMenu', $event, section.group)"
+          >
             <img :src="moreIcon" alt="" />
           </button>
         </div>
@@ -182,7 +179,8 @@ function toggleSection(group?: G): void {
             :tabindex="selectable ? 0 : undefined"
             @dragstart.stop="startDrag($event, item)"
             @dragend="cancelDrag"
-            @click="selectable && emit('select', item)">
+            @click="selectable && emit('select', item)"
+          >
             <div class="grouped-item-title">
               <span v-if="item.isPinned" class="grouped-item-pin"
                 ><img :src="pinIcon" alt="" /></span
@@ -194,14 +192,16 @@ function toggleSection(group?: G): void {
                 type="button"
                 class="icon-btn icon-btn-sm grouped-menu-trigger"
                 :aria-label="`${itemNoun}更多操作`"
-                @click.stop="emit('itemMenu', $event, item)">
+                @click.stop="emit('itemMenu', $event, item)"
+              >
                 <img :src="moreIcon" alt="" />
               </button>
             </div>
           </article>
           <p
             v-if="!section.items.length"
-            class="empty-state empty-state-compact grouped-section-empty">
+            class="empty-state empty-state-compact grouped-section-empty"
+          >
             {{ section.group ? `将${itemNoun}拖到此处` : `暂无未分组${itemNoun}` }}
           </p>
         </div>
@@ -213,7 +213,8 @@ function toggleSection(group?: G): void {
       @dragover.prevent
       @dragenter.prevent="enterDropTarget($event)"
       @dragleave="leaveDropTarget($event)"
-      @drop.stop.prevent="finishDrag()">
+      @drop.stop.prevent="finishDrag()"
+    >
       <strong>{{ isDropHovered() ? "松开以移至未分组" : "拖到这里移至未分组" }}</strong>
     </div>
   </div>

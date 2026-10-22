@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain } from "electron";
 
 import {
   closeTerminalSession,
@@ -7,73 +7,70 @@ import {
   reconnectTerminalSession,
   resizeTerminal,
   writeTerminalAutomationCommand,
-  writeTerminalInput
-} from '../ssh/session-manager.js'
-import { disposeAiTabState } from '../ai/ai-agent.js'
-import type { TerminalAutomationCommandInput, TerminalResizeInput } from '../../shared/terminal.js'
+  writeTerminalInput,
+} from "../ssh/session-manager.js";
+import { disposeAiTabState } from "../ai/ai-agent.js";
+import type { TerminalAutomationCommandInput, TerminalResizeInput } from "../../shared/terminal.js";
 import {
   assertTabAccess,
   requireFiniteNumber,
   requireNonEmptyString,
   requireRecord,
-  requireString
-} from './validation.js'
+  requireString,
+} from "./validation.js";
 
 // 注册终端 IPC，SSH 连接和 shell stream 只存在于 Main Process。
 export function registerTerminalIpc(): void {
-  ipcMain.handle('terminal:open', (event, serverId: unknown) =>
-    openTerminalSession(event.sender, requireNonEmptyString(serverId, '服务器 ID'))
-  )
+  ipcMain.handle("terminal:open", (event, serverId: unknown) =>
+    openTerminalSession(event.sender, requireNonEmptyString(serverId, "服务器 ID")),
+  );
 
-  ipcMain.handle('terminal:open-local', event =>
-    openLocalTerminalSession(event.sender)
-  )
+  ipcMain.handle("terminal:open-local", event => openLocalTerminalSession(event.sender));
 
-  ipcMain.handle('terminal:write', (event, tabId: unknown, data: unknown) => {
-    const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
-    assertTabAccess(event, normalizedTabId)
-    writeTerminalInput(normalizedTabId, requireString(data, '终端输入'))
-    return true
-  })
+  ipcMain.handle("terminal:write", (event, tabId: unknown, data: unknown) => {
+    const normalizedTabId = requireNonEmptyString(tabId, "终端标签页 ID");
+    assertTabAccess(event, normalizedTabId);
+    writeTerminalInput(normalizedTabId, requireString(data, "终端输入"));
+    return true;
+  });
 
-  ipcMain.handle('terminal:write-automation-command', (event, input: unknown) => {
-    const record = requireRecord(input, '自动化命令参数')
-    const tabId = requireNonEmptyString(record.tabId, '终端标签页 ID')
-    assertTabAccess(event, tabId)
+  ipcMain.handle("terminal:write-automation-command", (event, input: unknown) => {
+    const record = requireRecord(input, "自动化命令参数");
+    const tabId = requireNonEmptyString(record.tabId, "终端标签页 ID");
+    assertTabAccess(event, tabId);
     return writeTerminalAutomationCommand({
       tabId,
-      command: requireNonEmptyString(record.command, '自动化命令'),
-      commandIndex: Math.max(0, Math.floor(requireFiniteNumber(record.commandIndex, '命令序号')))
-    } satisfies TerminalAutomationCommandInput)
-  })
+      command: requireNonEmptyString(record.command, "自动化命令"),
+      commandIndex: Math.max(0, Math.floor(requireFiniteNumber(record.commandIndex, "命令序号"))),
+    } satisfies TerminalAutomationCommandInput);
+  });
 
-  ipcMain.handle('terminal:resize', (event, input: unknown) => {
-    const record = requireRecord(input, '终端尺寸参数')
-    const tabId = requireNonEmptyString(record.tabId, '终端标签页 ID')
-    const cols = Math.max(1, Math.floor(requireFiniteNumber(record.cols, '终端列数')))
-    const rows = Math.max(1, Math.floor(requireFiniteNumber(record.rows, '终端行数')))
-    assertTabAccess(event, tabId)
-    resizeTerminal({ tabId, cols, rows } satisfies TerminalResizeInput)
-    return true
-  })
+  ipcMain.handle("terminal:resize", (event, input: unknown) => {
+    const record = requireRecord(input, "终端尺寸参数");
+    const tabId = requireNonEmptyString(record.tabId, "终端标签页 ID");
+    const cols = Math.max(1, Math.floor(requireFiniteNumber(record.cols, "终端列数")));
+    const rows = Math.max(1, Math.floor(requireFiniteNumber(record.rows, "终端行数")));
+    assertTabAccess(event, tabId);
+    resizeTerminal({ tabId, cols, rows } satisfies TerminalResizeInput);
+    return true;
+  });
 
-  ipcMain.handle('terminal:close', (event, tabId: unknown) => {
-    const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
-    assertTabAccess(event, normalizedTabId, { allowMissing: true })
-    disposeAiTabState(normalizedTabId)
-    closeTerminalSession(normalizedTabId)
-    return true
-  })
+  ipcMain.handle("terminal:close", (event, tabId: unknown) => {
+    const normalizedTabId = requireNonEmptyString(tabId, "终端标签页 ID");
+    assertTabAccess(event, normalizedTabId, { allowMissing: true });
+    disposeAiTabState(normalizedTabId);
+    closeTerminalSession(normalizedTabId);
+    return true;
+  });
 
-  ipcMain.handle('terminal:reconnect', (event, tabId: unknown, serverId?: unknown) => {
-    const normalizedTabId = requireNonEmptyString(tabId, '终端标签页 ID')
+  ipcMain.handle("terminal:reconnect", (event, tabId: unknown, serverId?: unknown) => {
+    const normalizedTabId = requireNonEmptyString(tabId, "终端标签页 ID");
     // 断开后主进程可能已清理旧会话，此时允许通过 serverId 恢复连接。
-    assertTabAccess(event, normalizedTabId, { allowMissing: true })
+    assertTabAccess(event, normalizedTabId, { allowMissing: true });
     return reconnectTerminalSession(
       event.sender,
       normalizedTabId,
-      serverId === undefined ? undefined : requireNonEmptyString(serverId, '服务器 ID')
-    )
-  }
-  )
+      serverId === undefined ? undefined : requireNonEmptyString(serverId, "服务器 ID"),
+    );
+  });
 }

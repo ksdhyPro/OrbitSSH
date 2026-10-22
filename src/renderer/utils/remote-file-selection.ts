@@ -35,9 +35,7 @@ export function selectRemoteFileNode<T extends SelectableRemoteFileNode>(input: 
     return null;
   }
 
-  const currentIndex = input.visibleNodes.findIndex(
-    node => node.path === input.node.path,
-  );
+  const currentIndex = input.visibleNodes.findIndex(node => node.path === input.node.path);
 
   if (currentIndex === -1) {
     return null;
@@ -51,9 +49,7 @@ export function selectRemoteFileNode<T extends SelectableRemoteFileNode>(input: 
 
     const start = Math.min(input.current.lastClickedIndex, currentIndex);
     const end = Math.max(input.current.lastClickedIndex, currentIndex);
-    const selectedPaths = isMultiSelect
-      ? new Set(input.current.selectedPaths)
-      : new Set<string>();
+    const selectedPaths = isMultiSelect ? new Set(input.current.selectedPaths) : new Set<string>();
 
     for (let index = start; index <= end; index++) {
       const node = input.visibleNodes[index];

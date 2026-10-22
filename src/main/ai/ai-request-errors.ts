@@ -14,7 +14,10 @@ export interface AiRequestFailure {
 const MAX_RETRY_AFTER_MS = 30_000;
 
 /** 解析 Retry-After 头：既可能是秒数，也可能是 HTTP 日期。 */
-export function parseRetryAfterMs(value: string | null | undefined, now = Date.now()): number | undefined {
+export function parseRetryAfterMs(
+  value: string | null | undefined,
+  now = Date.now(),
+): number | undefined {
   if (!value) return undefined;
   const seconds = Number(value);
   const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - now;
@@ -58,32 +61,47 @@ export function describeHttpFailure(
   }
   if (status === 401 || status === 403) {
     return {
-      message: withProviderDetail(`AI 服务拒绝了请求（HTTP ${status}）：API Key 无效、已过期或没有该模型的权限。`, responseText),
+      message: withProviderDetail(
+        `AI 服务拒绝了请求（HTTP ${status}）：API Key 无效、已过期或没有该模型的权限。`,
+        responseText,
+      ),
       retryable: false,
     };
   }
   if (status === 404) {
     return {
-      message: withProviderDetail("AI 服务找不到接口或模型（HTTP 404）。请检查 Base URL（通常以 /v1 结尾）和模型名称。", responseText),
+      message: withProviderDetail(
+        "AI 服务找不到接口或模型（HTTP 404）。请检查 Base URL（通常以 /v1 结尾）和模型名称。",
+        responseText,
+      ),
       retryable: false,
     };
   }
   if (status === 429) {
     return {
-      message: withProviderDetail("AI 服务请求过于频繁或额度不足（HTTP 429），请稍后重试或检查账户额度。", responseText),
+      message: withProviderDetail(
+        "AI 服务请求过于频繁或额度不足（HTTP 429），请稍后重试或检查账户额度。",
+        responseText,
+      ),
       retryable: true,
       retryAfterMs: parseRetryAfterMs(retryAfterHeader),
     };
   }
   if (status === 408 || status >= 500) {
     return {
-      message: withProviderDetail(`AI 服务暂时不可用（HTTP ${status}），请稍后重试。`, responseText),
+      message: withProviderDetail(
+        `AI 服务暂时不可用（HTTP ${status}），请稍后重试。`,
+        responseText,
+      ),
       retryable: true,
       retryAfterMs: parseRetryAfterMs(retryAfterHeader),
     };
   }
   return {
-    message: withProviderDetail(`AI 服务拒绝了请求参数（HTTP ${status}），请检查模型配置。`, responseText),
+    message: withProviderDetail(
+      `AI 服务拒绝了请求参数（HTTP ${status}），请检查模型配置。`,
+      responseText,
+    ),
     retryable: false,
   };
 }
@@ -113,30 +131,46 @@ export function describeRequestError(
     return { message: "AI 服务响应过大，已停止接收。", retryable: false };
   }
   if (error instanceof AiProviderPayloadError) {
-    return { message: `AI 服务返回错误：${truncateText(redactSensitiveTerminalText(error.message), 200)}`, retryable: true };
+    return {
+      message: `AI 服务返回错误：${truncateText(redactSensitiveTerminalText(error.message), 200)}`,
+      retryable: true,
+    };
   }
   if (error instanceof SyntaxError) {
     return {
-      message: "AI 服务返回的数据无法解析。请确认 Base URL 指向 OpenAI 兼容接口（通常以 /v1 结尾），而不是网页地址。",
+      message:
+        "AI 服务返回的数据无法解析。请确认 Base URL 指向 OpenAI 兼容接口（通常以 /v1 结尾），而不是网页地址。",
       retryable: false,
     };
   }
 
   const code = getErrorCode(error);
   if (code === "UND_ERR_CONNECT_TIMEOUT" || code === "ETIMEDOUT") {
-    return { message: "无法连接 AI 服务：连接超时。请检查网络、代理或防火墙设置后重试。", retryable: true };
+    return {
+      message: "无法连接 AI 服务：连接超时。请检查网络、代理或防火墙设置后重试。",
+      retryable: true,
+    };
   }
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") {
-    return { message: "无法解析 AI 服务地址，请检查 Base URL 中的域名和网络 DNS。", retryable: code === "EAI_AGAIN" };
+    return {
+      message: "无法解析 AI 服务地址，请检查 Base URL 中的域名和网络 DNS。",
+      retryable: code === "EAI_AGAIN",
+    };
   }
   if (code === "ECONNREFUSED") {
-    return { message: "AI 服务拒绝连接，请确认 Base URL 的地址和端口正确且服务已启动。", retryable: false };
+    return {
+      message: "AI 服务拒绝连接，请确认 Base URL 的地址和端口正确且服务已启动。",
+      retryable: false,
+    };
   }
   if (code === "ECONNRESET" || code === "UND_ERR_SOCKET") {
     return { message: "与 AI 服务的连接被中断，请稍后重试。", retryable: true };
   }
   if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS/i.test(code)) {
-    return { message: "AI 服务的 TLS 证书校验失败，请检查 Base URL 是否正确或代理是否替换了证书。", retryable: false };
+    return {
+      message: "AI 服务的 TLS 证书校验失败，请检查 Base URL 是否正确或代理是否替换了证书。",
+      retryable: false,
+    };
   }
   return { message: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。", retryable: true };
 }

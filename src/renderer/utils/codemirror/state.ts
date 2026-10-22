@@ -5,11 +5,7 @@ import {
   indentOnInput,
   syntaxHighlighting,
 } from "@codemirror/language";
-import {
-  highlightSelectionMatches,
-  search,
-  searchKeymap,
-} from "@codemirror/search";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import { EditorState, type Extension } from "@codemirror/state";
 import {
   drawSelection,
@@ -36,9 +32,7 @@ export interface CreateFileEditorStateOptions {
   onDocChanged: (view: EditorView) => void;
 }
 
-export function createFileEditorState(
-  options: CreateFileEditorStateOptions,
-): EditorState {
+export function createFileEditorState(options: CreateFileEditorStateOptions): EditorState {
   const {
     content,
     fileName,

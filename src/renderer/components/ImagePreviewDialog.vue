@@ -19,11 +19,10 @@ const emit = defineEmits<{
     :title="imagePreview.name || '图片预览'"
     :description="imagePreview.path"
     width="large"
-    @close="emit('close')">
+    @close="emit('close')"
+  >
     <section class="image-preview-shell">
-      <div v-if="imagePreview.loading" class="image-preview-state">
-        正在加载图片...
-      </div>
+      <div v-if="imagePreview.loading" class="image-preview-state">正在加载图片...</div>
       <div v-else-if="imagePreview.error" class="image-preview-state error">
         {{ imagePreview.error }}
       </div>
@@ -34,14 +33,13 @@ const emit = defineEmits<{
       <footer class="file-editor-footer">
         <span>{{ imagePreview.mimeType || "图片文件" }}</span>
         <div class="dialog-actions">
-          <button type="button" class="btn btn-ghost" @click="emit('close')">
-            关闭
-          </button>
+          <button type="button" class="btn btn-ghost" @click="emit('close')">关闭</button>
           <button
             type="button"
             class="btn btn-primary"
             :disabled="imagePreview.loading || !imagePreview.path"
-            @click="emit('download')">
+            @click="emit('download')"
+          >
             下载
           </button>
         </div>

@@ -28,20 +28,15 @@ export function registerAiIpc(): void {
     listConversationSummaries(serverId),
   );
 
-  ipcMain.handle(
-    "ai:conversations:get",
-    (_event, serverId: string, conversationId: string) =>
-      getConversationRecord(serverId, conversationId),
+  ipcMain.handle("ai:conversations:get", (_event, serverId: string, conversationId: string) =>
+    getConversationRecord(serverId, conversationId),
   );
 
-  ipcMain.handle(
-    "ai:conversations:delete",
-    (_event, serverId: string, conversationId: string) => {
-      const deleted = deleteConversation(serverId, conversationId);
-      if (deleted) disposeAiConversationState(serverId, conversationId);
-      return deleted;
-    },
-  );
+  ipcMain.handle("ai:conversations:delete", (_event, serverId: string, conversationId: string) => {
+    const deleted = deleteConversation(serverId, conversationId);
+    if (deleted) disposeAiConversationState(serverId, conversationId);
+    return deleted;
+  });
 
   ipcMain.handle("ai:chat", (event, input: unknown) => {
     const normalizedInput = normalizeAiChatInput(input);

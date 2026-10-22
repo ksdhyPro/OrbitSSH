@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  runLongCommandMonitor,
-} from "../../dist-electron/main/ai/ai-long-command.js";
-import {
-  executeLocalTerminalCommand,
-} from "../../dist-electron/main/ssh/terminal-command.js";
+import { runLongCommandMonitor } from "../../dist-electron/main/ai/ai-long-command.js";
+import { executeLocalTerminalCommand } from "../../dist-electron/main/ssh/terminal-command.js";
 
 const completedResult = {
   stdout: "done",
@@ -33,11 +29,13 @@ function createOptions(overrides = {}) {
 test("长命令提前完成时不会等待汇报周期", async () => {
   let reportCount = 0;
   const startedAt = Date.now();
-  const result = await runLongCommandMonitor(createOptions({
-    onProgress: async () => {
-      reportCount += 1;
-    },
-  }));
+  const result = await runLongCommandMonitor(
+    createOptions({
+      onProgress: async () => {
+        reportCount += 1;
+      },
+    }),
+  );
 
   assert.equal(result.exitCode, 0);
   assert.equal(reportCount, 0);
@@ -47,16 +45,19 @@ test("长命令提前完成时不会等待汇报周期", async () => {
 test("长命令按周期汇报新增输出且只启动一次", async () => {
   let executeCount = 0;
   const reports = [];
-  const result = await runLongCommandMonitor(createOptions({
-    execute: onOutput => new Promise(resolve => {
-      executeCount += 1;
-      onOutput("stderr", "Downloading layer\n");
-      setTimeout(() => resolve(completedResult), 25);
+  const result = await runLongCommandMonitor(
+    createOptions({
+      execute: onOutput =>
+        new Promise(resolve => {
+          executeCount += 1;
+          onOutput("stderr", "Downloading layer\n");
+          setTimeout(() => resolve(completedResult), 25);
+        }),
+      onProgress: async progress => {
+        reports.push(progress);
+      },
     }),
-    onProgress: async progress => {
-      reports.push(progress);
-    },
-  }));
+  );
 
   assert.equal(result.exitCode, 0);
   assert.equal(executeCount, 1);
@@ -67,16 +68,23 @@ test("长命令按周期汇报新增输出且只启动一次", async () => {
 
 test("用户取消会终止等待并返回 AbortError", async () => {
   const controller = new AbortController();
-  const execution = runLongCommandMonitor(createOptions({
-    signal: controller.signal,
-    execute: () => new Promise((_resolve, reject) => {
-      controller.signal.addEventListener("abort", () => {
-        const error = new Error("cancelled");
-        error.name = "AbortError";
-        reject(error);
-      }, { once: true });
+  const execution = runLongCommandMonitor(
+    createOptions({
+      signal: controller.signal,
+      execute: () =>
+        new Promise((_resolve, reject) => {
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("cancelled");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true },
+          );
+        }),
     }),
-  }));
+  );
 
   controller.abort();
   await assert.rejects(execution, error => error?.name === "AbortError");
@@ -102,14 +110,16 @@ test("本地长命令可以流式读取 stdout 和 stderr", async () => {
 test("长命令汇报间隔逐步拉长，避免长时间运行时频繁请求模型", async () => {
   const reportedAt = [];
   const startedAt = Date.now();
-  await runLongCommandMonitor(createOptions({
-    reportIntervalMs: undefined,
-    reportIntervalsMs: [20, 40, 80],
-    execute: () => new Promise(resolve => setTimeout(() => resolve(completedResult), 230)),
-    onProgress: async () => {
-      reportedAt.push(Date.now() - startedAt);
-    },
-  }));
+  await runLongCommandMonitor(
+    createOptions({
+      reportIntervalMs: undefined,
+      reportIntervalsMs: [20, 40, 80],
+      execute: () => new Promise(resolve => setTimeout(() => resolve(completedResult), 230)),
+      onProgress: async () => {
+        reportedAt.push(Date.now() - startedAt);
+      },
+    }),
+  );
 
   // 20、60、140、220 毫秒左右各汇报一次：间隔依次为 20、40、80，之后保持最后一个间隔。
   assert.equal(reportedAt.length, 4);

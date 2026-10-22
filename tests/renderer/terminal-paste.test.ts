@@ -35,7 +35,11 @@ describe("多行终端粘贴确认", () => {
 
     controller.requestTerminalPaste("tab-1", text);
     expect(options.write).not.toHaveBeenCalled();
-    expect(controller.pendingTerminalPaste.value).toMatchObject({ tabId: "tab-1", text, lineCount: 4 });
+    expect(controller.pendingTerminalPaste.value).toMatchObject({
+      tabId: "tab-1",
+      text,
+      lineCount: 4,
+    });
 
     controller.confirmTerminalPaste();
     expect(options.paste).toHaveBeenCalledWith("tab-1", text);

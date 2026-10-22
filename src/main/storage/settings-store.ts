@@ -1,8 +1,8 @@
-import { safeStorage } from 'electron'
-import Store from 'electron-store'
-import { randomUUID } from 'node:crypto'
-import { normalizeStoredAiMode } from '../../shared/ai.js'
-import { CachedStore } from './cached-store.js'
+import { safeStorage } from "electron";
+import Store from "electron-store";
+import { randomUUID } from "node:crypto";
+import { normalizeStoredAiMode } from "../../shared/ai.js";
+import { CachedStore } from "./cached-store.js";
 
 import {
   AI_PRESET_PROMPT_MAX_CHARS,
@@ -15,155 +15,160 @@ import {
   type SidebarPanelSettings,
   type SidebarSettings,
   SFTP_TRANSFER_CONCURRENCY_MAX,
-  SFTP_TRANSFER_CONCURRENCY_MIN
-} from '../../shared/settings.js'
+  SFTP_TRANSFER_CONCURRENCY_MIN,
+} from "../../shared/settings.js";
 
 interface SettingsStoreSchema {
-  settings: AppSettings
-  aiApiKeys: Record<string, string>
+  settings: AppSettings;
+  aiApiKeys: Record<string, string>;
 }
 
 // 设置在连接、保活检查和每次 AI 请求中频繁读取：读取走内存缓存，修改同步写盘。
 const store = new CachedStore<SettingsStoreSchema>(
   new Store<SettingsStoreSchema>({
-    name: 'settings',
+    name: "settings",
     defaults: {
       settings: defaultAppSettings,
-      aiApiKeys: {}
-    }
-  })
-)
+      aiApiKeys: {},
+    },
+  }),
+);
 
 // 解密后的完整设置只在保存时失效，避免每次读取都调用系统钥匙串解密 API Key。
-let hydratedSettingsCache: AppSettings | null = null
+let hydratedSettingsCache: AppSettings | null = null;
 
 function clampNumber(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
+  return Math.min(Math.max(value, min), max);
 }
 
 function normalizeThemeMode(value: unknown): AppThemeMode {
-  return value === 'light' ? 'light' : defaultAppSettings.appearance.themeMode
+  return value === "light" ? "light" : defaultAppSettings.appearance.themeMode;
 }
 
 function normalizeKeepaliveIntervalSeconds(value: unknown): number {
-  const numericValue = Number(value)
+  const numericValue = Number(value);
   return Number.isFinite(numericValue)
     ? clampNumber(numericValue, 0, 300)
-    : defaultAppSettings.connection.keepaliveIntervalSeconds
+    : defaultAppSettings.connection.keepaliveIntervalSeconds;
 }
 
 function normalizeIdleDisconnectMinutes(value: unknown): number {
-  const numericValue = Number(value)
+  const numericValue = Number(value);
   return Number.isFinite(numericValue)
     ? clampNumber(numericValue, 0, 1440)
-    : defaultAppSettings.connection.idleDisconnectMinutes
+    : defaultAppSettings.connection.idleDisconnectMinutes;
 }
 
 function normalizeAiProvider(value: unknown): AiProvider {
-  return value === 'deepseek' || value === 'glm' || value === 'other'
-    ? value
-    : 'other'
+  return value === "deepseek" || value === "glm" || value === "other" ? value : "other";
 }
 
 function normalizeSftpMaxConcurrentTransfers(value: unknown): number {
-  const numericValue = Number(value)
+  const numericValue = Number(value);
 
   return Number.isFinite(numericValue)
     ? clampNumber(
         Math.trunc(numericValue),
         SFTP_TRANSFER_CONCURRENCY_MIN,
-        SFTP_TRANSFER_CONCURRENCY_MAX
+        SFTP_TRANSFER_CONCURRENCY_MAX,
       )
-    : defaultAppSettings.connection.sftpMaxConcurrentTransfers
+    : defaultAppSettings.connection.sftpMaxConcurrentTransfers;
 }
 
 function normalizeSidebarPanelSettings(
   value: Partial<SidebarPanelSettings> | undefined,
-  fallback: SidebarPanelSettings
+  fallback: SidebarPanelSettings,
 ): SidebarPanelSettings {
-  const height = Number(value?.height)
+  const height = Number(value?.height);
 
   return {
     collapsed: value?.collapsed === true,
     // 面板的实际最大高度由渲染进程按当前窗口空间限制。
-    height: Number.isFinite(height) ? clampNumber(height, 160, 1200) : fallback.height
-  }
+    height: Number.isFinite(height) ? clampNumber(height, 160, 1200) : fallback.height,
+  };
 }
 
 function normalizeSidebarSettings(value: Partial<SidebarSettings> | undefined): SidebarSettings {
-  const allowedPanels = ['servers', 'automation', 'remoteFiles'] as const
-  const requestedOrder = Array.isArray(value?.panelOrder) ? value.panelOrder : []
+  const allowedPanels = ["servers", "automation", "remoteFiles"] as const;
+  const requestedOrder = Array.isArray(value?.panelOrder) ? value.panelOrder : [];
   const panelOrder = requestedOrder.filter(
-    (panel): panel is SidebarSettings['panelOrder'][number] =>
-      typeof panel === 'string' && allowedPanels.includes(panel as SidebarSettings['panelOrder'][number])
-  )
+    (panel): panel is SidebarSettings["panelOrder"][number] =>
+      typeof panel === "string" &&
+      allowedPanels.includes(panel as SidebarSettings["panelOrder"][number]),
+  );
 
   // 兼容旧设置并去重，确保每个面板始终恰好出现一次。
   allowedPanels.forEach(panel => {
-    if (!panelOrder.includes(panel)) panelOrder.push(panel)
-  })
+    if (!panelOrder.includes(panel)) panelOrder.push(panel);
+  });
 
   return {
     servers: normalizeSidebarPanelSettings(value?.servers, defaultAppSettings.sidebar.servers),
-    automation: normalizeSidebarPanelSettings(value?.automation, defaultAppSettings.sidebar.automation),
-    remoteFiles: normalizeSidebarPanelSettings(value?.remoteFiles, defaultAppSettings.sidebar.remoteFiles),
-    panelOrder
-  }
+    automation: normalizeSidebarPanelSettings(
+      value?.automation,
+      defaultAppSettings.sidebar.automation,
+    ),
+    remoteFiles: normalizeSidebarPanelSettings(
+      value?.remoteFiles,
+      defaultAppSettings.sidebar.remoteFiles,
+    ),
+    panelOrder,
+  };
 }
 
 function normalizeString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeAiPresetPrompt(value: unknown): string {
-  if (typeof value !== 'string') return defaultAppSettings.ai.presetPrompt
+  if (typeof value !== "string") return defaultAppSettings.ai.presetPrompt;
 
   // 保留用户编写的换行与段落，只限制总长度并移除首尾空白。
-  return value.trim().slice(0, AI_PRESET_PROMPT_MAX_CHARS)
+  return value.trim().slice(0, AI_PRESET_PROMPT_MAX_CHARS);
 }
 
 function normalizeContextTokenLimitK(value: unknown): number {
-  const numericValue = Number(value)
+  const numericValue = Number(value);
 
   // 旧配置没有该字段时保留为 0，表示上下文限制尚未设置。
-  return Number.isSafeInteger(numericValue) && numericValue > 0 ? numericValue : 0
+  return Number.isSafeInteger(numericValue) && numericValue > 0 ? numericValue : 0;
 }
 
 function encryptSecret(value: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('当前系统暂不支持安全 AI Key 存储')
+    throw new Error("当前系统暂不支持安全 AI Key 存储");
   }
 
-  return safeStorage.encryptString(value).toString('base64')
+  return safeStorage.encryptString(value).toString("base64");
 }
 
 function decryptSecret(value: string): string {
   if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('当前系统暂不支持安全 AI Key 读取')
+    throw new Error("当前系统暂不支持安全 AI Key 读取");
   }
 
-  return safeStorage.decryptString(Buffer.from(value, 'base64'))
+  return safeStorage.decryptString(Buffer.from(value, "base64"));
 }
 
 // 生成本地 AI 配置 ID，避免保存多个配置时出现空 ID 或重复 ID。
 function createAiConfigId(): string {
-  return `ai-${randomUUID()}`
+  return `ai-${randomUUID()}`;
 }
 
 // 归一化单个 AI 配置，主进程只保存 OpenAI 兼容格式需要的字段。
 function normalizeAiModelConfig(
   value: Partial<AiModelConfig> | undefined,
   index: number,
-  usedIds: Set<string>
+  usedIds: Set<string>,
 ): AiModelConfig {
-  const rawId = normalizeString(value?.id)
-  const id = rawId && !usedIds.has(rawId) ? rawId : createAiConfigId()
-  usedIds.add(id)
+  const rawId = normalizeString(value?.id);
+  const id = rawId && !usedIds.has(rawId) ? rawId : createAiConfigId();
+  usedIds.add(id);
 
-  const provider = normalizeAiProvider(value?.provider)
-  const model = normalizeString(value?.model)
-  const name = normalizeString(value?.name) || model || `模型 ${index + 1}`
-  const baseUrl = normalizeString(value?.baseUrl)
+  const provider = normalizeAiProvider(value?.provider);
+  const model = normalizeString(value?.model);
+  const name = normalizeString(value?.name) || model || `模型 ${index + 1}`;
+  const baseUrl = normalizeString(value?.baseUrl);
 
   return {
     id,
@@ -172,22 +177,22 @@ function normalizeAiModelConfig(
     baseUrl,
     apiKey: normalizeString(value?.apiKey),
     model,
-    contextTokenLimitK: normalizeContextTokenLimitK(value?.contextTokenLimitK)
-  }
+    contextTokenLimitK: normalizeContextTokenLimitK(value?.contextTokenLimitK),
+  };
 }
 
 function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings {
-  const mode = (value as { defaultMode?: unknown } | undefined)?.defaultMode
-  const usedIds = new Set<string>()
+  const mode = (value as { defaultMode?: unknown } | undefined)?.defaultMode;
+  const usedIds = new Set<string>();
   const rawConfigs = Array.isArray(value?.configs)
-    // 仅保留当前支持的在线模型配置，升级时自动清理已失效的本地配置。
-    ? value.configs.filter(config => Boolean(normalizeString(config?.baseUrl)))
-    : []
-  const configs = rawConfigs.map((item, index) => normalizeAiModelConfig(item, index, usedIds))
-  const requestedActiveConfigId = normalizeString(value?.activeConfigId)
+    ? // 仅保留当前支持的在线模型配置，升级时自动清理已失效的本地配置。
+      value.configs.filter(config => Boolean(normalizeString(config?.baseUrl)))
+    : [];
+  const configs = rawConfigs.map((item, index) => normalizeAiModelConfig(item, index, usedIds));
+  const requestedActiveConfigId = normalizeString(value?.activeConfigId);
   const activeConfigId = configs.some(config => config.id === requestedActiveConfigId)
     ? requestedActiveConfigId
-    : configs[0]?.id ?? ''
+    : (configs[0]?.id ?? "");
 
   return {
     enabled: Boolean(value?.enabled),
@@ -201,49 +206,53 @@ function normalizeAiSettings(value: Partial<AiSettings> | undefined): AiSettings
     presetPrompt: normalizeAiPresetPrompt(value?.presetPrompt),
     activeConfigId,
     configs,
-    defaultMode: normalizeStoredAiMode(mode)
-  }
+    defaultMode: normalizeStoredAiMode(mode),
+  };
 }
 
 function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSettings {
-  const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance
-  const sidebarSettings = settings?.sidebar ?? defaultAppSettings.sidebar
-  const connectionSettings = settings?.connection ?? defaultAppSettings.connection
-  const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal
-  const updateSettings = settings?.update ?? defaultAppSettings.update
+  const appearanceSettings = settings?.appearance ?? defaultAppSettings.appearance;
+  const sidebarSettings = settings?.sidebar ?? defaultAppSettings.sidebar;
+  const connectionSettings = settings?.connection ?? defaultAppSettings.connection;
+  const terminalSettings = settings?.terminal ?? defaultAppSettings.terminal;
+  const updateSettings = settings?.update ?? defaultAppSettings.update;
 
   return {
     appearance: {
-      themeMode: normalizeThemeMode(appearanceSettings.themeMode)
+      themeMode: normalizeThemeMode(appearanceSettings.themeMode),
     },
     sidebar: normalizeSidebarSettings(sidebarSettings),
     connection: {
-      keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(connectionSettings.keepaliveIntervalSeconds),
-      idleDisconnectMinutes: normalizeIdleDisconnectMinutes(connectionSettings.idleDisconnectMinutes),
+      keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(
+        connectionSettings.keepaliveIntervalSeconds,
+      ),
+      idleDisconnectMinutes: normalizeIdleDisconnectMinutes(
+        connectionSettings.idleDisconnectMinutes,
+      ),
       sftpMaxConcurrentTransfers: normalizeSftpMaxConcurrentTransfers(
-        connectionSettings.sftpMaxConcurrentTransfers
-      )
+        connectionSettings.sftpMaxConcurrentTransfers,
+      ),
     },
     terminal: {
       fontSize: clampNumber(Number(terminalSettings.fontSize), 10, 24),
       lineHeight: clampNumber(Number(terminalSettings.lineHeight), 1, 2),
       selectionBackground:
-        typeof terminalSettings.selectionBackground === 'string'
+        typeof terminalSettings.selectionBackground === "string"
           ? terminalSettings.selectionBackground
-          : defaultAppSettings.terminal.selectionBackground
+          : defaultAppSettings.terminal.selectionBackground,
     },
     update: {
       updateFeedUrl:
-        typeof updateSettings.updateFeedUrl === 'string'
+        typeof updateSettings.updateFeedUrl === "string"
           ? updateSettings.updateFeedUrl
-          : defaultAppSettings.update.updateFeedUrl
+          : defaultAppSettings.update.updateFeedUrl,
     },
-    ai: normalizeAiSettings(settings?.ai)
-  }
+    ai: normalizeAiSettings(settings?.ai),
+  };
 }
 
 function getAiApiKeys(): Record<string, string> {
-  return store.get('aiApiKeys') ?? {}
+  return store.get("aiApiKeys") ?? {};
 }
 
 function cloneSettingsWithoutAiApiKeys(settings: AppSettings): AppSettings {
@@ -253,78 +262,75 @@ function cloneSettingsWithoutAiApiKeys(settings: AppSettings): AppSettings {
       ...settings.ai,
       configs: settings.ai.configs.map(config => ({
         ...config,
-        apiKey: ''
-      }))
-    }
-  }
+        apiKey: "",
+      })),
+    },
+  };
 }
 
 // AI Key 单独密文保存，settings 里只保留模型配置，避免明文落盘。
 function persistSettingsWithEncryptedAiKeys(settings: AppSettings): void {
-  const previousApiKeys = getAiApiKeys()
-  const nextApiKeys: Record<string, string> = {}
+  const previousApiKeys = getAiApiKeys();
+  const nextApiKeys: Record<string, string> = {};
 
   for (const config of settings.ai.configs) {
     if (config.apiKey) {
-      nextApiKeys[config.id] = encryptSecret(config.apiKey)
-      continue
+      nextApiKeys[config.id] = encryptSecret(config.apiKey);
+      continue;
     }
 
     if (previousApiKeys[config.id]) {
-      nextApiKeys[config.id] = previousApiKeys[config.id]
+      nextApiKeys[config.id] = previousApiKeys[config.id];
     }
   }
 
-  store.set('aiApiKeys', nextApiKeys)
-  store.set('settings', cloneSettingsWithoutAiApiKeys(settings))
-  hydratedSettingsCache = null
+  store.set("aiApiKeys", nextApiKeys);
+  store.set("settings", cloneSettingsWithoutAiApiKeys(settings));
+  hydratedSettingsCache = null;
 }
 
 function hydrateAiApiKeys(settings: AppSettings): AppSettings {
-  const apiKeys = getAiApiKeys()
+  const apiKeys = getAiApiKeys();
 
   return {
     ...settings,
     ai: {
       ...settings.ai,
       configs: settings.ai.configs.map(config => {
-        const encryptedApiKey = apiKeys[config.id]
+        const encryptedApiKey = apiKeys[config.id];
 
         return {
           ...config,
-          apiKey:
-            encryptedApiKey
-              ? decryptSecret(encryptedApiKey)
-              : config.apiKey
-        }
-      })
-    }
-  }
+          apiKey: encryptedApiKey ? decryptSecret(encryptedApiKey) : config.apiKey,
+        };
+      }),
+    },
+  };
 }
 
 function hasPlainTextAiApiKey(settings: AppSettings): boolean {
-  return settings.ai.configs.some(config => Boolean(config.apiKey))
+  return settings.ai.configs.some(config => Boolean(config.apiKey));
 }
 
 export function getSettings(): AppSettings {
   if (!hydratedSettingsCache) {
-    const normalizedSettings = normalizeSettings(store.get('settings') ?? defaultAppSettings)
-    const hydratedSettings = hydrateAiApiKeys(normalizedSettings)
+    const normalizedSettings = normalizeSettings(store.get("settings") ?? defaultAppSettings);
+    const hydratedSettings = hydrateAiApiKeys(normalizedSettings);
 
     // 兼容旧版本：如果 settings 里还有明文 apiKey，读取后立即迁移到密文存储。
     if (hasPlainTextAiApiKey(normalizedSettings)) {
-      persistSettingsWithEncryptedAiKeys(hydratedSettings)
+      persistSettingsWithEncryptedAiKeys(hydratedSettings);
     }
-    hydratedSettingsCache = hydratedSettings
+    hydratedSettingsCache = hydratedSettings;
   }
 
   // 返回副本，调用方修改结果不会污染缓存。
-  return structuredClone(hydratedSettingsCache)
+  return structuredClone(hydratedSettingsCache);
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {
-  const normalizedSettings = normalizeSettings(settings)
-  persistSettingsWithEncryptedAiKeys(normalizedSettings)
+  const normalizedSettings = normalizeSettings(settings);
+  persistSettingsWithEncryptedAiKeys(normalizedSettings);
 
-  return hydrateAiApiKeys(normalizedSettings)
+  return hydrateAiApiKeys(normalizedSettings);
 }

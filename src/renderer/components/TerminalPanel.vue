@@ -86,7 +86,10 @@ const automationTaskDialog = reactive({
   isSubmitting: false,
 });
 const automationTaskForm = reactive({ name: "", script: "" });
-const automationRun = reactive<{ open: boolean; task: ServerAutomationTask | null }>({ open: false, task: null });
+const automationRun = reactive<{ open: boolean; task: ServerAutomationTask | null }>({
+  open: false,
+  task: null,
+});
 
 // 标签溢出时将纵向滚轮转换为横向滚动，方便快速切换较多服务器。
 function scrollSessionTabs(event: WheelEvent): void {
@@ -252,16 +255,27 @@ async function startAutomationRun(): Promise<void> {
   }
   const server = serversStore.servers.find(item => item.id === automationRun.task?.serverId);
   if (!server) {
-    core.writeRendererLog("执行自定义指令失败：服务器不存在", { taskId: automationRun.task.id }, "warn");
+    core.writeRendererLog(
+      "执行自定义指令失败：服务器不存在",
+      { taskId: automationRun.task.id },
+      "warn",
+    );
     return;
   }
   try {
-    await terminalsStore.openTerminalAutomation(server, automationRun.task.name, automationRun.task.script);
+    await terminalsStore.openTerminalAutomation(
+      server,
+      automationRun.task.name,
+      automationRun.task.script,
+    );
     closeAutomationRunDialog();
   } catch (error) {
     core.writeRendererLog(
       "启动独立任务终端失败",
-      { taskId: automationRun.task.id, error: error instanceof Error ? error.message : String(error) },
+      {
+        taskId: automationRun.task.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
       "warn",
     );
   }
@@ -298,12 +312,18 @@ function selectTabContextMenuItem(item: ContextMenuItem): void {
   closeTabContextMenu();
 
   if (item.key === "close-all") {
-    emit("closeTabs", props.tabs.map(tab => tab.id));
+    emit(
+      "closeTabs",
+      props.tabs.map(tab => tab.id),
+    );
     return;
   }
 
   if (item.key === "close-right" && targetIndex >= 0) {
-    emit("closeTabs", props.tabs.slice(targetIndex + 1).map(tab => tab.id));
+    emit(
+      "closeTabs",
+      props.tabs.slice(targetIndex + 1).map(tab => tab.id),
+    );
   }
 }
 
@@ -332,9 +352,7 @@ async function openTerminalContextMenu(event: MouseEvent): Promise<void> {
 }
 
 // 终端菜单只负责触发复制/粘贴命令，具体 xterm 和剪贴板处理留在 store。
-async function selectTerminalContextMenuItem(
-  item: ContextMenuItem,
-): Promise<void> {
+async function selectTerminalContextMenuItem(item: ContextMenuItem): Promise<void> {
   closeTerminalContextMenu();
 
   if (item.key === "copy") {
@@ -415,7 +433,8 @@ watch(
         class="session-tabs"
         role="tablist"
         aria-label="终端标签"
-        @wheel="scrollSessionTabs">
+        @wheel="scrollSessionTabs"
+      >
         <div
           v-for="tab in tabs"
           :key="tab.id"
@@ -426,10 +445,13 @@ watch(
           @click="emit('activateTab', tab.id)"
           @contextmenu="openTabContextMenu($event, tab.id)"
           @keydown.enter.prevent="emit('activateTab', tab.id)"
-          @keydown.space.prevent="emit('activateTab', tab.id)">
+          @keydown.space.prevent="emit('activateTab', tab.id)"
+        >
           <span>{{ tab.title }}</span>
           <small
-            :class="{ 'status-disconnected': tab.status === 'disconnected' || tab.status === 'error' }"
+            :class="{
+              'status-disconnected': tab.status === 'disconnected' || tab.status === 'error',
+            }"
             >{{ getStatusText(tab.status) }}</small
           >
           <button
@@ -438,14 +460,16 @@ watch(
             class="session-tab-reconnect"
             aria-label="重新连接"
             title="重新连接"
-            @click.stop="terminalsStore.reconnectTerminal(tab.id)">
+            @click.stop="terminalsStore.reconnectTerminal(tab.id)"
+          >
             <img :src="reconnectIcon" alt="" />
           </button>
           <button
             type="button"
             class="session-tab-close"
             aria-label="关闭终端"
-            @click.stop="emit('closeTab', tab.id)">
+            @click.stop="emit('closeTab', tab.id)"
+          >
             <img :src="closeIcon" alt="" />
           </button>
         </div>
@@ -458,7 +482,8 @@ watch(
       <div
         ref="terminalStageSlot"
         :class="['terminal-stage-slot', { 'is-background': aiWorkspace }]"
-        :aria-hidden="aiWorkspace && !isTerminalDialogVisible">
+        :aria-hidden="aiWorkspace && !isTerminalDialogVisible"
+      >
         <div ref="terminalStage" class="terminal-stage">
           <SearchBar
             v-if="isTerminalSearchOpen"
@@ -472,15 +497,14 @@ watch(
             @update:keyword="emit('update:terminalSearchKeyword', $event)"
             @search="emit('search', $event)"
             @toggle-case-sensitive="emit('toggleCaseSensitive')"
-            @close="emit('closeSearch')" />
+            @close="emit('closeSearch')"
+          />
 
           <div v-if="tabs.length === 0" class="terminal-empty">
             <p class="eyebrow">READY</p>
             <h2>选择服务器开始 SSH 会话</h2>
             <p>点击左侧服务器建立 SSH shell。</p>
-            <button type="button" @click="emit('openConnectionDialog')">
-              新增连接
-            </button>
+            <button type="button" @click="emit('openConnectionDialog')">新增连接</button>
           </div>
           <div v-else class="terminal-hosts">
             <div
@@ -489,7 +513,8 @@ watch(
               :ref="element => setTerminalHost(tab.id, element)"
               class="terminal-host"
               v-show="tab.id === activeTabId"
-              @contextmenu="void openTerminalContextMenu($event)"></div>
+              @contextmenu="void openTerminalContextMenu($event)"
+            ></div>
           </div>
           <StatusBar :active-tab-id="activeTabId" />
         </div>
@@ -499,12 +524,14 @@ watch(
         :menu="tabContextMenu"
         :items="tabContextMenuItems"
         @select="selectTabContextMenuItem"
-        @close="closeTabContextMenu" />
+        @close="closeTabContextMenu"
+      />
       <ContextMenu
         :menu="terminalContextMenu"
         :items="terminalContextMenuItems"
         @select="selectTerminalContextMenuItem"
-        @close="closeTerminalContextMenu" />
+        @close="closeTerminalContextMenu"
+      />
       <AutomationTaskDialog
         :open="automationTaskDialog.open"
         :server-name="automationTaskDialog.serverName"
@@ -512,33 +539,36 @@ watch(
         :error="automationTaskDialog.error"
         :is-submitting="automationTaskDialog.isSubmitting"
         @close="closeAutomationTaskDialog"
-        @submit="saveAutomationTask" />
+        @submit="saveAutomationTask"
+      />
       <AutomationRunDialog
         :open="automationRun.open"
         :server-name="getActiveTerminalTab()?.title ?? ''"
         :task="automationRun.task"
         @close="closeAutomationRunDialog"
-        @start="startAutomationRun" />
+        @start="startAutomationRun"
+      />
       <AppDialog
         v-if="terminalsStore.pendingTerminalPaste"
         title="确认粘贴多行文本"
         :description="`检测到 ${terminalsStore.pendingTerminalPaste.lineCount} 行文本，将按原始内容粘贴到终端。`"
         width="medium"
-        @close="terminalsStore.cancelTerminalPaste">
+        @close="terminalsStore.cancelTerminalPaste"
+      >
         <section class="terminal-paste-confirm">
           <p>多行内容可能被当前 Shell 立即执行，请确认内容无误后继续。</p>
-          <pre class="terminal-paste-preview">{{ terminalsStore.pendingTerminalPaste.previewText }}</pre>
+          <pre class="terminal-paste-preview">{{
+            terminalsStore.pendingTerminalPaste.previewText
+          }}</pre>
           <footer class="dialog-actions">
-            <button
-              type="button"
-              class="btn btn-ghost"
-              @click="terminalsStore.cancelTerminalPaste">
+            <button type="button" class="btn btn-ghost" @click="terminalsStore.cancelTerminalPaste">
               取消
             </button>
             <button
               type="button"
               class="btn btn-primary"
-              @click="terminalsStore.confirmTerminalPaste">
+              @click="terminalsStore.confirmTerminalPaste"
+            >
               确认粘贴（{{ terminalsStore.pendingTerminalPaste.lineCount }} 行）
             </button>
           </footer>
@@ -548,7 +578,8 @@ watch(
         v-if="isTerminalDialogVisible"
         :title="terminalDialogTitle"
         width="terminal"
-        @close="terminalsStore.closeTerminalDialog">
+        @close="terminalsStore.closeTerminalDialog"
+      >
         <div ref="terminalDialogStage" class="terminal-dialog-stage"></div>
       </AppDialog>
     </section>

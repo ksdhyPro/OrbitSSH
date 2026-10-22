@@ -73,10 +73,7 @@ async function buildHero(scale, outputPath) {
     </svg>
   `);
 
-  const logo = await sharp(logoPath)
-    .resize(logoSize, logoSize, { fit: "cover" })
-    .png()
-    .toBuffer();
+  const logo = await sharp(logoPath).resize(logoSize, logoSize, { fit: "cover" }).png().toBuffer();
 
   await sharp(background)
     .composite([{ input: logo, left: logoLeft, top: logoTop }])
@@ -135,13 +132,7 @@ async function buildButtons() {
     for (const [state, fileName] of Object.entries(definition.files)) {
       const sourcePath = path.join(skinRoot, "form", fileName);
       directDpiSources.add(sourcePath);
-      await buildButton(
-        definition.width,
-        definition.height,
-        state,
-        1,
-        sourcePath,
-      );
+      await buildButton(definition.width, definition.height, state, 1, sourcePath);
       for (const scale of dpiScales) {
         await buildButton(
           definition.width,
@@ -159,11 +150,7 @@ async function buildButtons() {
     directDpiSources.add(sourcePath);
     await buildDirectoryButton(state, 1, sourcePath);
     for (const scale of dpiScales) {
-      await buildDirectoryButton(
-        state,
-        scale,
-        dpiOutputPath(sourcePath, scale),
-      );
+      await buildDirectoryButton(state, scale, dpiOutputPath(sourcePath, scale));
     }
   }
 
@@ -213,13 +200,9 @@ async function buildDpiVariants(sourcePath) {
     const targetPath = dpiOutputPath(sourcePath, scale);
     // 使用高质量插值生成插件约定的 DPI 资源，避免交由系统二次模糊缩放。
     await sharp(sourcePath)
-      .resize(
-        Math.round(metadata.width * scale),
-        Math.round(metadata.height * scale),
-        {
-          kernel: sharp.kernel.lanczos3,
-        },
-      )
+      .resize(Math.round(metadata.width * scale), Math.round(metadata.height * scale), {
+        kernel: sharp.kernel.lanczos3,
+      })
       .png({ compressionLevel: 9 })
       .toFile(targetPath);
   }
@@ -227,8 +210,7 @@ async function buildDpiVariants(sourcePath) {
 
 async function main() {
   for (const requiredPath of [skinRoot, logoPath]) {
-    if (!existsSync(requiredPath))
-      throw new Error(`缺少安装器资源：${requiredPath}`);
+    if (!existsSync(requiredPath)) throw new Error(`缺少安装器资源：${requiredPath}`);
   }
 
   await buildHero(1, heroPath);
@@ -243,9 +225,7 @@ async function main() {
     if (directDpiSources.has(sourcePath)) continue;
     await buildDpiVariants(sourcePath);
   }
-  console.log(
-    `已生成安装器首页及 ${basePngFiles.length * dpiScales.length} 个高 DPI 图片资源。`,
-  );
+  console.log(`已生成安装器首页及 ${basePngFiles.length * dpiScales.length} 个高 DPI 图片资源。`);
 }
 
 main().catch(error => {

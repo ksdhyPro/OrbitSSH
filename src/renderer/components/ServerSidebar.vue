@@ -42,10 +42,11 @@ const emit = defineEmits<{
   toggleCollapsed: [];
 }>();
 
-const { menu, menuTarget, menuTargetType, openMenu, closeMenu } =
-  useContextMenuTarget<ServerConfig | ServerGroup, "server" | "group">("server");
-const { groupDialog, openGroupDialog, closeGroupDialog } =
-  useGroupNameDialog<ServerGroup>();
+const { menu, menuTarget, menuTargetType, openMenu, closeMenu } = useContextMenuTarget<
+  ServerConfig | ServerGroup,
+  "server" | "group"
+>("server");
+const { groupDialog, openGroupDialog, closeGroupDialog } = useGroupNameDialog<ServerGroup>();
 const { groupDeleteDialog, requestGroupDelete, closeGroupDeleteDialog } =
   useGroupDeleteDialog<ServerGroup>();
 const colorDialog = reactive<{
@@ -87,10 +88,7 @@ function submitGroup(): void {
   else emit("createGroup", name);
   closeGroupDialog();
 }
-function openColorDialog(
-  target: ServerConfig | ServerGroup,
-  type: "server" | "group",
-): void {
+function openColorDialog(target: ServerConfig | ServerGroup, type: "server" | "group"): void {
   colorDialog.target = target;
   colorDialog.type = type;
   colorDialog.open = true;
@@ -102,8 +100,7 @@ function closeColorDialog(): void {
 function saveColor(color?: string): void {
   const target = colorDialog.target;
   if (!target) return;
-  if (colorDialog.type === "server")
-    emit("setServerColor", target as ServerConfig, color);
+  if (colorDialog.type === "server") emit("setServerColor", target as ServerConfig, color);
   else {
     const group = target as ServerGroup;
     emit("updateGroup", group, { name: group.name, color });
@@ -144,14 +141,16 @@ function confirmGroupDelete(): void {
     title="服务器"
     content-id="server-panel-content"
     :collapsed="collapsed"
-    @toggle-collapsed="emit('toggleCollapsed')">
+    @toggle-collapsed="emit('toggleCollapsed')"
+  >
     <template #actions>
       <button
         type="button"
         class="icon-btn"
         aria-label="新增分组"
         title="新增分组"
-        @click.stop="openGroupDialog()">
+        @click.stop="openGroupDialog()"
+      >
         <img :src="groupAddIcon" alt="" />
       </button>
       <button
@@ -159,7 +158,8 @@ function confirmGroupDelete(): void {
         class="icon-btn"
         aria-label="新增连接"
         title="新增连接"
-        @click.stop="emit('openConnectionDialog')">
+        @click.stop="emit('openConnectionDialog')"
+      >
         <img :src="serverAddIcon" alt="" />
       </button>
     </template>
@@ -172,7 +172,8 @@ function confirmGroupDelete(): void {
       selectable
       @select="emit('openServerTerminal', $event)"
       @item-menu="(event, server) => openMenu(event, server, 'server')"
-      @group-menu="(event, group) => openMenu(event, group, 'group')">
+      @group-menu="(event, group) => openMenu(event, group, 'group')"
+    >
       <template #status>
         <div v-if="runtimeError" class="empty-state empty-state-card is-error">
           {{ runtimeError }}
@@ -189,18 +190,15 @@ function confirmGroupDelete(): void {
       </template>
     </GroupedList>
   </SidebarPanel>
-  <ContextMenu
-    :menu="menu"
-    :items="menuItems"
-    @select="selectMenuItem"
-    @close="closeMenu" />
+  <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" @close="closeMenu" />
   <ServerGroupDialog
     :open="groupDialog.open"
     :name="groupDialog.name"
     :editing="Boolean(groupDialog.editing)"
     @update-name="groupDialog.name = $event"
     @submit="submitGroup"
-    @close="closeGroupDialog" />
+    @close="closeGroupDialog"
+  />
   <ColorPickerDialog
     :open="colorDialog.open"
     :title="colorDialog.type === 'group' ? '分组颜色' : '连接颜色'"
@@ -210,7 +208,8 @@ function confirmGroupDelete(): void {
       saveColor(undefined);
       closeColorDialog();
     "
-    @close="closeColorDialog" />
+    @close="closeColorDialog"
+  />
   <DeleteConfirmDialog
     :open="groupDeleteDialog.open"
     title="删除分组"
@@ -218,5 +217,6 @@ function confirmGroupDelete(): void {
     confirm-label="删除"
     :danger="true"
     @cancel="closeGroupDeleteDialog"
-    @confirm="confirmGroupDelete" />
+    @confirm="confirmGroupDelete"
+  />
 </template>

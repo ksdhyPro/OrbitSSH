@@ -9,21 +9,14 @@ import { appConfig } from "../../shared/config";
 import type { ServerConfig } from "../../shared/server";
 import type { TerminalStatusEvent } from "../../shared/terminal";
 import { LOCAL_TERMINAL_SERVER_ID } from "../../shared/terminal";
-import type {
-  TerminalInstance,
-  TerminalSearchMatch,
-  TerminalTab,
-} from "../types/terminal";
+import type { TerminalInstance, TerminalSearchMatch, TerminalTab } from "../types/terminal";
 import { copyTextByFallback } from "../utils/clipboard";
 import { parseOsc7Path } from "../utils/path";
 import {
   attachMultilinePasteListener,
   createTerminalPasteController,
 } from "../utils/terminal-paste";
-import {
-  getTerminalSearchDecorations,
-  getTerminalTheme,
-} from "../utils/theme";
+import { getTerminalSearchDecorations, getTerminalTheme } from "../utils/theme";
 import { useCoreStore } from "./useCoreStore";
 import { useSettingsStore } from "./useSettingsStore";
 
@@ -81,8 +74,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     write: (tabId, text) => {
       void core.orbitSSHApi?.terminals.write(tabId, text);
     },
-    paste: (tabId, text) =>
-      terminalInstances.get(tabId)?.terminal.paste(text),
+    paste: (tabId, text) => terminalInstances.get(tabId)?.terminal.paste(text),
     focus: tabId => terminalInstances.get(tabId)?.terminal.focus(),
     hasTerminal: tabId => terminalInstances.has(tabId),
   });
@@ -91,9 +83,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
   let fitScheduleTimer: number | undefined;
   let lastTerminalSearchKeyword = "";
 
-  const activeTab = computed(() =>
-    tabs.value.find(tab => tab.id === activeTabId.value),
-  );
+  const activeTab = computed(() => tabs.value.find(tab => tab.id === activeTabId.value));
 
   function resetTerminalSearchResult(): void {
     terminalSearchResult.index = 0;
@@ -104,9 +94,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     return {
       caseSensitive: isTerminalSearchCaseSensitive.value,
       incremental,
-      decorations: getTerminalSearchDecorations(
-        settingsStore.appSettings.appearance.themeMode,
-      ),
+      decorations: getTerminalSearchDecorations(settingsStore.appSettings.appearance.themeMode),
     };
   }
 
@@ -180,32 +168,21 @@ export const useTerminalsStore = defineStore("terminals", () => {
     return { text: text.trimEnd(), columns };
   }
 
-  function getTerminalSearchMatches(
-    terminal: Terminal,
-    keyword: string,
-  ): TerminalSearchMatch[] {
+  function getTerminalSearchMatches(terminal: Terminal, keyword: string): TerminalSearchMatch[] {
     const matches: TerminalSearchMatch[] = [];
-    const searchNeedle = isTerminalSearchCaseSensitive.value
-      ? keyword
-      : keyword.toLowerCase();
+    const searchNeedle = isTerminalSearchCaseSensitive.value ? keyword : keyword.toLowerCase();
 
     for (let row = 0; row < terminal.buffer.active.length; row += 1) {
       const { text, columns } = getBufferLineTextAndColumns(terminal, row);
-      const searchLine = isTerminalSearchCaseSensitive.value
-        ? text
-        : text.toLowerCase();
+      const searchLine = isTerminalSearchCaseSensitive.value ? text : text.toLowerCase();
       let index = searchLine.indexOf(searchNeedle);
 
       while (index >= 0) {
         const nextColumnIndex = columns.findIndex(column => column >= index);
         const col =
-          nextColumnIndex >= 0
-            ? columns[nextColumnIndex]
-            : Math.min(index, terminal.cols - 1);
+          nextColumnIndex >= 0 ? columns[nextColumnIndex] : Math.min(index, terminal.cols - 1);
         const endIndex = index + keyword.length;
-        const nextEndColumnIndex = columns.findIndex(
-          column => column >= endIndex,
-        );
+        const nextEndColumnIndex = columns.findIndex(column => column >= endIndex);
         const endCol =
           nextEndColumnIndex >= 0
             ? columns[nextEndColumnIndex]
@@ -216,20 +193,14 @@ export const useTerminalsStore = defineStore("terminals", () => {
           col,
           size: Math.max(endCol - col, 1),
         });
-        index = searchLine.indexOf(
-          searchNeedle,
-          index + Math.max(keyword.length, 1),
-        );
+        index = searchLine.indexOf(searchNeedle, index + Math.max(keyword.length, 1));
       }
     }
 
     return matches;
   }
 
-  function selectTerminalSearchMatch(
-    terminal: Terminal,
-    match: TerminalSearchMatch,
-  ): void {
+  function selectTerminalSearchMatch(terminal: Terminal, match: TerminalSearchMatch): void {
     terminal.select(match.col, match.row, match.size);
 
     if (
@@ -237,17 +208,13 @@ export const useTerminalsStore = defineStore("terminals", () => {
       match.row >= terminal.buffer.active.viewportY + terminal.rows
     ) {
       terminal.scrollLines(
-        match.row -
-          terminal.buffer.active.viewportY -
-          Math.floor(terminal.rows / 2),
+        match.row - terminal.buffer.active.viewportY - Math.floor(terminal.rows / 2),
       );
     }
   }
 
   // 使用 xterm SearchAddon 在当前激活终端中搜索关键词。
-  function searchActiveTerminal(
-    direction: "current" | "next" | "previous" = "current",
-  ): void {
+  function searchActiveTerminal(direction: "current" | "next" | "previous" = "current"): void {
     const keyword = terminalSearchKeyword.value;
     const terminalEntry = terminalInstances.get(activeTabId.value);
 
@@ -376,9 +343,10 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
     try {
       // 只读取剪贴板文本；图片、文件等非文本内容会得到空字符串并跳过写入。
-      const clipboardText = typeof core.orbitSSHApi?.clipboard?.readText === "function"
-        ? await core.orbitSSHApi.clipboard.readText()
-        : await navigator.clipboard?.readText?.();
+      const clipboardText =
+        typeof core.orbitSSHApi?.clipboard?.readText === "function"
+          ? await core.orbitSSHApi.clipboard.readText()
+          : await navigator.clipboard?.readText?.();
 
       if (!clipboardText) {
         return;
@@ -410,11 +378,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
     // 终端内复制 / 粘贴：Ctrl+Shift+C / Ctrl+Shift+V（Mac 上为 Cmd+Shift+C / Cmd+Shift+V）。
     // 终端里的纯 Ctrl+C / Ctrl+V 通常被 shell 用作中断 / 杂交，因此用 Shift 修饰符区分。
-    if (
-      event.type === "keydown" &&
-      event.shiftKey &&
-      (event.ctrlKey || event.metaKey)
-    ) {
+    if (event.type === "keydown" && event.shiftKey && (event.ctrlKey || event.metaKey)) {
       const key = event.key.toLowerCase();
       if (key === "c") {
         event.preventDefault();
@@ -428,11 +392,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       }
     }
 
-    if (
-      event.type === "keydown" &&
-      event.key === "Escape" &&
-      isTerminalSearchOpen.value
-    ) {
+    if (event.type === "keydown" && event.key === "Escape" && isTerminalSearchOpen.value) {
       event.preventDefault();
       void closeTerminalSearch();
       return false;
@@ -465,11 +425,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     });
   }
 
-  function scheduleTerminalResize(
-    tabId: string,
-    cols: number,
-    rows: number,
-  ): void {
+  function scheduleTerminalResize(tabId: string, cols: number, rows: number): void {
     if (cols <= 0 || rows <= 0) {
       return;
     }
@@ -565,8 +521,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
     terminal.loadAddon(searchAddon);
     terminal.attachCustomKeyEventHandler(handleTerminalKeyEvent);
     const searchResultsDisposable = searchAddon.onDidChangeResults(event => {
-      terminalSearchResult.index =
-        event.resultIndex >= 0 ? event.resultIndex + 1 : 0;
+      terminalSearchResult.index = event.resultIndex >= 0 ? event.resultIndex + 1 : 0;
       terminalSearchResult.total = event.resultCount;
     });
     terminal.open(host);
@@ -614,11 +569,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       return true;
     });
 
-    const pasteDisposable = attachMultilinePasteListener(
-      host,
-      tab.id,
-      requestTerminalPaste,
-    );
+    const pasteDisposable = attachMultilinePasteListener(host, tab.id, requestTerminalPaste);
 
     terminal.onData(data => {
       handleTerminalInput(tab.id, data);
@@ -736,7 +687,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
     const commandIndex = run.nextCommandIndex;
     run.commandInFlight = commandIndex;
-    terminal.writeln(`\r\n[OrbitSSH] 正在执行第 ${commandIndex + 1}/${run.commands.length} 条命令：`);
+    terminal.writeln(
+      `\r\n[OrbitSSH] 正在执行第 ${commandIndex + 1}/${run.commands.length} 条命令：`,
+    );
     terminal.writeln(`$ ${run.commands[commandIndex]}`);
 
     try {
@@ -752,7 +705,9 @@ export const useTerminalsStore = defineStore("terminals", () => {
       }
     } catch (error) {
       if (terminalAutomationRuns.get(tabId) === run) {
-        terminal.writeln(`[OrbitSSH] 命令发送失败：${error instanceof Error ? error.message : String(error)}`);
+        terminal.writeln(
+          `[OrbitSSH] 命令发送失败：${error instanceof Error ? error.message : String(error)}`,
+        );
         terminalAutomationRuns.delete(tabId);
       }
     }
@@ -763,9 +718,7 @@ export const useTerminalsStore = defineStore("terminals", () => {
       throw new Error("请通过 Electron 窗口启动应用");
     }
 
-    const existingLocalTab = tabs.value.find(
-      tab => tab.serverId === LOCAL_TERMINAL_SERVER_ID,
-    );
+    const existingLocalTab = tabs.value.find(tab => tab.serverId === LOCAL_TERMINAL_SERVER_ID);
 
     if (existingLocalTab) {
       await activateTerminalTab(existingLocalTab.id);
@@ -875,18 +828,12 @@ export const useTerminalsStore = defineStore("terminals", () => {
       if (!ok) {
         // 主进程会同时回写错误状态；这里兜底避免 IPC 异常丢失时卡在连接中。
         tabs.value = tabs.value.map(t =>
-          t.id === tabId
-            ? { ...t, status: "error" as const, message: "终端重连失败" }
-            : t,
+          t.id === tabId ? { ...t, status: "error" as const, message: "终端重连失败" } : t,
         );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      core.writeRendererLog(
-        "终端重连失败",
-        { tabId, error: message },
-        "error",
-      );
+      core.writeRendererLog("终端重连失败", { tabId, error: message }, "error");
       tabs.value = tabs.value.map(t =>
         t.id === tabId
           ? { ...t, status: "error" as const, message: `终端重连失败：${message}` }
@@ -906,15 +853,11 @@ export const useTerminalsStore = defineStore("terminals", () => {
       message: event.message,
     });
     tabs.value = tabs.value.map(tab =>
-      tab.id === event.tabId
-        ? { ...tab, status: event.status, message: event.message }
-        : tab,
+      tab.id === event.tabId ? { ...tab, status: event.status, message: event.message } : tab,
     );
 
     if (event.message) {
-      terminalInstances
-        .get(event.tabId)
-        ?.terminal.writeln(`\r\n${event.message}`);
+      terminalInstances.get(event.tabId)?.terminal.writeln(`\r\n${event.message}`);
     }
 
     // SSH shell 就绪后补发一次终端尺寸同步。
@@ -935,13 +878,11 @@ export const useTerminalsStore = defineStore("terminals", () => {
 
   function startListeners(): void {
     if (core.orbitSSHApi && !removeTerminalDataListener) {
-      removeTerminalDataListener =
-        core.orbitSSHApi.terminals.onData(handleTerminalData);
+      removeTerminalDataListener = core.orbitSSHApi.terminals.onData(handleTerminalData);
     }
 
     if (core.orbitSSHApi && !removeTerminalStatusListener) {
-      removeTerminalStatusListener =
-        core.orbitSSHApi.terminals.onStatus(handleTerminalStatus);
+      removeTerminalStatusListener = core.orbitSSHApi.terminals.onStatus(handleTerminalStatus);
     }
   }
 

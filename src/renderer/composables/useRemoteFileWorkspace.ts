@@ -89,9 +89,7 @@ export function useRemoteFileWorkspace(
   });
 
   function toggleModifyTimeSort(): void {
-    modifyTimeSortDirection.value = toggleModifyTimeSortDirection(
-      modifyTimeSortDirection.value,
-    );
+    modifyTimeSortDirection.value = toggleModifyTimeSortDirection(modifyTimeSortDirection.value);
 
     // 排序后旧索引不再对应同一文件，重置 Shift 范围选择锚点。
     if (activeSftpTree.value) {
@@ -99,9 +97,7 @@ export function useRemoteFileWorkspace(
     }
   }
 
-  function createParentDirectoryNode(
-    currentPath: string,
-  ): VisibleRemoteFileNode | null {
+  function createParentDirectoryNode(currentPath: string): VisibleRemoteFileNode | null {
     const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
     if (!normalizedPath || normalizedPath === "/") return null;
 
@@ -118,10 +114,7 @@ export function useRemoteFileWorkspace(
 
   function getFilePanelHint(): string {
     if (!activeTab.value) return "打开 SSH 会话后显示远程目录";
-    if (
-      activeTab.value.status === "disconnected" ||
-      activeTab.value.status === "error"
-    ) {
+    if (activeTab.value.status === "disconnected" || activeTab.value.status === "error") {
       return "SFTP 已断开";
     }
 
@@ -163,12 +156,7 @@ export function useRemoteFileWorkspace(
 
   function handleFileSelectNode(event: MouseEvent, node: RemoteFileNode): void {
     if (isRemoteNodeDeleting(node)) return;
-    sftpStore.selectFileNode(
-      activeTabId.value,
-      node,
-      visibleFileTree.value,
-      event,
-    );
+    sftpStore.selectFileNode(activeTabId.value, node, visibleFileTree.value, event);
   }
 
   function handleFileSelectAll(): void {
@@ -180,11 +168,7 @@ export function useRemoteFileWorkspace(
   }
 
   function handleFileMarqueeSelect(paths: string[]): void {
-    sftpStore.selectFileNodesByPaths(
-      activeTabId.value,
-      visibleFileTree.value,
-      paths,
-    );
+    sftpStore.selectFileNodesByPaths(activeTabId.value, visibleFileTree.value, paths);
   }
 
   function handleFileDragStart(
@@ -300,13 +284,11 @@ export function useRemoteFileWorkspace(
   }
 
   function setFileEditorSearchInput(element: unknown): void {
-    fileEditorSearchInput.value =
-      element instanceof HTMLInputElement ? element : null;
+    fileEditorSearchInput.value = element instanceof HTMLInputElement ? element : null;
   }
 
   function setFileEditorReplaceInput(element: unknown): void {
-    fileEditorReplaceInput.value =
-      element instanceof HTMLInputElement ? element : null;
+    fileEditorReplaceInput.value = element instanceof HTMLInputElement ? element : null;
   }
 
   async function editContextFile(): Promise<void> {
@@ -325,9 +307,7 @@ export function useRemoteFileWorkspace(
     await sftpStore.openRemoteImagePreview(activeTabId.value, node);
   }
 
-  async function openRemoteFileEditorByDoubleClick(
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function openRemoteFileEditorByDoubleClick(node: RemoteFileNode): Promise<void> {
     if (node.type !== "file") return;
     if (isPreviewImageFile(node)) {
       await sftpStore.openRemoteImagePreview(activeTabId.value, node);
@@ -395,9 +375,7 @@ export function useRemoteFileWorkspace(
     sftpStore.cancelRename();
   }
 
-  async function handleCreateBlankNode(
-    type: "file" | "directory",
-  ): Promise<void> {
+  async function handleCreateBlankNode(type: "file" | "directory"): Promise<void> {
     const parentPath = activeSftpTree.value?.homePath;
     if (parentPath) {
       await sftpStore.createRemoteNode(activeTabId.value, parentPath, type);
@@ -470,8 +448,7 @@ export function useRemoteFileWorkspace(
     applyFileEditorSearchQuery: fileEditorStore.applyFileEditorSearchQuery,
     openFileEditorSearch: fileEditorStore.openFileEditorSearch,
     closeFileEditorSearch: fileEditorStore.closeFileEditorSearch,
-    toggleFileEditorSearchCaseSensitive:
-      fileEditorStore.toggleFileEditorSearchCaseSensitive,
+    toggleFileEditorSearchCaseSensitive: fileEditorStore.toggleFileEditorSearchCaseSensitive,
     searchFileEditor: fileEditorStore.searchFileEditor,
     replaceCurrentFileEditorMatch: fileEditorStore.replaceCurrentFileEditorMatch,
     replaceAllFileEditorMatches: fileEditorStore.replaceAllFileEditorMatches,

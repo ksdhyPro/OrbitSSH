@@ -1,8 +1,4 @@
-import type {
-  AiChatInput,
-  AiContextUsage,
-  AiMessage,
-} from "../../shared/ai.js";
+import type { AiChatInput, AiContextUsage, AiMessage } from "../../shared/ai.js";
 import type { ExecutedAiCommandContext } from "./ai-context.js";
 import type { AiPersistedConversationContext } from "../storage/ai-conversation-store.js";
 
@@ -55,14 +51,13 @@ export function isContextBudgetReached(
   return estimatedRequestTokens >= threshold || (lastUsage?.totalTokens ?? 0) >= threshold;
 }
 
-export function isContextWindowExceededError(
-  status: number,
-  responseText: string,
-): boolean {
-  return status === 413 ||
+export function isContextWindowExceededError(status: number, responseText: string): boolean {
+  return (
+    status === 413 ||
     /context[_ -]?length[_ -]?exceeded|maximum context length|context window|too many tokens/i.test(
       responseText,
-    );
+    )
+  );
 }
 
 /** 根据历史规模、压缩请求安全线和新上下文剩余空间动态计算摘要输出上限。 */
@@ -78,9 +73,7 @@ export function calculateSummaryMaxTokens(
   const totalTokens = contextTokenLimitK * 1_000;
   const normalHistoryTokens = estimateTokenCount(input.history);
   const compressionPromptTokens =
-    estimatedSummaryPromptTokens +
-    estimateTokenCount(memory.summary) +
-    normalHistoryTokens;
+    estimatedSummaryPromptTokens + estimateTokenCount(memory.summary) + normalHistoryTokens;
   const newContextFixedTokens =
     estimatedFixedRequestTokens +
     estimateTokenCount({
@@ -89,11 +82,13 @@ export function calculateSummaryMaxTokens(
       context: input.context,
       presetPrompt: input.presetPrompt ?? "",
     });
-  const summaryMaxTokens = Math.floor(Math.min(
-    normalHistoryTokens * summaryHistoryRatio,
-    totalTokens * compressionRequestSafetyThreshold - compressionPromptTokens,
-    totalTokens * contextUsageThreshold - newContextFixedTokens,
-  ));
+  const summaryMaxTokens = Math.floor(
+    Math.min(
+      normalHistoryTokens * summaryHistoryRatio,
+      totalTokens * compressionRequestSafetyThreshold - compressionPromptTokens,
+      totalTokens * contextUsageThreshold - newContextFixedTokens,
+    ),
+  );
 
   return summaryMaxTokens >= MIN_AI_SUMMARY_TOKENS ? summaryMaxTokens : 0;
 }
@@ -149,9 +144,7 @@ export class AiConversationContextManager {
     });
   }
 
-  snapshot(
-    input: Pick<AiChatInput, "conversationId" | "context">,
-  ): AiPersistedConversationContext {
+  snapshot(input: Pick<AiChatInput, "conversationId" | "context">): AiPersistedConversationContext {
     const state = this.getState(input);
     return {
       summary: state.summary,
@@ -170,9 +163,7 @@ export class AiConversationContextManager {
 
   getSegmentHistory(input: AiChatInput): AiMessage[] {
     const floor = this.getState(input).historyFloorCreatedAt;
-    return floor > 0
-      ? input.history.filter(message => message.createdAt > floor)
-      : input.history;
+    return floor > 0 ? input.history.filter(message => message.createdAt > floor) : input.history;
   }
 
   assertAvailable(input: Pick<AiChatInput, "conversationId" | "context">): void {
@@ -181,20 +172,18 @@ export class AiConversationContextManager {
     }
   }
 
-  shouldCompress(
-    input: AiChatInput,
-    contextTokenLimitK: number,
-    configId: string,
-  ): boolean {
+  shouldCompress(input: AiChatInput, contextTokenLimitK: number, configId: string): boolean {
     const state = this.getState(input);
-    const estimatedRequestTokens = estimatedFixedRequestTokens + estimateTokenCount({
-      summary: state.summary,
-      commands: state.commands,
-      history: this.getSegmentHistory(input),
-      message: input.message,
-      context: input.context,
-      presetPrompt: input.presetPrompt ?? "",
-    });
+    const estimatedRequestTokens =
+      estimatedFixedRequestTokens +
+      estimateTokenCount({
+        summary: state.summary,
+        commands: state.commands,
+        history: this.getSegmentHistory(input),
+        message: input.message,
+        context: input.context,
+        presetPrompt: input.presetPrompt ?? "",
+      });
 
     return isContextBudgetReached(
       contextTokenLimitK,
@@ -224,15 +213,13 @@ export class AiConversationContextManager {
 
     const state = this.getState(input);
     const maxTokens = contextTokenLimitK * 1_000;
-    const usage = state.lastUsageConfigId === configId
-      ? state.lastUsage
-      : undefined;
+    const usage = state.lastUsageConfigId === configId ? state.lastUsage : undefined;
     const usedTokens = Math.max(0, usage?.totalTokens ?? 0);
     return {
       configId,
       usedTokens,
       maxTokens,
-      percent: Math.min(100, usedTokens / maxTokens * 100),
+      percent: Math.min(100, (usedTokens / maxTokens) * 100),
       source: usage?.source ?? "estimated",
     };
   }

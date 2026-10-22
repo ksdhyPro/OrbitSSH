@@ -1,7 +1,6 @@
 import type { AiModelConfig, AppSettings } from "../../shared/settings.js";
 
-export const AI_DISABLED_MESSAGE =
-  "AI 功能当前未开启。请在「设置 → AI」中切换到 AI 模式后重试。";
+export const AI_DISABLED_MESSAGE = "AI 功能当前未开启。请在「设置 → AI」中切换到 AI 模式后重试。";
 
 export const AI_MODEL_NOT_CONFIGURED_MESSAGE =
   "尚未配置可用的 AI 模型。请在「设置 → AI → 模型配置」中填写 Base URL、API Key 和模型名称后重试。";

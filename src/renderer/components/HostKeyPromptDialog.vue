@@ -60,10 +60,13 @@ onUnmounted(() => {
     v-if="currentPrompt"
     :title="isChanged ? '警告：服务器主机密钥已变更' : '确认服务器主机密钥'"
     width="medium"
-    @close="respond(false)">
+    @close="respond(false)"
+  >
     <section :class="['host-key-dialog', { changed: isChanged }]">
       <p v-if="isChanged" class="host-key-message">
-        {{ serverLabel }}出示的主机密钥与之前信任的不一致。这可能是服务器重装或更换了密钥，也可能有人正在拦截连接（中间人攻击）。确认原因之前不要继续连接。
+        {{
+          serverLabel
+        }}出示的主机密钥与之前信任的不一致。这可能是服务器重装或更换了密钥，也可能有人正在拦截连接（中间人攻击）。确认原因之前不要继续连接。
       </p>
       <p v-else class="host-key-message">
         首次连接{{ serverLabel }}。请确认下面的主机密钥指纹与服务器一致，信任后才会发送登录凭据。
@@ -94,14 +97,16 @@ onUnmounted(() => {
             type="button"
             class="btn btn-danger-soft"
             :disabled="isResponding"
-            @click="respond(true)">
+            @click="respond(true)"
+          >
             仍然信任新密钥
           </button>
           <button
             type="button"
             class="btn btn-primary"
             :disabled="isResponding"
-            @click="respond(false)">
+            @click="respond(false)"
+          >
             断开连接
           </button>
         </template>
@@ -110,14 +115,16 @@ onUnmounted(() => {
             type="button"
             class="btn btn-ghost"
             :disabled="isResponding"
-            @click="respond(false)">
+            @click="respond(false)"
+          >
             取消
           </button>
           <button
             type="button"
             class="btn btn-primary"
             :disabled="isResponding"
-            @click="respond(true)">
+            @click="respond(true)"
+          >
             信任并连接
           </button>
         </template>

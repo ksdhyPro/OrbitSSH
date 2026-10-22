@@ -84,10 +84,7 @@ export const useServersStore = defineStore("servers", () => {
       return;
     }
 
-    if (
-      connectionForm.authType === "privateKey" &&
-      !connectionForm.privateKeyPath.trim()
-    ) {
+    if (connectionForm.authType === "privateKey" && !connectionForm.privateKeyPath.trim()) {
       formError.value = "请填写密钥文件路径";
       return;
     }
@@ -125,9 +122,9 @@ export const useServersStore = defineStore("servers", () => {
           id: editingServerId.value,
           ...nextServer,
         });
-        servers.value = sortServers(servers.value.map(server =>
-          server.id === updatedServer.id ? updatedServer : server,
-        ));
+        servers.value = sortServers(
+          servers.value.map(server => (server.id === updatedServer.id ? updatedServer : server)),
+        );
       } else {
         const createdServer = await core.orbitSSHApi.servers.create(nextServer);
         servers.value = sortServers([createdServer, ...servers.value]);
@@ -135,8 +132,7 @@ export const useServersStore = defineStore("servers", () => {
 
       closeConnectionDialog();
     } catch (error) {
-      formError.value =
-        error instanceof Error ? error.message : "保存服务器失败";
+      formError.value = error instanceof Error ? error.message : "保存服务器失败";
     } finally {
       isSubmittingServer.value = false;
     }
@@ -157,8 +153,7 @@ export const useServersStore = defineStore("servers", () => {
         connectionForm.privateKeyPath = selectedPath;
       }
     } catch (error) {
-      formError.value =
-        error instanceof Error ? error.message : "选择密钥文件失败";
+      formError.value = error instanceof Error ? error.message : "选择密钥文件失败";
     }
   }
 
@@ -193,8 +188,7 @@ export const useServersStore = defineStore("servers", () => {
       await core.orbitSSHApi.servers.delete(serverId);
       servers.value = servers.value.filter(server => server.id !== serverId);
     } catch (error) {
-      listError.value =
-        error instanceof Error ? error.message : "删除服务器失败";
+      listError.value = error instanceof Error ? error.message : "删除服务器失败";
     }
   }
 
@@ -210,25 +204,31 @@ export const useServersStore = defineStore("servers", () => {
         id: server.id,
         isPinned: !server.isPinned,
       });
-      servers.value = sortServers(servers.value.map(item =>
-        item.id === updatedServer.id ? updatedServer : item,
-      ));
+      servers.value = sortServers(
+        servers.value.map(item => (item.id === updatedServer.id ? updatedServer : item)),
+      );
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "更新服务器置顶状态失败";
     }
   }
 
   function replaceServer(updatedServer: ServerConfig): void {
-    servers.value = sortServers(servers.value.map(server =>
-      server.id === updatedServer.id ? updatedServer : server,
-    ));
+    servers.value = sortServers(
+      servers.value.map(server => (server.id === updatedServer.id ? updatedServer : server)),
+    );
   }
 
   async function setServerColor(server: ServerConfig, color?: string): Promise<void> {
     listError.value = "";
     try {
       if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
-      replaceServer(await core.orbitSSHApi.servers.setAppearance({ id: server.id, groupId: server.groupId, color }));
+      replaceServer(
+        await core.orbitSSHApi.servers.setAppearance({
+          id: server.id,
+          groupId: server.groupId,
+          color,
+        }),
+      );
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "更新服务器颜色失败";
     }
@@ -238,7 +238,13 @@ export const useServersStore = defineStore("servers", () => {
     listError.value = "";
     try {
       if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
-      replaceServer(await core.orbitSSHApi.servers.setAppearance({ id: server.id, groupId, color: server.color }));
+      replaceServer(
+        await core.orbitSSHApi.servers.setAppearance({
+          id: server.id,
+          groupId,
+          color: server.color,
+        }),
+      );
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "移动服务器分组失败";
     }
@@ -249,17 +255,23 @@ export const useServersStore = defineStore("servers", () => {
     if (!normalizedName) return;
     try {
       if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
-      groups.value = [...groups.value, await core.orbitSSHApi.servers.createGroup({ name: normalizedName })];
+      groups.value = [
+        ...groups.value,
+        await core.orbitSSHApi.servers.createGroup({ name: normalizedName }),
+      ];
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "创建分组失败";
     }
   }
 
-  async function updateGroup(group: ServerGroup, input: Pick<ServerGroup, "name" | "color">): Promise<void> {
+  async function updateGroup(
+    group: ServerGroup,
+    input: Pick<ServerGroup, "name" | "color">,
+  ): Promise<void> {
     try {
       if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
       const updatedGroup = await core.orbitSSHApi.servers.updateGroup({ id: group.id, ...input });
-      groups.value = groups.value.map(item => item.id === updatedGroup.id ? updatedGroup : item);
+      groups.value = groups.value.map(item => (item.id === updatedGroup.id ? updatedGroup : item));
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "更新分组失败";
     }
@@ -270,7 +282,9 @@ export const useServersStore = defineStore("servers", () => {
       if (!core.orbitSSHApi) throw new Error("请通过 Electron 窗口启动应用");
       await core.orbitSSHApi.servers.deleteGroup(groupId);
       groups.value = groups.value.filter(group => group.id !== groupId);
-      servers.value = servers.value.map(server => server.groupId === groupId ? { ...server, groupId: undefined } : server);
+      servers.value = servers.value.map(server =>
+        server.groupId === groupId ? { ...server, groupId: undefined } : server,
+      );
     } catch (error) {
       listError.value = error instanceof Error ? error.message : "删除分组失败";
     }
@@ -284,8 +298,7 @@ export const useServersStore = defineStore("servers", () => {
 
     try {
       if (!core.orbitSSHApi) {
-        runtimeError.value =
-          "未检测到 Electron Preload API，请通过 Electron 窗口启动应用";
+        runtimeError.value = "未检测到 Electron Preload API，请通过 Electron 窗口启动应用";
         servers.value = [];
         return;
       }
@@ -300,8 +313,7 @@ export const useServersStore = defineStore("servers", () => {
         serverCount: servers.value.length,
       });
     } catch (error) {
-      listError.value =
-        error instanceof Error ? error.message : "加载服务器列表失败";
+      listError.value = error instanceof Error ? error.message : "加载服务器列表失败";
     } finally {
       isServerListLoading.value = false;
     }

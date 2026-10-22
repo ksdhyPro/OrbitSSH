@@ -22,7 +22,8 @@ const emit = defineEmits<{
         class="panel-toggle"
         :aria-expanded="!collapsed"
         :aria-controls="contentId"
-        @click="emit('toggleCollapsed')">
+        @click="emit('toggleCollapsed')"
+      >
         <img :class="{ expanded: !collapsed }" :src="chevronRightIcon" alt="" />
         <h2>
           {{ title }}

@@ -1,19 +1,7 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  onUpdated,
-  ref,
-  useAttrs,
-  watch,
-} from "vue";
+import { computed, nextTick, onMounted, onUnmounted, onUpdated, ref, useAttrs, watch } from "vue";
 import type { CSSProperties } from "vue";
-import {
-  registerFloatingMenu,
-  type FloatingMenuCloseReason,
-} from "../utils/floating-menu";
+import { registerFloatingMenu, type FloatingMenuCloseReason } from "../utils/floating-menu";
 
 defineOptions({
   inheritAttrs: false,
@@ -191,7 +179,8 @@ watch(
       :style="[placementStyle, attrs.style]"
       @click.stop
       @contextmenu="handleContextMenu"
-      @wheel.stop>
+      @wheel.stop
+    >
       <slot />
     </div>
   </Transition>

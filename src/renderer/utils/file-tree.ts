@@ -19,8 +19,6 @@ export function updateNodeChildren(
 
   return {
     ...node,
-    children: node.children.map(childNode =>
-      updateNodeChildren(childNode, targetPath, children),
-    ),
+    children: node.children.map(childNode => updateNodeChildren(childNode, targetPath, children)),
   };
 }

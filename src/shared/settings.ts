@@ -1,140 +1,140 @@
-import type { AiMode } from './ai.js'
+import type { AiMode } from "./ai.js";
 
 export interface TerminalSettings {
-  fontSize: number
-  lineHeight: number
-  selectionBackground: string
+  fontSize: number;
+  lineHeight: number;
+  selectionBackground: string;
 }
 
 export interface ConnectionSettings {
   /** SSH/SFTP keepalive interval in seconds. 0 disables keepalive. */
-  keepaliveIntervalSeconds: number
+  keepaliveIntervalSeconds: number;
   /** Disconnect idle terminal and main SFTP sessions after this many minutes. 0 disables idle disconnect. */
-  idleDisconnectMinutes: number
+  idleDisconnectMinutes: number;
   /** 上传、下载和服务器间传输共享的文件级并发数。 */
-  sftpMaxConcurrentTransfers: number
+  sftpMaxConcurrentTransfers: number;
 }
 
-export const SFTP_TRANSFER_CONCURRENCY_MIN = 1
-export const SFTP_TRANSFER_CONCURRENCY_MAX = 5
+export const SFTP_TRANSFER_CONCURRENCY_MIN = 1;
+export const SFTP_TRANSFER_CONCURRENCY_MAX = 5;
 
-export type AppThemeMode = 'dark' | 'light'
+export type AppThemeMode = "dark" | "light";
 
 export interface AppearanceSettings {
-  themeMode: AppThemeMode
+  themeMode: AppThemeMode;
 }
 
 /** 左侧折叠面板的展开状态与上次调整后的高度。 */
 export interface SidebarPanelSettings {
-  collapsed: boolean
-  height: number
+  collapsed: boolean;
+  height: number;
 }
 
 export interface SidebarSettings {
-  servers: SidebarPanelSettings
-  automation: SidebarPanelSettings
-  remoteFiles: SidebarPanelSettings
+  servers: SidebarPanelSettings;
+  automation: SidebarPanelSettings;
+  remoteFiles: SidebarPanelSettings;
   /** 左侧面板从上到下的显示顺序。 */
-  panelOrder: Array<'servers' | 'automation' | 'remoteFiles'>
+  panelOrder: Array<"servers" | "automation" | "remoteFiles">;
 }
 
 export interface UpdateSettings {
   /** 更新服务器地址，空字符串表示使用构建时内置的默认地址 */
-  updateFeedUrl: string
+  updateFeedUrl: string;
 }
 
-export type AiProvider = 'deepseek' | 'glm' | 'other'
+export type AiProvider = "deepseek" | "glm" | "other";
 
 /** 用户预提示词最大长度，避免设置项无限占用模型上下文。 */
-export const AI_PRESET_PROMPT_MAX_CHARS = 8_000
+export const AI_PRESET_PROMPT_MAX_CHARS = 8_000;
 
 export interface AiModelConfig {
-  id: string
-  name: string
-  provider: AiProvider
-  baseUrl: string
-  apiKey: string
-  model: string
+  id: string;
+  name: string;
+  provider: AiProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
   /** 模型上下文窗口总 Token 限制，单位为 K（千 Token）。 */
-  contextTokenLimitK: number
+  contextTokenLimitK: number;
 }
 
 export interface AiSettings {
-  enabled: boolean
+  enabled: boolean;
   /** 是否允许 AI 请求操作其他已保存服务器，默认关闭。 */
-  allowCrossServerOperations: boolean
+  allowCrossServerOperations: boolean;
   /** 是否允许本机第三方 AI 通过 MCP 使用 SSH，默认关闭。 */
-  allowMcpAccess: boolean
+  allowMcpAccess: boolean;
   /** 是否允许本机第三方 AI 通过 MCP 使用 SFTP 传输本地文件，默认关闭。 */
-  allowMcpSftpAccess: boolean
+  allowMcpSftpAccess: boolean;
   /** 是否允许把脱敏后的最近终端输出发送给在线模型。 */
-  shareTerminalContext: boolean
+  shareTerminalContext: boolean;
   /** 每次 AI 对话请求都会附带的用户自定义预提示词。 */
-  presetPrompt: string
-  activeConfigId: string
-  configs: AiModelConfig[]
-  defaultMode: AiMode
+  presetPrompt: string;
+  activeConfigId: string;
+  configs: AiModelConfig[];
+  defaultMode: AiMode;
 }
 
 export interface AppSettings {
-  appearance: AppearanceSettings
-  sidebar: SidebarSettings
-  connection: ConnectionSettings
-  terminal: TerminalSettings
-  update: UpdateSettings
-  ai: AiSettings
+  appearance: AppearanceSettings;
+  sidebar: SidebarSettings;
+  connection: ConnectionSettings;
+  terminal: TerminalSettings;
+  update: UpdateSettings;
+  ai: AiSettings;
 }
 
 export type UpdateStatus =
-  | 'idle'
-  | 'checking'
-  | 'update-available'
-  | 'update-not-available'
-  | 'downloading'
-  | 'downloaded'
-  | 'error'
+  | "idle"
+  | "checking"
+  | "update-available"
+  | "update-not-available"
+  | "downloading"
+  | "downloaded"
+  | "error";
 
 export interface UpdateStatusInfo {
-  status: UpdateStatus
-  currentVersion: string
-  newVersion?: string
-  releaseDate?: string
-  releaseNotes?: string
-  downloadProgress?: number
-  error?: string
+  status: UpdateStatus;
+  currentVersion: string;
+  newVersion?: string;
+  releaseDate?: string;
+  releaseNotes?: string;
+  downloadProgress?: number;
+  error?: string;
 }
 
 export const defaultAppSettings: AppSettings = {
   appearance: {
-    themeMode: 'dark'
+    themeMode: "dark",
   },
   sidebar: {
     servers: {
       collapsed: false,
-      height: 280
+      height: 280,
     },
     automation: {
       collapsed: false,
-      height: 180
+      height: 180,
     },
     remoteFiles: {
       collapsed: false,
-      height: 360
+      height: 360,
     },
-    panelOrder: ['servers', 'automation', 'remoteFiles']
+    panelOrder: ["servers", "automation", "remoteFiles"],
   },
   connection: {
     keepaliveIntervalSeconds: 10,
     idleDisconnectMinutes: 5,
-    sftpMaxConcurrentTransfers: 3
+    sftpMaxConcurrentTransfers: 3,
   },
   terminal: {
     fontSize: 13,
     lineHeight: 1.2,
-    selectionBackground: '#244763'
+    selectionBackground: "#244763",
   },
   update: {
-    updateFeedUrl: ''
+    updateFeedUrl: "",
   },
   ai: {
     enabled: false,
@@ -142,9 +142,9 @@ export const defaultAppSettings: AppSettings = {
     allowMcpAccess: false,
     allowMcpSftpAccess: false,
     shareTerminalContext: false,
-    presetPrompt: '',
-    activeConfigId: '',
+    presetPrompt: "",
+    activeConfigId: "",
     configs: [],
-    defaultMode: 'auto'
-  }
-}
+    defaultMode: "auto",
+  },
+};

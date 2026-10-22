@@ -3,10 +3,7 @@ import { computed, reactive, ref, watch } from "vue";
 import continueIcon from "../assets/icons/continue.svg";
 import plusIcon from "../assets/icons/plus.svg";
 import groupAddIcon from "../assets/icons/server-group-add.svg";
-import type {
-  AutomationTaskGroup,
-  ServerAutomationTask,
-} from "../../shared/server";
+import type { AutomationTaskGroup, ServerAutomationTask } from "../../shared/server";
 import type { TerminalTab } from "../types/terminal";
 import { useCoreStore } from "../stores/useCoreStore";
 import { useServersStore } from "../stores/useServersStore";
@@ -47,10 +44,10 @@ const editingTask = ref<ServerAutomationTask | null>(null);
 const groups = ref<AutomationTaskGroup[]>([]);
 const { groupDialog, openGroupDialog, closeGroupDialog } =
   useGroupNameDialog<AutomationTaskGroup>();
-const { menu, menuTarget, menuTargetType, openMenu, closeMenu } =
-  useContextMenuTarget<AutomationTaskGroup | ServerAutomationTask, "group" | "task">(
-    "group",
-  );
+const { menu, menuTarget, menuTargetType, openMenu, closeMenu } = useContextMenuTarget<
+  AutomationTaskGroup | ServerAutomationTask,
+  "group" | "task"
+>("group");
 const { groupDeleteDialog, requestGroupDelete, closeGroupDeleteDialog } =
   useGroupDeleteDialog<AutomationTaskGroup>();
 const runDialog = reactive<{
@@ -82,8 +79,7 @@ async function loadTasks(): Promise<void> {
     }
   } catch (error) {
     tasks.value = [];
-    loadError.value =
-      error instanceof Error ? error.message : "加载自定义指令失败";
+    loadError.value = error instanceof Error ? error.message : "加载自定义指令失败";
   } finally {
     if (props.activeTab?.serverId === serverId) isLoading.value = false;
   }
@@ -157,10 +153,7 @@ function confirmGroupDelete(): void {
   if (group) void deleteGroup(group);
   closeGroupDeleteDialog();
 }
-async function moveTaskToGroup(
-  task: ServerAutomationTask,
-  groupId?: string,
-): Promise<boolean> {
+async function moveTaskToGroup(task: ServerAutomationTask, groupId?: string): Promise<boolean> {
   const serverId = props.activeTab?.serverId;
   if (!task || !serverId || task.groupId === groupId) return false;
   try {
@@ -236,8 +229,7 @@ async function saveTask(): Promise<void> {
     taskDialog.open = false;
     await loadTasks();
   } catch (error) {
-    taskDialog.error =
-      error instanceof Error ? error.message : "保存自定义指令失败";
+    taskDialog.error = error instanceof Error ? error.message : "保存自定义指令失败";
   } finally {
     taskDialog.isSubmitting = false;
   }
@@ -249,8 +241,7 @@ async function deleteTask(task: ServerAutomationTask): Promise<void> {
     await core.orbitSSHApi?.servers.deleteAutomationTask(serverId, task.id);
     await loadTasks();
   } catch (error) {
-    loadError.value =
-      error instanceof Error ? error.message : "删除自定义指令失败";
+    loadError.value = error instanceof Error ? error.message : "删除自定义指令失败";
   }
 }
 
@@ -268,23 +259,16 @@ function closeRunDialog(): void {
 
 async function startRun(): Promise<void> {
   if (!runDialog.task) return;
-  const server = serversStore.servers.find(
-    item => item.id === runDialog.task?.serverId,
-  );
+  const server = serversStore.servers.find(item => item.id === runDialog.task?.serverId);
   if (!server) {
     loadError.value = "目标服务器不存在或已被删除";
     return;
   }
   try {
-    await terminalsStore.openTerminalAutomation(
-      server,
-      runDialog.task.name,
-      runDialog.task.script,
-    );
+    await terminalsStore.openTerminalAutomation(server, runDialog.task.name, runDialog.task.script);
     closeRunDialog();
   } catch (error) {
-    loadError.value =
-      error instanceof Error ? error.message : "自定义指令启动失败";
+    loadError.value = error instanceof Error ? error.message : "自定义指令启动失败";
   }
 }
 watch(
@@ -299,7 +283,8 @@ watch(
     title="自定义指令"
     content-id="automation-panel-content"
     :collapsed="collapsed"
-    @toggle-collapsed="emit('toggleCollapsed')">
+    @toggle-collapsed="emit('toggleCollapsed')"
+  >
     <template #actions>
       <button
         type="button"
@@ -307,7 +292,8 @@ watch(
         aria-label="新建指令分组"
         title="新建指令分组"
         :disabled="!activeTab"
-        @click.stop="openGroupDialog()">
+        @click.stop="openGroupDialog()"
+      >
         <img :src="groupAddIcon" alt="" />
       </button>
       <button
@@ -316,7 +302,8 @@ watch(
         aria-label="新建自定义指令"
         title="新建自定义指令"
         :disabled="!activeTab"
-        @click.stop="openTaskDialog()">
+        @click.stop="openTaskDialog()"
+      >
         <img :src="plusIcon" alt="" />
       </button>
     </template>
@@ -326,20 +313,18 @@ watch(
       item-noun="指令"
       :move-item="moveTaskToGroup"
       @item-menu="(event, task) => openMenu(event, task, 'task')"
-      @group-menu="(event, group) => openMenu(event, group, 'group')">
+      @group-menu="(event, group) => openMenu(event, group, 'group')"
+    >
       <template #status>
-        <p v-if="!activeTab" class="empty-state empty-state-card">
-          连接服务器后显示该服务器的指令
-        </p>
-        <p v-else-if="isLoading" class="empty-state empty-state-card">
-          正在加载指令...
-        </p>
+        <p v-if="!activeTab" class="empty-state empty-state-card">连接服务器后显示该服务器的指令</p>
+        <p v-else-if="isLoading" class="empty-state empty-state-card">正在加载指令...</p>
         <p v-else-if="loadError" class="empty-state empty-state-card is-error">
           {{ loadError }}
         </p>
         <p
           v-else-if="tasks.length === 0 && groups.length === 0"
-          class="empty-state empty-state-card">
+          class="empty-state empty-state-card"
+        >
           暂无自定义指令
         </p>
       </template>
@@ -349,7 +334,8 @@ watch(
           class="icon-btn icon-btn-sm"
           :aria-label="`执行 ${item.name}`"
           title="执行"
-          @click.stop="openRunDialog(item)">
+          @click.stop="openRunDialog(item)"
+        >
           <img :src="continueIcon" alt="" />
         </button>
       </template>
@@ -364,7 +350,8 @@ watch(
     :is-submitting="taskDialog.isSubmitting"
     :editing="Boolean(editingTask)"
     @close="closeTaskDialog"
-    @submit="saveTask" />
+    @submit="saveTask"
+  />
   <ServerGroupDialog
     :open="groupDialog.open"
     :name="groupDialog.name"
@@ -372,12 +359,9 @@ watch(
     description="为当前服务器的快捷指令创建分类。"
     @update-name="groupDialog.name = $event"
     @close="closeGroupDialog"
-    @submit="submitGroup" />
-  <ContextMenu
-    :menu="menu"
-    :items="menuItems"
-    @select="selectMenuItem"
-    @close="closeMenu" />
+    @submit="submitGroup"
+  />
+  <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" @close="closeMenu" />
   <DeleteConfirmDialog
     :open="groupDeleteDialog.open"
     title="删除分组"
@@ -385,11 +369,13 @@ watch(
     confirm-label="删除分组"
     :danger="true"
     @cancel="closeGroupDeleteDialog"
-    @confirm="confirmGroupDelete" />
+    @confirm="confirmGroupDelete"
+  />
   <AutomationRunDialog
     :open="runDialog.open"
     :server-name="runDialog.serverName"
     :task="runDialog.task"
     @close="closeRunDialog"
-    @start="startRun" />
+    @start="startRun"
+  />
 </template>

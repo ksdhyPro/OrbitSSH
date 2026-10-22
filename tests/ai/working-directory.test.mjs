@@ -14,8 +14,5 @@ test("SSH AI 命令显式绑定工作目录", () => {
 });
 
 test("SSH 工作目录中的单引号不会形成命令注入", () => {
-  assert.equal(
-    quotePosixShellArgument("/srv/a'b"),
-    "'/srv/a'\"'\"'b'",
-  );
+  assert.equal(quotePosixShellArgument("/srv/a'b"), "'/srv/a'\"'\"'b'");
 });

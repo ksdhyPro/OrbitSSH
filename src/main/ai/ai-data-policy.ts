@@ -13,8 +13,7 @@ const HIGH_RISK_SENSITIVE_SOURCE_PATTERNS: Array<{
     reason: "命令将读取 SSH 私钥文件",
   },
   {
-    pattern:
-      /(?:^|[\s'"=])\/etc\/ssh\/ssh_host_[A-Za-z0-9_.-]+_key(?:$|[\s'";|&])/i,
+    pattern: /(?:^|[\s'"=])\/etc\/ssh\/ssh_host_[A-Za-z0-9_.-]+_key(?:$|[\s'";|&])/i,
     reason: "命令将读取 SSH 主机私钥",
   },
   {
@@ -28,13 +27,11 @@ const HIGH_RISK_SENSITIVE_SOURCE_PATTERNS: Array<{
     reason: "命令将读取认证凭据文件",
   },
   {
-    pattern:
-      /(?:\/run\/secrets\/|\/var\/run\/secrets\/|\.gnupg\/private-keys-v1\.d\/)/i,
+    pattern: /(?:\/run\/secrets\/|\/var\/run\/secrets\/|\.gnupg\/private-keys-v1\.d\/)/i,
     reason: "命令将读取运行时挂载的密钥文件",
   },
   {
-    pattern:
-      /(?:^|[\s'"=])\/etc\/(?:shadow|gshadow|g?shad[*?][^\s'";|&]*)(?:$|[\s'";|&])/i,
+    pattern: /(?:^|[\s'"=])\/etc\/(?:shadow|gshadow|g?shad[*?][^\s'";|&]*)(?:$|[\s'";|&])/i,
     reason: "命令将读取系统密码摘要文件",
   },
   {
@@ -53,8 +50,7 @@ const HIGH_RISK_SENSITIVE_SOURCE_PATTERNS: Array<{
 
 const SENSITIVE_READ_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
-    pattern:
-      /(?:^|[\s'"=\/])\.env(?:\.[A-Za-z0-9_.-]+|[*?][^\s'";|&]*)?(?:$|[\s'";|&])/i,
+    pattern: /(?:^|[\s'"=\/])\.env(?:\.[A-Za-z0-9_.-]+|[*?][^\s'";|&]*)?(?:$|[\s'";|&])/i,
     reason: "命令可能读取环境配置中的敏感信息",
   },
   {
@@ -67,8 +63,7 @@ const SENSITIVE_READ_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     reason: "命令可能读取集群访问配置",
   },
   {
-    pattern:
-      /(?:^|\s)kubectl\s+(?:get|describe)\s+(?:secrets?|secret\/)[^;&|]*/i,
+    pattern: /(?:^|\s)kubectl\s+(?:get|describe)\s+(?:secrets?|secret\/)[^;&|]*/i,
     reason: "命令可能读取 Kubernetes Secret",
   },
   {
@@ -99,8 +94,7 @@ const SENSITIVE_READ_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     reason: "命令可能读取按敏感名称保存的认证信息",
   },
   {
-    pattern:
-      /^\s*(?:cat|head|tail|grep|sed|awk)\b[^\r\n]*\/etc\/[^\s'";|&]*[*?]/i,
+    pattern: /^\s*(?:cat|head|tail|grep|sed|awk)\b[^\r\n]*\/etc\/[^\s'";|&]*[*?]/i,
     reason: "命令将使用通配符批量读取系统配置目录",
   },
   {
@@ -118,9 +112,7 @@ const SENSITIVE_READ_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
  * 单独判断命令可能暴露的数据，避免把“无写入副作用”误认为“可安全外发”。
  * 敏感数据源在请求批准和自主执行模式下必须确认；完全访问模式由用户显式承担风险。
  */
-export function evaluateAiCommandDataExposure(
-  command: string,
-): AiCommandDataPolicyResult {
+export function evaluateAiCommandDataExposure(command: string): AiCommandDataPolicyResult {
   for (const item of HIGH_RISK_SENSITIVE_SOURCE_PATTERNS) {
     if (item.pattern.test(command)) {
       return { decision: "requires_approval", reason: item.reason };

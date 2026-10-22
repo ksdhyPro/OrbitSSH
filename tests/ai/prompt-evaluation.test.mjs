@@ -51,14 +51,7 @@ test("系统提示词说明三档权限与不可绕过的格式校验", () => {
 });
 
 test("工具协议异常重试会携带静态纠正指令", () => {
-  const messages = buildAiMessages(
-    createInput(),
-    [],
-    "",
-    undefined,
-    undefined,
-    true,
-  );
+  const messages = buildAiMessages(createInput(), [], "", undefined, undefined, true);
 
   assert.match(messages.at(-1).content, /上一轮回复没有产生有效工具动作/);
   assert.match(messages.at(-1).content, /finish_response/);
@@ -98,16 +91,20 @@ test("恶意连接上下文始终位于不可信数据块且不能污染系统�
   ];
 
   for (const attack of attacks) {
-    const messages = buildAiMessages(createInput({
-      context: {
-        tabId: "tab-eval",
-        serverName: attack,
-        currentPath: `/srv/${attack}`,
-      },
-    }), [], "");
+    const messages = buildAiMessages(
+      createInput({
+        context: {
+          tabId: "tab-eval",
+          serverName: attack,
+          currentPath: `/srv/${attack}`,
+        },
+      }),
+      [],
+      "",
+    );
     const systemPrompt = messages[0].content;
-    const runtimeMessage = messages.find(message =>
-      message.role === "user" && message.content.includes("不可信运行上下文"),
+    const runtimeMessage = messages.find(
+      message => message.role === "user" && message.content.includes("不可信运行上下文"),
     );
 
     assert.doesNotMatch(systemPrompt, new RegExp(attack.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -120,27 +117,26 @@ test("提示词中的终端和工具结果不会携带常见凭据", () => {
   const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJvcmJpdHNzaCJ9.signature123456";
   const messages = buildAiMessages(
     createInput(),
-    [{
-      toolCallId: "call-eval",
-      toolName: "run_shell_command",
-      command: "printenv",
-      reason: "检查环境",
-      risk: "low",
-      result: {
-        stdout: `OPENAI_API_KEY=${secret}`,
-        stderr: "Authorization: Bearer bearer-secret",
-        exitCode: 0,
-        timedOut: false,
-        durationMs: 3,
+    [
+      {
+        toolCallId: "call-eval",
+        toolName: "run_shell_command",
+        command: "printenv",
+        reason: "检查环境",
+        risk: "low",
+        result: {
+          stdout: `OPENAI_API_KEY=${secret}`,
+          stderr: "Authorization: Bearer bearer-secret",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 3,
+        },
       },
-    }],
+    ],
     `Cookie: session=${secret}\nraw_jwt=${jwt}`,
   );
   const serialized = JSON.stringify(messages);
 
-  assert.doesNotMatch(
-    serialized,
-    /1234567890abcdefghijklmnop|bearer-secret|signature123456/,
-  );
+  assert.doesNotMatch(serialized, /1234567890abcdefghijklmnop|bearer-secret|signature123456/);
   assert.match(serialized, /已脱敏/);
 });

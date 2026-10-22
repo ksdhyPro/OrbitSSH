@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import AppDialog from './AppDialog.vue'
+import AppDialog from "./AppDialog.vue";
 
 defineProps<{
-  open: boolean
-  serverName: string
-  form: { name: string; script: string }
-  error: string
-  isSubmitting: boolean
-  editing?: boolean
-}>()
+  open: boolean;
+  serverName: string;
+  form: { name: string; script: string };
+  error: string;
+  isSubmitting: boolean;
+  editing?: boolean;
+}>();
 
-const emit = defineEmits<{ close: []; submit: [] }>()
+const emit = defineEmits<{ close: []; submit: [] }>();
 </script>
 
 <template>
@@ -19,7 +19,8 @@ const emit = defineEmits<{ close: []; submit: [] }>()
     :title="`${editing ? '编辑' : '新建'}自动化任务 · ${serverName}`"
     description="脚本会通过独立 SSH 会话执行，不影响当前终端。"
     width="medium"
-    @close="emit('close')">
+    @close="emit('close')"
+  >
     <form class="automation-task-form" @submit.prevent="emit('submit')">
       <label>
         <span>任务名称</span>
@@ -32,14 +33,15 @@ const emit = defineEmits<{ close: []; submit: [] }>()
           rows="9"
           maxlength="20000"
           spellcheck="false"
-          placeholder="例如：&#10;docker compose pull&#10;docker compose up -d"></textarea>
+          placeholder="例如：&#10;docker compose pull&#10;docker compose up -d"
+        ></textarea>
       </label>
       <p class="automation-task-hint">每个非空行是一条 Shell 命令，执行前会再次展示内容供确认。</p>
       <p v-if="error" class="form-error">{{ error }}</p>
       <footer class="dialog-actions">
         <button type="button" class="btn btn-ghost" @click="emit('close')">取消</button>
         <button type="submit" class="btn btn-primary" :disabled="isSubmitting">
-          {{ isSubmitting ? '保存中…' : editing ? '保存修改' : '保存任务' }}
+          {{ isSubmitting ? "保存中…" : editing ? "保存修改" : "保存任务" }}
         </button>
       </footer>
     </form>

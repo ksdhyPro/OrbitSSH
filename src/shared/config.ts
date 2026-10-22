@@ -100,17 +100,7 @@ export const appConfig = {
     },
     imagePreview: {
       // 常见浏览器可直接预览的图片后缀，命中后文件树优先展示预览操作。
-      extensions: [
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".gif",
-        ".webp",
-        ".bmp",
-        ".ico",
-        ".svg",
-        ".avif",
-      ],
+      extensions: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg", ".avif"],
       // 预览会把图片转为 data URL，限制体积避免大图一次性占用过多内存。
       maxPreviewFileSizeBytes: 10 * 1024 * 1024,
     },

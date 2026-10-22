@@ -112,7 +112,9 @@ describe("RemoteFileList 重命名", () => {
     await vi.waitFor(() => expect(focus).toHaveBeenCalledTimes(1));
     expect(select).toHaveBeenCalledTimes(1);
 
-    await wrapper.setProps({ nodes: [...nodes, { path: "/srv/c.log", name: "c.log", type: "file" }] });
+    await wrapper.setProps({
+      nodes: [...nodes, { path: "/srv/c.log", name: "c.log", type: "file" }],
+    });
     await wrapper.vm.$nextTick();
     expect(focus).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);

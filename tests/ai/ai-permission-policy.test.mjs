@@ -10,12 +10,8 @@ import {
 import { evaluateAiCommand } from "../../dist-electron/main/ai/command-policy.js";
 
 function decide(mode, command, risk = "medium", approvalGranted = false) {
-  return resolveAiCommandPermission(
-    mode,
-    risk,
-    evaluateAiCommand(command),
-    approvalGranted,
-  ).decision;
+  return resolveAiCommandPermission(mode, risk, evaluateAiCommand(command), approvalGranted)
+    .decision;
 }
 
 test("请求批准模式要求确认所有格式有效的命令", () => {
@@ -68,13 +64,7 @@ test("跨服务器命令在所有模式下都必须逐次明确批准", () => {
 test("关闭跨服务器开关后任何权限档位和历史审批都不能绕过", () => {
   const policy = evaluateAiCommand("uptime");
   for (const mode of ["ask", "auto", "full_access"]) {
-    const permission = resolveSavedServerCommandPermission(
-      false,
-      mode,
-      "low",
-      policy,
-      true,
-    );
+    const permission = resolveSavedServerCommandPermission(false, mode, "low", policy, true);
     assert.equal(permission.decision, "deny");
     assert.match(permission.reason, /全局 AI 设置/);
   }

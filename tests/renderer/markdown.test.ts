@@ -17,7 +17,9 @@ describe("renderMarkdown", () => {
   });
 
   it("仍然净化危险内容并禁用图片", () => {
-    const html = renderMarkdown(`<script>alert(1)</script> ![x](https://example.com/a.png) [链接](https://example.com) ${Math.random()}`);
+    const html = renderMarkdown(
+      `<script>alert(1)</script> ![x](https://example.com/a.png) [链接](https://example.com) ${Math.random()}`,
+    );
 
     expect(html).not.toContain("<script");
     expect(html).not.toContain("<img");

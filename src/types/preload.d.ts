@@ -4,10 +4,7 @@ import type { SystemStats } from "../main/ipc/system-ipc";
 import type { AppMenuAction } from "../shared/app-menu";
 import type { HostKeyPrompt, HostKeyPromptResponse } from "../shared/host-key";
 import type { OrbitSshMcpInstallInfo } from "../shared/mcp";
-import type {
-  LocalDirectoryInput,
-  LocalDirectoryResult,
-} from "../shared/local-files";
+import type { LocalDirectoryInput, LocalDirectoryResult } from "../shared/local-files";
 import type { LogPayload } from "../shared/logger";
 import type {
   ServerConfig,
@@ -26,10 +23,7 @@ import type {
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server";
-import type {
-  AppSettings,
-  UpdateStatusInfo,
-} from "../shared/settings";
+import type { AppSettings, UpdateStatusInfo } from "../shared/settings";
 import type {
   RemoteFileNode,
   SftpCreateNodeInput,
@@ -80,7 +74,13 @@ import type {
   AiStreamMessageStartEvent,
 } from "../shared/ai";
 import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation";
-import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput, PortForwardRuntime, PortForwardStatusEvent } from "../shared/port-forward";
+import type {
+  PortForwardRule,
+  PortForwardRuleInput,
+  PortForwardRuleUpdateInput,
+  PortForwardRuntime,
+  PortForwardStatusEvent,
+} from "../shared/port-forward";
 
 declare global {
   interface Window {
@@ -125,13 +125,21 @@ declare global {
         deleteGroup: (groupId: string) => Promise<boolean>;
         listAutomationTasks: (serverId: string) => Promise<ServerAutomationTask[]>;
         createAutomationTask: (input: ServerAutomationTaskInput) => Promise<ServerAutomationTask>;
-        updateAutomationTask: (input: ServerAutomationTaskUpdateInput) => Promise<ServerAutomationTask>;
+        updateAutomationTask: (
+          input: ServerAutomationTaskUpdateInput,
+        ) => Promise<ServerAutomationTask>;
         deleteAutomationTask: (serverId: string, taskId: string) => Promise<boolean>;
         listAutomationTaskGroups: (serverId: string) => Promise<AutomationTaskGroup[]>;
-        createAutomationTaskGroup: (input: AutomationTaskGroupInput) => Promise<AutomationTaskGroup>;
-        updateAutomationTaskGroup: (input: AutomationTaskGroupUpdateInput) => Promise<AutomationTaskGroup>;
+        createAutomationTaskGroup: (
+          input: AutomationTaskGroupInput,
+        ) => Promise<AutomationTaskGroup>;
+        updateAutomationTaskGroup: (
+          input: AutomationTaskGroupUpdateInput,
+        ) => Promise<AutomationTaskGroup>;
         deleteAutomationTaskGroup: (serverId: string, groupId: string) => Promise<boolean>;
-        organizeAutomationTask: (input: AutomationTaskOrganizationInput) => Promise<ServerAutomationTask>;
+        organizeAutomationTask: (
+          input: AutomationTaskOrganizationInput,
+        ) => Promise<ServerAutomationTask>;
         delete: (serverId: string) => Promise<boolean>;
       };
       automation: {
@@ -155,49 +163,30 @@ declare global {
       };
       ai: {
         chat: (input: AiChatInput) => Promise<AiChatResult>;
-        runApprovedCommand: (
-          input: AiApprovedCommandInput,
-        ) => Promise<AiChatResult>;
-        rejectCommandApproval: (
-          input: AiRejectedCommandInput,
-        ) => Promise<boolean>;
+        runApprovedCommand: (input: AiApprovedCommandInput) => Promise<AiChatResult>;
+        rejectCommandApproval: (input: AiRejectedCommandInput) => Promise<boolean>;
         cancel: (input: AiCancelInput) => Promise<boolean>;
         conversations: {
           list: (serverId: string) => Promise<AiConversationSummary[]>;
-          get: (
-            serverId: string,
-            conversationId: string,
-          ) => Promise<AiConversationRecord | null>;
+          get: (serverId: string, conversationId: string) => Promise<AiConversationRecord | null>;
           delete: (serverId: string, conversationId: string) => Promise<boolean>;
         };
-        onStreamChunk: (
-          callback: (event: AiStreamChunkEvent) => void,
-        ) => () => void;
-        onStreamMessageStart: (
-          callback: (event: AiStreamMessageStartEvent) => void,
-        ) => () => void;
-        onCommandCard: (
-          callback: (event: AiCommandCardEvent) => void,
-        ) => () => void;
+        onStreamChunk: (callback: (event: AiStreamChunkEvent) => void) => () => void;
+        onStreamMessageStart: (callback: (event: AiStreamMessageStartEvent) => void) => () => void;
+        onCommandCard: (callback: (event: AiCommandCardEvent) => void) => () => void;
       };
       sftp: {
         open: (tabId: string, serverId: string) => Promise<SftpInitResult>;
         list: (input: SftpListInput) => Promise<RemoteFileNode[]>;
         probeText: (input: SftpProbeTextInput) => Promise<SftpProbeTextResult>;
         readText: (input: SftpReadTextInput) => Promise<SftpReadTextResult>;
-        previewImage: (
-          input: SftpPreviewImageInput,
-        ) => Promise<SftpPreviewImageResult>;
+        previewImage: (input: SftpPreviewImageInput) => Promise<SftpPreviewImageResult>;
         writeText: (input: SftpWriteTextInput) => Promise<boolean>;
         download: (input: SftpDownloadInput) => Promise<SftpDownloadResult>;
         upload: (input: SftpUploadInput) => Promise<SftpUploadResult>;
-        remoteTransfer?: (
-          input: SftpRemoteTransferInput,
-        ) => Promise<SftpRemoteTransferResult>;
+        remoteTransfer?: (input: SftpRemoteTransferInput) => Promise<SftpRemoteTransferResult>;
         controlUpload: (input: SftpUploadControlInput) => Promise<boolean>;
-        controlRemoteTransfer?: (
-          input: SftpRemoteTransferControlInput,
-        ) => Promise<boolean>;
+        controlRemoteTransfer?: (input: SftpRemoteTransferControlInput) => Promise<boolean>;
         controlDownload: (input: SftpDownloadControlInput) => Promise<boolean>;
         listManagedTasks: () => Promise<SftpManagedTaskSnapshot>;
         controlManagedTask: (input: SftpManagedTaskControlInput) => Promise<boolean>;
@@ -205,18 +194,12 @@ declare global {
         rename: (input: SftpRenameInput) => Promise<boolean>;
         createFile: (input: SftpCreateNodeInput) => Promise<boolean>;
         createDirectory: (input: SftpCreateNodeInput) => Promise<boolean>;
-        onDownloadProgress: (
-          callback: (event: SftpDownloadProgressEvent) => void,
-        ) => () => void;
-        onUploadProgress: (
-          callback: (event: SftpUploadProgressEvent) => void,
-        ) => () => void;
+        onDownloadProgress: (callback: (event: SftpDownloadProgressEvent) => void) => () => void;
+        onUploadProgress: (callback: (event: SftpUploadProgressEvent) => void) => () => void;
         onRemoteTransferProgress?: (
           callback: (event: SftpRemoteTransferProgressEvent) => void,
         ) => () => void;
-        onManagedTaskEvent: (
-          callback: (event: SftpManagedTaskEvent) => void,
-        ) => () => void;
+        onManagedTaskEvent: (callback: (event: SftpManagedTaskEvent) => void) => () => void;
         close: (tabId: string) => Promise<boolean>;
       };
       system: {
@@ -227,9 +210,7 @@ declare global {
         download: () => Promise<void>;
         install: () => Promise<void>;
         getStatus: () => Promise<UpdateStatusInfo>;
-        onStatusChanged: (
-          callback: (info: UpdateStatusInfo) => void,
-        ) => () => void;
+        onStatusChanged: (callback: (info: UpdateStatusInfo) => void) => () => void;
       };
       terminals: {
         open: (serverId: string) => Promise<TerminalOpenResult>;
@@ -240,9 +221,7 @@ declare global {
         close: (tabId: string) => Promise<boolean>;
         reconnect: (tabId: string, serverId: string) => Promise<boolean>;
         onData: (callback: (event: TerminalDataEvent) => void) => () => void;
-        onStatus: (
-          callback: (event: TerminalStatusEvent) => void,
-        ) => () => void;
+        onStatus: (callback: (event: TerminalStatusEvent) => void) => () => void;
       };
       hostKeys: {
         listPending: () => Promise<HostKeyPrompt[]>;
@@ -257,9 +236,7 @@ declare global {
         isMaximized: () => Promise<boolean>;
         isMinimized: () => Promise<boolean>;
         isFullScreen: () => Promise<boolean>;
-        onFullScreenChanged: (
-          callback: (fullScreen: boolean) => void,
-        ) => () => void;
+        onFullScreenChanged: (callback: (fullScreen: boolean) => void) => () => void;
       };
       appMenu: {
         onAction: (callback: (action: AppMenuAction) => void) => () => void;

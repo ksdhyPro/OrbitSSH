@@ -1,7 +1,4 @@
-import {
-  redo,
-  undo,
-} from "@codemirror/commands";
+import { redo, undo } from "@codemirror/commands";
 import {
   closeSearchPanel,
   findNext,
@@ -53,9 +50,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
   let fileEditorView: EditorView | undefined;
   const fileEditorThemeCompartment = new Compartment();
 
-  const isFileEditorDirty = computed(
-    () => fileEditor.content !== fileEditor.savedContent,
-  );
+  const isFileEditorDirty = computed(() => fileEditor.content !== fileEditor.savedContent);
 
   const fileEditorTitle = computed(() => {
     if (!fileEditor.name) {
@@ -68,9 +63,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
   const fileEditorLineNumbers = computed(() => {
     const lineCount = Math.max(fileEditor.content.split("\n").length, 1);
 
-    return Array.from({ length: lineCount }, (_item, index) => index + 1).join(
-      "\n",
-    );
+    return Array.from({ length: lineCount }, (_item, index) => index + 1).join("\n");
   });
 
   function destroyFileEditorView(): void {
@@ -119,10 +112,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     fileEditorView.focus();
   }
 
-  async function openRemoteFileEditor(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function openRemoteFileEditor(tabId: string, node: RemoteFileNode): Promise<void> {
     if (!tabId || !core.orbitSSHApi) {
       return;
     }
@@ -153,8 +143,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
       fileEditor.loading = false;
       await mountFileEditorView();
     } catch (error) {
-      fileEditorError.value =
-        error instanceof Error ? error.message : "读取远程文件失败";
+      fileEditorError.value = error instanceof Error ? error.message : "读取远程文件失败";
       fileEditor.loading = false;
     }
   }
@@ -195,8 +184,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
 
     try {
       // 保存前优先同步 CodeMirror 文档，避免最后一次输入未进入响应式状态。
-      fileEditor.content =
-        fileEditorView?.state.doc.toString() ?? fileEditor.content;
+      fileEditor.content = fileEditorView?.state.doc.toString() ?? fileEditor.content;
       await core.orbitSSHApi?.sftp.writeText({
         tabId: fileEditor.tabId,
         path: fileEditor.path,
@@ -205,8 +193,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
       fileEditor.savedContent = fileEditor.content;
       return true;
     } catch (error) {
-      fileEditorError.value =
-        error instanceof Error ? error.message : "保存远程文件失败";
+      fileEditorError.value = error instanceof Error ? error.message : "保存远程文件失败";
       return false;
     } finally {
       fileEditor.saving = false;
@@ -246,10 +233,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     fileEditor.searchTotal = total;
   }
 
-  function getFileEditorSearchMatches(
-    view: EditorView,
-    keyword: string,
-  ): number[] {
+  function getFileEditorSearchMatches(view: EditorView, keyword: string): number[] {
     if (!keyword) {
       return [];
     }
@@ -257,9 +241,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     const content = isFileEditorSearchCaseSensitive.value
       ? view.state.doc.toString()
       : view.state.doc.toString().toLowerCase();
-    const needle = isFileEditorSearchCaseSensitive.value
-      ? keyword
-      : keyword.toLowerCase();
+    const needle = isFileEditorSearchCaseSensitive.value ? keyword : keyword.toLowerCase();
     const matches: number[] = [];
     let index = content.indexOf(needle);
 
@@ -277,10 +259,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
       return;
     }
 
-    const matches = getFileEditorSearchMatches(
-      view,
-      fileEditorSearchKeyword.value,
-    );
+    const matches = getFileEditorSearchMatches(view, fileEditorSearchKeyword.value);
 
     if (matches.length === 0) {
       updateFileEditorSearchResult(0, 0);
@@ -290,14 +269,10 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
     const selectionFrom = view.state.selection.main.from;
     const activeIndex = matches.findIndex(
       match =>
-        match <= selectionFrom &&
-        selectionFrom <= match + fileEditorSearchKeyword.value.length,
+        match <= selectionFrom && selectionFrom <= match + fileEditorSearchKeyword.value.length,
     );
 
-    updateFileEditorSearchResult(
-      activeIndex >= 0 ? activeIndex + 1 : 1,
-      matches.length,
-    );
+    updateFileEditorSearchResult(activeIndex >= 0 ? activeIndex + 1 : 1, matches.length);
   }
 
   function applyFileEditorSearchQuery(): void {
@@ -344,8 +319,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
   }
 
   function toggleFileEditorSearchCaseSensitive(): void {
-    isFileEditorSearchCaseSensitive.value =
-      !isFileEditorSearchCaseSensitive.value;
+    isFileEditorSearchCaseSensitive.value = !isFileEditorSearchCaseSensitive.value;
     applyFileEditorSearchQuery();
     searchFileEditor();
   }
@@ -393,8 +367,7 @@ export const useFileEditorStore = defineStore("fileEditor", () => {
   }
 
   async function handleFileEditorKeydown(event: KeyboardEvent): Promise<void> {
-    const isSearchShortcut =
-      (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f";
+    const isSearchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f";
 
     if (isSearchShortcut) {
       event.preventDefault();

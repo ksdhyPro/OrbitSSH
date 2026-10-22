@@ -20,7 +20,12 @@ function createHarness(summary = "镜像下载到 60%") {
       replaceMessage: (id, text) => events.push(["replace", id, text]),
       sendCommandCard: () => undefined,
     },
-    createMessage: content => ({ id: `m${++nextId}`, role: "assistant", content, createdAt: nextId }),
+    createMessage: content => ({
+      id: `m${++nextId}`,
+      role: "assistant",
+      content,
+      createdAt: nextId,
+    }),
     requestProgressMessage: async progress => {
       requests.push(progress);
       return summary;
@@ -65,7 +70,10 @@ test("有新增输出时请求模型概括，多次汇报合并为同一条原�
   assert.equal(requests.length, 2);
   assert.equal(messages.length, 1);
   assert.match(messages[0].content, /镜像下载到 60%[\s\S]*已运行 3 分 30 秒/);
-  assert.deepEqual(events.map(([type]) => type), ["start", "chunk", "replace", "replace"]);
+  assert.deepEqual(
+    events.map(([type]) => type),
+    ["start", "chunk", "replace", "replace"],
+  );
   assert.ok(events.every(([, id]) => id === "m1"));
 });
 

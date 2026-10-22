@@ -14,11 +14,7 @@ export function getStartupDiagnosticsDirectory(
   homeDirectory: string = os.homedir(),
 ): string {
   if (platform === "win32") {
-    return path.win32.join(
-      env.LOCALAPPDATA || env.APPDATA || os.tmpdir(),
-      "OrbitSSH",
-      "logs",
-    );
+    return path.win32.join(env.LOCALAPPDATA || env.APPDATA || os.tmpdir(), "OrbitSSH", "logs");
   }
 
   if (platform === "darwin") {
@@ -33,10 +29,7 @@ export function getStartupDiagnosticsDirectory(
 }
 
 /** 在业务模块加载前写入启动诊断日志。 */
-export function writeStartupDiagnostic(
-  stage: string,
-  data?: Record<string, unknown>,
-): void {
+export function writeStartupDiagnostic(stage: string, data?: Record<string, unknown>): void {
   try {
     const logDir = getStartupDiagnosticsDirectory();
     const logPath = path.join(logDir, startupLogFileName);

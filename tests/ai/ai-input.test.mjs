@@ -29,10 +29,11 @@ test("AI 输入会归一化并拒绝标签页不匹配", () => {
   assert.equal(normalized.context.serverName, "demo");
   assert.equal(normalized.presetPrompt, validInput.presetPrompt);
   assert.throws(
-    () => normalizeAiChatInput({
-      ...validInput,
-      context: { tabId: "tab-2", serverId: "server-1" },
-    }),
+    () =>
+      normalizeAiChatInput({
+        ...validInput,
+        context: { tabId: "tab-2", serverId: "server-1" },
+      }),
     /标签页与当前标签页不匹配/,
   );
 });
@@ -44,10 +45,11 @@ test("AI 输入拒绝无效模式、过长消息和 system 历史", () => {
     /不能超过/,
   );
   assert.throws(
-    () => normalizeAiChatInput({
-      ...validInput,
-      history: [{ id: "1", role: "system", content: "unsafe", createdAt: 1 }],
-    }),
+    () =>
+      normalizeAiChatInput({
+        ...validInput,
+        history: [{ id: "1", role: "system", content: "unsafe", createdAt: 1 }],
+      }),
     /角色/,
   );
 });
@@ -85,10 +87,7 @@ test("AI 输入接受三档权限模式", () => {
   for (const mode of ["ask", "auto", "full_access"]) {
     assert.equal(normalizeAiChatInput({ ...validInput, mode }).mode, mode);
   }
-  assert.throws(
-    () => normalizeAiChatInput({ ...validInput, mode: "full" }),
-    /AI 模式/,
-  );
+  assert.throws(() => normalizeAiChatInput({ ...validInput, mode: "full" }), /AI 模式/);
 });
 
 test("历史中的超长回复会被截断而不是让后续请求全部失败", () => {
@@ -117,6 +116,8 @@ test("历史超出条数或总长度时保留最新的消息", () => {
   const normalized = normalizeAiChatInput({ ...validInput, history });
 
   assert.ok(normalized.history.length <= 500);
-  assert.ok(normalized.history.reduce((total, item) => total + item.content.length, 0) <= 1_000_000);
+  assert.ok(
+    normalized.history.reduce((total, item) => total + item.content.length, 0) <= 1_000_000,
+  );
   assert.equal(normalized.history.at(-1).id, "m599");
 });

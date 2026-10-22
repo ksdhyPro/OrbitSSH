@@ -18,12 +18,11 @@ const emit = defineEmits<{
     :title="title"
     :description="message"
     width="medium"
-    @close="emit('close')">
+    @close="emit('close')"
+  >
     <section class="confirm-dialog-content">
       <footer class="dialog-actions">
-        <button type="button" class="btn btn-primary" @click="emit('close')">
-          知道了
-        </button>
+        <button type="button" class="btn btn-primary" @click="emit('close')">知道了</button>
       </footer>
     </section>
   </AppDialog>

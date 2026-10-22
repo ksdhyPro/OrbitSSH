@@ -19,14 +19,8 @@ export const useSidebarStore = defineStore("sidebar", () => {
 
   function clampAiPanelWidth(width: number): number {
     // 右侧 AI 面板不能挤掉主终端区域，按当前窗口和左侧栏宽度动态收口。
-    const viewportMax = Math.max(
-      MIN_AI_PANEL_WIDTH,
-      window.innerWidth - sidebarWidth.value - 260,
-    );
-    return Math.min(
-      Math.max(width, MIN_AI_PANEL_WIDTH),
-      Math.min(MAX_AI_PANEL_WIDTH, viewportMax),
-    );
+    const viewportMax = Math.max(MIN_AI_PANEL_WIDTH, window.innerWidth - sidebarWidth.value - 260);
+    return Math.min(Math.max(width, MIN_AI_PANEL_WIDTH), Math.min(MAX_AI_PANEL_WIDTH, viewportMax));
   }
 
   function handleSidebarResizeMove(event: MouseEvent): void {

@@ -26,9 +26,7 @@ export function buildRemoteRenamePath(path: string, nextName: string): string {
   const parentPath = getRemoteParentPath(path);
   const normalizedName = nextName.trim().replace(/\/+$/g, "");
 
-  return parentPath === "/"
-    ? `/${normalizedName}`
-    : `${parentPath}/${normalizedName}`;
+  return parentPath === "/" ? `/${normalizedName}` : `${parentPath}/${normalizedName}`;
 }
 
 export function buildRemoteChildPath(parentPath: string, childName: string): string {
@@ -76,7 +74,7 @@ export function canMoveRemoteNodesToDirectory(
 
   const normalizedTargetPath = targetDirectory.path.replace(/\/+$/g, "");
 
-  return nodes.every((node) => {
+  return nodes.every(node => {
     const normalizedSourcePath = node.path.replace(/\/+$/g, "");
 
     if (
@@ -88,10 +86,7 @@ export function canMoveRemoteNodesToDirectory(
       return false;
     }
 
-    if (
-      node.type === "directory" &&
-      normalizedTargetPath.startsWith(`${normalizedSourcePath}/`)
-    ) {
+    if (node.type === "directory" && normalizedTargetPath.startsWith(`${normalizedSourcePath}/`)) {
       return false;
     }
 
@@ -102,12 +97,9 @@ export function canMoveRemoteNodesToDirectory(
 /**
  * 删除时深层路径优先，避免先删父目录导致子路径操作报错。
  */
-export function sortRemoteNodesForDelete(
-  nodes: RemoteFileNode[],
-): RemoteFileNode[] {
+export function sortRemoteNodesForDelete(nodes: RemoteFileNode[]): RemoteFileNode[] {
   return [...nodes].sort(
-    (a, b) =>
-      (b.path.match(/\//g)?.length ?? 0) - (a.path.match(/\//g)?.length ?? 0),
+    (a, b) => (b.path.match(/\//g)?.length ?? 0) - (a.path.match(/\//g)?.length ?? 0),
   );
 }
 
@@ -134,8 +126,7 @@ export async function deleteRemoteNodes(
       callbacks.onDeleted?.(node);
     } catch (error) {
       firstError =
-        firstError ||
-        (error instanceof Error ? error.message : `删除'${node.name}'失败`);
+        firstError || (error instanceof Error ? error.message : `删除'${node.name}'失败`);
       callbacks.onError?.(node, error);
     }
   }
@@ -162,8 +153,7 @@ export async function moveRemoteNodesToDirectory(
       movedNodes.push(node);
     } catch (error) {
       firstError =
-        firstError ||
-        (error instanceof Error ? error.message : `移动'${node.name}'失败`);
+        firstError || (error instanceof Error ? error.message : `移动'${node.name}'失败`);
     }
   }
 

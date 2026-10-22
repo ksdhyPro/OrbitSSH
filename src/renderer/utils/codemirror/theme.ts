@@ -1,10 +1,7 @@
 import type { Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { AppThemeMode } from "../../../shared/settings";
-import {
-  getEditorThemePalette,
-  getThemeSelectionBackground,
-} from "../theme";
+import { getEditorThemePalette, getThemeSelectionBackground } from "../theme";
 
 // 选区背景色由调用方传入，便于在设置变更时通过 compartment.reconfigure 重建主题。
 export function createFileEditorTheme(
@@ -12,10 +9,7 @@ export function createFileEditorTheme(
   themeMode: AppThemeMode,
 ): Extension {
   const palette = getEditorThemePalette(themeMode);
-  const resolvedSelectionBackground = getThemeSelectionBackground(
-    themeMode,
-    selectionBackground,
-  );
+  const resolvedSelectionBackground = getThemeSelectionBackground(themeMode, selectionBackground);
 
   return EditorView.theme({
     "&": {
@@ -48,9 +42,8 @@ export function createFileEditorTheme(
       backgroundColor: palette.activeLineBackground,
       color: palette.activeLineForeground,
     },
-    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection":
-      {
-        backgroundColor: `${resolvedSelectionBackground} !important`,
+    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection": {
+      backgroundColor: `${resolvedSelectionBackground} !important`,
     },
     ".cm-cursor, .cm-dropCursor": {
       borderLeftColor: palette.cursor,

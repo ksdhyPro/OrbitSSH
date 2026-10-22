@@ -101,7 +101,7 @@ function pruneOldLogs(dir: string): void {
   try {
     const files = fs
       .readdirSync(dir)
-      .filter((f) => f.startsWith("orbitssh.") && f.endsWith(".log"))
+      .filter(f => f.startsWith("orbitssh.") && f.endsWith(".log"))
       .sort(); // 按时间戳排序（文件名天然有序）
 
     while (files.length > MAX_LOG_FILES) {
@@ -209,12 +209,7 @@ function writeLogLine(
 
 /** 统一写日志入口。 */
 export function writeAppLog(payload: LogPayload): void {
-  writeLogLine(
-    payload.level ?? "info",
-    payload.scope,
-    payload.message,
-    payload.data,
-  );
+  writeLogLine(payload.level ?? "info", payload.scope, payload.message, payload.data);
 }
 
 /** 返回当前日志文件的完整路径。 */

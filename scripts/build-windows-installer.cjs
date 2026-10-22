@@ -1,13 +1,7 @@
 /* eslint-disable no-console */
 // 将 electron-builder 的 win-unpacked 交由自绘安装器封装。
 const { createHash } = require("node:crypto");
-const {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} = require("node:fs");
+const { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -21,24 +15,10 @@ const releaseRoot = path.join(projectRoot, "release");
 const skinRoot = path.join(packagingRoot, "skin");
 const skinArchive = path.join(outputRoot, "skin.zip");
 const appArchive = path.join(outputRoot, "orbitssh-app.7z");
-const nsisExecutable = path.join(
-  packagingRoot,
-  "runtime",
-  "nsis",
-  "makensis.exe",
-);
+const nsisExecutable = path.join(packagingRoot, "runtime", "nsis", "makensis.exe");
 const sevenZipExecutable = path.join(packagingRoot, "runtime", "7z.exe");
-const electronDistribution = path.join(
-  projectRoot,
-  "node_modules",
-  "electron",
-  "dist",
-);
-const installerScript = path.join(
-  packagingRoot,
-  "scripts",
-  "orbitssh-installer.nsi",
-);
+const electronDistribution = path.join(projectRoot, "node_modules", "electron", "dist");
+const installerScript = path.join(packagingRoot, "scripts", "orbitssh-installer.nsi");
 const installerSkinAssetScript = path.join(
   projectRoot,
   "scripts",
@@ -51,15 +31,12 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: projectRoot,
     stdio: "inherit",
-    shell:
-      process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
+    shell: process.platform === "win32" && command.toLowerCase().endsWith(".cmd"),
     ...options,
   });
   if (result.error) throw result.error;
   if (result.status !== 0)
-    throw new Error(
-      `${path.basename(command)} 执行失败，退出码：${result.status}`,
-    );
+    throw new Error(`${path.basename(command)} 执行失败，退出码：${result.status}`);
 }
 
 function sha512(filePath) {
@@ -116,11 +93,9 @@ function buildSkinArchive() {
 
 function buildApplicationArchive() {
   // 使用极限压缩控制发布体积，安装时仍由 7z 回调按真实解压量驱动进度条。
-  run(
-    sevenZipExecutable,
-    ["a", "-t7z", "-mx=9", "-mmt=on", appArchive, ".\\*"],
-    { cwd: unpackedRoot },
-  );
+  run(sevenZipExecutable, ["a", "-t7z", "-mx=9", "-mmt=on", appArchive, ".\\*"], {
+    cwd: unpackedRoot,
+  });
 }
 
 function writeAppUpdateConfig() {
@@ -128,7 +103,7 @@ function writeAppUpdateConfig() {
     ? packageJson.build.publish
     : [packageJson.build.publish];
   const publishConfig = publishConfigs.find(
-    (config) => config && typeof config === "object" && config.provider === "generic",
+    config => config && typeof config === "object" && config.provider === "generic",
   );
   if (!publishConfig || typeof publishConfig.url !== "string" || !publishConfig.url.trim()) {
     throw new Error("缺少有效的 build.publish generic 更新地址");
@@ -168,7 +143,7 @@ function verifyApplicationArchive() {
     `Path = ${packageJson.build.productName}.exe`,
     "Path = resources\\app-update.yml",
   ];
-  const missingEntry = requiredEntries.find((entry) => !result.stdout.includes(entry));
+  const missingEntry = requiredEntries.find(entry => !result.stdout.includes(entry));
   if (missingEntry) {
     throw new Error(`应用压缩包缺少必要文件：${missingEntry.slice(7)}`);
   }
@@ -210,8 +185,7 @@ function writeLatestYml() {
 function main() {
   // 允许在安装包已生成后单独刷新更新元数据，避免重复构建应用目录。
   if (process.argv.includes("--write-latest-yml")) {
-    if (!existsSync(installerPath))
-      throw new Error(`缺少安装包：${installerPath}`);
+    if (!existsSync(installerPath)) throw new Error(`缺少安装包：${installerPath}`);
     mkdirSync(releaseRoot, { recursive: true });
     writeLatestYml();
     console.log(`已刷新更新元数据：${path.join(releaseRoot, "latest.yml")}`);
@@ -226,13 +200,11 @@ function main() {
     installerSkinAssetScript,
     skinRoot,
   ]) {
-    if (!existsSync(requiredPath))
-      throw new Error(`缺少 Windows 安装器资源：${requiredPath}`);
+    if (!existsSync(requiredPath)) throw new Error(`缺少 Windows 安装器资源：${requiredPath}`);
   }
   prepareDirectories();
   buildUnpackedApplication();
-  if (!existsSync(unpackedRoot))
-    throw new Error(`应用目录生成失败：${unpackedRoot}`);
+  if (!existsSync(unpackedRoot)) throw new Error(`应用目录生成失败：${unpackedRoot}`);
   writeAppUpdateConfig();
   buildApplicationArchive();
   verifyApplicationArchive();

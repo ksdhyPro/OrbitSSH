@@ -25,11 +25,7 @@ function readGitValue(args: string[]): string | null {
 
 function readPackagedBuildInfo(): BuildInfo | null {
   try {
-    const buildInfoPath = path.join(
-      app.getAppPath(),
-      "dist-electron",
-      "build-info.json",
-    );
+    const buildInfoPath = path.join(app.getAppPath(), "dist-electron", "build-info.json");
     const value = JSON.parse(readFileSync(buildInfoPath, "utf8")) as Partial<BuildInfo>;
 
     // 正式包只接受构建阶段生成的完整字符串，避免损坏文件影响关于窗口。

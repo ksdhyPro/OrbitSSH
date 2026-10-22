@@ -6,13 +6,10 @@ import { assertTabAccess, requireNonEmptyString } from "./validation.js";
 export type { RemoteSystemStats as SystemStats };
 
 export function registerSystemIpc(): void {
-  ipcMain.handle(
-    "system:get-stats",
-    (event, tabId: unknown): Promise<RemoteSystemStats> => {
-      const normalizedTabId = requireNonEmptyString(tabId, "终端标签页 ID");
-      assertTabAccess(event, normalizedTabId);
+  ipcMain.handle("system:get-stats", (event, tabId: unknown): Promise<RemoteSystemStats> => {
+    const normalizedTabId = requireNonEmptyString(tabId, "终端标签页 ID");
+    assertTabAccess(event, normalizedTabId);
 
-      return getRemoteSystemStats(normalizedTabId);
-    },
-  );
+    return getRemoteSystemStats(normalizedTabId);
+  });
 }

@@ -5,8 +5,7 @@ export interface AiCommandPermissionResult {
   reason: string;
 }
 
-export const CROSS_SERVER_OPERATIONS_DISABLED_REASON =
-  "全局 AI 设置未允许跨服务器执行操作";
+export const CROSS_SERVER_OPERATIONS_DISABLED_REASON = "全局 AI 设置未允许跨服务器执行操作";
 export const CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE =
   "已阻止跨服务器操作：全局“AI → 是否允许跨服务器执行操作”当前处于关闭状态。如需使用，请先在设置中开启。开启后，每次跨服务器命令仍需单独确认。";
 

@@ -29,9 +29,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     }
 
     if (event.type === "batch-upsert") {
-      const index = transferBatches.value.findIndex(
-        (batch) => batch.taskId === event.batch.taskId,
-      );
+      const index = transferBatches.value.findIndex(batch => batch.taskId === event.batch.taskId);
       // 仅新批次首次提交时打开任务中心；后续进度刷新不改变用户的开关状态。
       if (index < 0) {
         isTaskListOpen.value = true;
@@ -46,48 +44,33 @@ export const useDownloadsStore = defineStore("downloads", () => {
     }
 
     if (event.type === "batch-remove") {
-      transferBatches.value = transferBatches.value.filter(
-        (batch) => batch.taskId !== event.taskId,
-      );
-      transferNodes.value = transferNodes.value.filter(
-        (node) => node.taskId !== event.taskId,
-      );
+      transferBatches.value = transferBatches.value.filter(batch => batch.taskId !== event.taskId);
+      transferNodes.value = transferNodes.value.filter(node => node.taskId !== event.taskId);
       return;
     }
 
     if (event.type === "node-upsert") {
-      const index = transferNodes.value.findIndex(
-        (node) => node.id === event.node.id,
-      );
+      const index = transferNodes.value.findIndex(node => node.id === event.node.id);
       transferNodes.value =
         index < 0
           ? [...transferNodes.value, event.node]
-          : transferNodes.value.map((node, itemIndex) =>
-              itemIndex === index ? event.node : node,
-            );
+          : transferNodes.value.map((node, itemIndex) => (itemIndex === index ? event.node : node));
       return;
     }
 
-    transferNodes.value = transferNodes.value.filter(
-      (node) => node.id !== event.nodeId,
-    );
+    transferNodes.value = transferNodes.value.filter(node => node.id !== event.nodeId);
   }
 
   function operationKey(input: SftpManagedTaskControlInput): string {
     return `${input.taskId}:${input.nodeIds?.join(",") ?? "root"}:${input.action}`;
   }
 
-  function isManagedTaskOperating(
-    taskId: string,
-    nodeId?: string,
-  ): boolean {
+  function isManagedTaskOperating(taskId: string, nodeId?: string): boolean {
     const prefix = `${taskId}:${nodeId ?? "root"}:`;
-    return [...operatingKeys.value].some((key) => key.startsWith(prefix));
+    return [...operatingKeys.value].some(key => key.startsWith(prefix));
   }
 
-  async function controlManagedTask(
-    input: SftpManagedTaskControlInput,
-  ): Promise<boolean> {
+  async function controlManagedTask(input: SftpManagedTaskControlInput): Promise<boolean> {
     const key = operationKey(input);
     if (operatingKeys.value.has(key)) {
       return false;
@@ -133,8 +116,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     }
 
     if (!removeManagedTaskListener) {
-      removeManagedTaskListener =
-        core.orbitSSHApi.sftp.onManagedTaskEvent(applyEvent);
+      removeManagedTaskListener = core.orbitSSHApi.sftp.onManagedTaskEvent(applyEvent);
     }
 
     const snapshot = await core.orbitSSHApi.sftp.listManagedTasks();

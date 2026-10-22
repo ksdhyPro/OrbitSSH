@@ -7,10 +7,7 @@ import { Client, type ClientChannel } from "ssh2";
 
 import { writeAppLog } from "../logger.js";
 import { createServerConnectOptions } from "./auth-options.js";
-import {
-  getIdleDisconnectMs,
-  getSshKeepaliveIntervalMs,
-} from "./connection-options.js";
+import { getIdleDisconnectMs, getSshKeepaliveIntervalMs } from "./connection-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
 import { describeHostKeyError } from "./host-key-verification.js";
 import type {
@@ -83,7 +80,7 @@ function getShellPathIntegrationCommand(shellPath: string): string | null {
 
   switch (shellName) {
     case "bash":
-      return "__orbitssh_emit_cwd() { printf '\\033]7;file://%s\\007' \"$PWD\"; }; PROMPT_COMMAND=\"__orbitssh_emit_cwd${PROMPT_COMMAND:+;${PROMPT_COMMAND}}\"\r";
+      return '__orbitssh_emit_cwd() { printf \'\\033]7;file://%s\\007\' "$PWD"; }; PROMPT_COMMAND="__orbitssh_emit_cwd${PROMPT_COMMAND:+;${PROMPT_COMMAND}}"\r';
     case "zsh":
       return "function __orbitssh_emit_cwd() { printf '\\033]7;file://%s\\007' \"$PWD\"; }; precmd_functions+=(__orbitssh_emit_cwd)\r";
     case "fish":
@@ -94,9 +91,7 @@ function getShellPathIntegrationCommand(shellPath: string): string | null {
 }
 
 function appendTerminalOutput(session: TerminalSession, chunk: string): void {
-  session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(
-    -maxTerminalOutputBufferChars,
-  );
+  session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(-maxTerminalOutputBufferChars);
 }
 
 export interface TerminalContextSnapshot {
@@ -106,9 +101,7 @@ export interface TerminalContextSnapshot {
   recentOutput: string;
 }
 
-export function getTerminalContextSnapshot(
-  tabId: string,
-): TerminalContextSnapshot | null {
+export function getTerminalContextSnapshot(tabId: string): TerminalContextSnapshot | null {
   const session = terminalSessions.get(tabId);
 
   if (!session) {
@@ -193,9 +186,7 @@ function createLocalPtyEnv(): Record<string, string> {
   return env;
 }
 
-export async function getRemoteSystemStats(
-  tabId: string,
-): Promise<RemoteSystemStats> {
+export async function getRemoteSystemStats(tabId: string): Promise<RemoteSystemStats> {
   const session = terminalSessions.get(tabId);
 
   if (!session) {
@@ -350,10 +341,7 @@ function createSshShellEnv(): NodeJS.ProcessEnv {
  * 交互 Shell 会原样回显 SSH 客户端写入的字符。路径同步钩子属于内部命令，
  * 不应污染用户终端，因此只移除与本次注入完全匹配的一段回显。
  */
-function stripInjectedShellCommandEcho(
-  session: SshTerminalSession,
-  data: string,
-): string {
+function stripInjectedShellCommandEcho(session: SshTerminalSession, data: string): string {
   const pendingCommand = session.pendingShellCommandEcho;
 
   if (!pendingCommand) {
@@ -392,10 +380,7 @@ function stripInjectedShellCommandEcho(
   return `${beforeEcho}${afterEcho.replace(/^\r?\n/, "")}`;
 }
 
-function forwardSshShellData(
-  session: SshTerminalSession,
-  data: string,
-): void {
+function forwardSshShellData(session: SshTerminalSession, data: string): void {
   touchTerminalSession(session);
 
   data = stripInjectedShellCommandEcho(session, data);
@@ -411,10 +396,7 @@ function forwardSshShellData(
   });
 }
 
-function forwardSshShellBuffer(
-  session: SshTerminalSession,
-  data: Buffer,
-): void {
+function forwardSshShellBuffer(session: SshTerminalSession, data: Buffer): void {
   // SSH 输出可能把一个中文 UTF-8 字符拆成多个 Buffer，必须流式解码。
   const decoded = session.outputDecoder.write(data);
   forwardSshShellData(session, decoded);
@@ -427,7 +409,7 @@ function installShellPathIntegration(session: SshTerminalSession): void {
     }
 
     void executeSshTextCommand(session.sshClient, "pwd", 3000)
-      .then((path) => {
+      .then(path => {
         if (!terminalSessions.has(session.tabId) || !path.startsWith("/")) {
           return;
         }
@@ -437,7 +419,7 @@ function installShellPathIntegration(session: SshTerminalSession): void {
           data: `\x1b]7;file://${path}\x07`,
         });
       })
-      .catch((error) => {
+      .catch(error => {
         writeAppLog({
           scope: "main.ssh",
           level: "warn",
@@ -791,9 +773,7 @@ export function writeTerminalInput(tabId: string, data: string): void {
  * 向独立任务终端写入一条命令，并追加不可见的 OSC 完成标记。
  * 标记命令的回显会在 Main Process 中滤除，终端中只保留用户配置的原始命令及其输出。
  */
-export function writeTerminalAutomationCommand(
-  input: TerminalAutomationCommandInput,
-): boolean {
+export function writeTerminalAutomationCommand(input: TerminalAutomationCommandInput): boolean {
   const session = terminalSessions.get(input.tabId);
   const command = input.command.trim();
 

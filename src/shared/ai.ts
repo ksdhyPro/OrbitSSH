@@ -73,11 +73,7 @@ export interface AiCommandResult {
 }
 
 export interface AiCommandPolicyResult {
-  decision:
-    | "allow_readonly"
-    | "allow_autonomous"
-    | "requires_approval"
-    | "deny";
+  decision: "allow_readonly" | "allow_autonomous" | "requires_approval" | "deny";
   reason: string;
 }
 

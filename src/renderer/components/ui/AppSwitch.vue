@@ -15,7 +15,8 @@ const model = defineModel<boolean>({ required: true });
       :checked="model"
       :disabled="disabled"
       :aria-label="ariaLabel"
-      @change="model = ($event.target as HTMLInputElement).checked" />
+      @change="model = ($event.target as HTMLInputElement).checked"
+    />
     <slot />
   </label>
 </template>

@@ -10,10 +10,7 @@ import type {
   RenamingState,
   SftpTreeState,
 } from "../types/sftp";
-import type {
-  RemoteFileNode,
-  SftpPreviewImageResult,
-} from "../../shared/sftp";
+import type { RemoteFileNode, SftpPreviewImageResult } from "../../shared/sftp";
 import { copyTextByFallback } from "../utils/clipboard";
 import { getRemoteParentPath, getRootName } from "../utils/path";
 import { updateNodeChildren } from "../utils/file-tree";
@@ -113,11 +110,7 @@ export const useSftpStore = defineStore("sftp", () => {
     });
 
     if (!core.orbitSSHApi) {
-      core.writeRendererLog(
-        "加载 SFTP home 失败：Preload API 不存在",
-        { tabId: tab.id },
-        "error",
-      );
+      core.writeRendererLog("加载 SFTP home 失败：Preload API 不存在", { tabId: tab.id }, "error");
       return;
     }
 
@@ -192,10 +185,7 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  async function toggleRemoteDirectory(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function toggleRemoteDirectory(tabId: string, node: RemoteFileNode): Promise<void> {
     const tree = getSftpTree(tabId);
 
     core.writeRendererLog("点击远程文件节点", {
@@ -246,11 +236,7 @@ export const useSftpStore = defineStore("sftp", () => {
       });
 
       if (!children) {
-        core.writeRendererLog(
-          "目录读取返回空结果",
-          { tabId, path: node.path },
-          "warn",
-        );
+        core.writeRendererLog("目录读取返回空结果", { tabId, path: node.path }, "warn");
         return;
       }
 
@@ -444,10 +430,7 @@ export const useSftpStore = defineStore("sftp", () => {
     clearRemoteNodeDrag();
   }
 
-  async function copyActiveSftpPath(
-    tabId: string,
-    tree: SftpTreeState | undefined,
-  ): Promise<void> {
+  async function copyActiveSftpPath(tabId: string, tree: SftpTreeState | undefined): Promise<void> {
     if (!tabId || !tree?.homePath) {
       return;
     }
@@ -471,17 +454,11 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  async function syncFileTreeToTerminalPath(
-    tab: TerminalTab | undefined,
-  ): Promise<void> {
+  async function syncFileTreeToTerminalPath(tab: TerminalTab | undefined): Promise<void> {
     const terminalPath = tab?.currentPath;
 
     if (!tab || !terminalPath) {
-      core.writeRendererLog(
-        "同步终端路径跳过：终端路径为空",
-        { tabId: tab?.id },
-        "warn",
-      );
+      core.writeRendererLog("同步终端路径跳过：终端路径为空", { tabId: tab?.id }, "warn");
       return;
     }
 
@@ -497,16 +474,11 @@ export const useSftpStore = defineStore("sftp", () => {
     await openSftpDirectoryPath(tab, terminalPath, "同步终端路径失败");
   }
 
-  function canDownloadRemoteFile(
-    tabId: string,
-    node: RemoteFileNode | null,
-  ): boolean {
+  function canDownloadRemoteFile(tabId: string, node: RemoteFileNode | null): boolean {
     return Boolean(node && (node.type === "file" || node.type === "directory") && tabId);
   }
 
-  function getFileTextProbeState(
-    node: RemoteFileNode | null,
-  ): FileTextProbeState | undefined {
+  function getFileTextProbeState(node: RemoteFileNode | null): FileTextProbeState | undefined {
     if (!node) {
       return undefined;
     }
@@ -537,17 +509,11 @@ export const useSftpStore = defineStore("sftp", () => {
     node: RemoteFileNode | null,
   ): boolean {
     return Boolean(
-      node &&
-        tree &&
-        node.path !== tree.root.path &&
-        !tree.deletingPaths.has(node.path),
+      node && tree && node.path !== tree.root.path && !tree.deletingPaths.has(node.path),
     );
   }
 
-  async function probeFileTextSupport(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function probeFileTextSupport(tabId: string, node: RemoteFileNode): Promise<void> {
     if (
       node.type !== "file" ||
       isKnownEditableTextFile(node) ||
@@ -595,10 +561,7 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  async function ensureEditableTextFile(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<boolean> {
+  async function ensureEditableTextFile(tabId: string, node: RemoteFileNode): Promise<boolean> {
     if (isEditableTextFile(node)) {
       return true;
     }
@@ -689,10 +652,7 @@ export const useSftpStore = defineStore("sftp", () => {
 
       await refreshRemoteDirectoryPath(state.tabId, parentPath);
     } catch (error) {
-      showSftpPathPrompt(
-        error instanceof Error ? error.message : "重命名失败",
-        "重命名失败",
-      );
+      showSftpPathPrompt(error instanceof Error ? error.message : "重命名失败", "重命名失败");
     }
   }
 
@@ -706,10 +666,8 @@ export const useSftpStore = defineStore("sftp", () => {
       return;
     }
 
-    const placeholderName =
-      type === "directory" ? "新建文件夹" : "新建文件.txt";
-    const newPath =
-      parentPath === "/" ? `/${placeholderName}` : `${parentPath}/${placeholderName}`;
+    const placeholderName = type === "directory" ? "新建文件夹" : "新建文件.txt";
+    const newPath = parentPath === "/" ? `/${placeholderName}` : `${parentPath}/${placeholderName}`;
 
     closeFileContextMenu();
     closeBlankContextMenu();
@@ -726,10 +684,7 @@ export const useSftpStore = defineStore("sftp", () => {
       // 进入重命名态，名称默认全选，用户可立即改名（Windows 式）。
       renaming.value = { tabId, path: newPath, value: placeholderName };
     } catch (error) {
-      showSftpPathPrompt(
-        error instanceof Error ? error.message : "新建失败",
-        "新建失败",
-      );
+      showSftpPathPrompt(error instanceof Error ? error.message : "新建失败", "新建失败");
     }
   }
 
@@ -764,8 +719,7 @@ export const useSftpStore = defineStore("sftp", () => {
       node,
       visibleNodes,
       event,
-      isSelectable: item =>
-        !item.isVirtualParent && !tree.deletingPaths.has(item.path),
+      isSelectable: item => !item.isVirtualParent && !tree.deletingPaths.has(item.path),
     });
 
     if (!nextSelection) {
@@ -825,9 +779,7 @@ export const useSftpStore = defineStore("sftp", () => {
     });
   }
 
-  function getSelectedNodes(
-    tree: SftpTreeState | undefined,
-  ): RemoteFileNode[] {
+  function getSelectedNodes(tree: SftpTreeState | undefined): RemoteFileNode[] {
     if (!tree) {
       return [];
     }
@@ -862,22 +814,14 @@ export const useSftpStore = defineStore("sftp", () => {
     }
 
     const selectedNodes = getSelectedNodes(tree);
-    const nodes = tree.selectedPaths.has(node.path) && selectedNodes.length > 0
-      ? selectedNodes
-      : [node];
+    const nodes =
+      tree.selectedPaths.has(node.path) && selectedNodes.length > 0 ? selectedNodes : [node];
 
-    return nodes.filter(
-      (item) => !tree.deletingPaths.has(item.path) && item.path !== tree.root.path,
-    );
+    return nodes.filter(item => !tree.deletingPaths.has(item.path) && item.path !== tree.root.path);
   }
 
-  function startRemoteNodeDrag(
-    tree: SftpTreeState | undefined,
-    node: RemoteFileNode,
-  ): void {
-    fileDragSourcePaths.value = new Set(
-      getDragMoveNodes(tree, node).map((item) => item.path),
-    );
+  function startRemoteNodeDrag(tree: SftpTreeState | undefined, node: RemoteFileNode): void {
+    fileDragSourcePaths.value = new Set(getDragMoveNodes(tree, node).map(item => item.path));
     fileDragTargetPath.value = "";
   }
 
@@ -969,9 +913,7 @@ export const useSftpStore = defineStore("sftp", () => {
       if (latestTree) {
         setSftpTree(tabId, {
           ...latestTree,
-          error:
-            firstError ||
-            (error instanceof Error ? error.message : "移动后刷新目录失败"),
+          error: firstError || (error instanceof Error ? error.message : "移动后刷新目录失败"),
         });
       }
     } finally {
@@ -979,11 +921,7 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  function openFileContextMenu(
-    tabId: string,
-    event: MouseEvent,
-    node: RemoteFileNode,
-  ): void {
+  function openFileContextMenu(tabId: string, event: MouseEvent, node: RemoteFileNode): void {
     event.preventDefault();
     event.stopPropagation();
 
@@ -992,9 +930,7 @@ export const useSftpStore = defineStore("sftp", () => {
 
     // 右键不参与选中，仅记录当前选区状态，避免右键污染多选/单选状态。
     fileContextMenu.selectedCount = tree?.selectedPaths.size ?? 0;
-    fileContextMenu.contextNodeSelected = Boolean(
-      tree?.selectedPaths.has(node.path),
-    );
+    fileContextMenu.contextNodeSelected = Boolean(tree?.selectedPaths.has(node.path));
 
     fileContextMenu.open = true;
     const placement = resolveMenuPlacement({
@@ -1010,10 +946,7 @@ export const useSftpStore = defineStore("sftp", () => {
     }
   }
 
-  function applyImagePreviewResult(
-    result: SftpPreviewImageResult,
-    tabId: string,
-  ): void {
+  function applyImagePreviewResult(result: SftpPreviewImageResult, tabId: string): void {
     imagePreview.tabId = tabId;
     imagePreview.path = result.path;
     imagePreview.name = result.name;
@@ -1023,10 +956,7 @@ export const useSftpStore = defineStore("sftp", () => {
     imagePreview.error = "";
   }
 
-  async function openRemoteImagePreview(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function openRemoteImagePreview(tabId: string, node: RemoteFileNode): Promise<void> {
     if (!tabId || !core.orbitSSHApi || !isPreviewImageFile(node)) {
       return;
     }
@@ -1051,8 +981,7 @@ export const useSftpStore = defineStore("sftp", () => {
       applyImagePreviewResult(result, tabId);
     } catch (error) {
       imagePreview.loading = false;
-      imagePreview.error =
-        error instanceof Error ? error.message : "图片预览失败";
+      imagePreview.error = error instanceof Error ? error.message : "图片预览失败";
     }
   }
 
@@ -1067,10 +996,7 @@ export const useSftpStore = defineStore("sftp", () => {
     imagePreview.error = "";
   }
 
-  async function downloadRemoteFileNode(
-    tabId: string,
-    node: RemoteFileNode,
-  ): Promise<void> {
+  async function downloadRemoteFileNode(tabId: string, node: RemoteFileNode): Promise<void> {
     if (!tabId || !core.orbitSSHApi || !canDownloadRemoteFile(tabId, node)) {
       return;
     }
@@ -1084,10 +1010,7 @@ export const useSftpStore = defineStore("sftp", () => {
         size: node.size,
       });
     } catch (error) {
-      showSftpPathPrompt(
-        error instanceof Error ? error.message : "文件下载失败",
-        "下载失败",
-      );
+      showSftpPathPrompt(error instanceof Error ? error.message : "文件下载失败", "下载失败");
     }
   }
 
@@ -1103,12 +1026,7 @@ export const useSftpStore = defineStore("sftp", () => {
   }
 
   async function downloadImagePreviewFile(): Promise<void> {
-    if (
-      !imagePreview.tabId ||
-      !imagePreview.path ||
-      !imagePreview.name ||
-      !core.orbitSSHApi
-    ) {
+    if (!imagePreview.tabId || !imagePreview.path || !imagePreview.name || !core.orbitSSHApi) {
       return;
     }
 
@@ -1119,15 +1037,11 @@ export const useSftpStore = defineStore("sftp", () => {
         name: imagePreview.name,
       });
     } catch (error) {
-      imagePreview.error =
-        error instanceof Error ? error.message : "文件下载失败";
+      imagePreview.error = error instanceof Error ? error.message : "文件下载失败";
     }
   }
 
-  async function refreshRemoteDirectoryPath(
-    tabId: string,
-    path: string,
-  ): Promise<void> {
+  async function refreshRemoteDirectoryPath(tabId: string, path: string): Promise<void> {
     if (!tabId || !path || !core.orbitSSHApi) {
       return;
     }
@@ -1161,16 +1075,11 @@ export const useSftpStore = defineStore("sftp", () => {
     const selectedNodes = getSelectedNodes(tree);
     const shouldDeleteSelectedNodes =
       fileContextMenu.contextNodeSelected && selectedNodes.length > 1;
-    const nodesToDelete =
-      shouldDeleteSelectedNodes
-        ? selectedNodes
-        : [contextNode];
+    const nodesToDelete = shouldDeleteSelectedNodes ? selectedNodes : [contextNode];
 
     // 过滤掉根目录和已在删除中的
     const validNodes = nodesToDelete.filter(
-      n =>
-        n.path !== tree.root.path &&
-        !tree.deletingPaths.has(n.path),
+      n => n.path !== tree.root.path && !tree.deletingPaths.has(n.path),
     );
 
     if (validNodes.length === 0) {
@@ -1198,32 +1107,27 @@ export const useSftpStore = defineStore("sftp", () => {
       deletingPaths,
       selectedPaths: new Set<string>(),
       lastClickedIndex: -1,
-      error: '',
+      error: "",
     });
 
-    const { firstError } = await deleteRemoteNodes(
-      core.orbitSSHApi.sftp,
-      tabId,
-      validNodes,
-      {
-        onDeleted: node => {
-          delete fileTextProbeStates[node.path];
-          callbacks.onDeleted?.(node);
-        },
-        onError: (node, error) => {
-          core.writeRendererLog(
-            '远程文件节点删除失败',
-            {
-              tabId,
-              path: node.path,
-              type: node.type,
-              error: error instanceof Error ? error.message : String(error),
-            },
-            'error',
-          );
-        },
+    const { firstError } = await deleteRemoteNodes(core.orbitSSHApi.sftp, tabId, validNodes, {
+      onDeleted: node => {
+        delete fileTextProbeStates[node.path];
+        callbacks.onDeleted?.(node);
       },
-    );
+      onError: (node, error) => {
+        core.writeRendererLog(
+          "远程文件节点删除失败",
+          {
+            tabId,
+            path: node.path,
+            type: node.type,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "error",
+        );
+      },
+    });
 
     // 删除完成后刷新父目录
     const contextParentPath = getRemoteParentPath(contextNode.path);
@@ -1250,7 +1154,7 @@ export const useSftpStore = defineStore("sftp", () => {
           root: updateNodeChildren(latestTree.root, contextParentPath, children),
           expandedPaths: nextExpandedPaths,
           deletingPaths: nextDeletingPaths,
-          error: firstError || '',
+          error: firstError || "",
         });
       }
     } catch (error) {
@@ -1266,11 +1170,7 @@ export const useSftpStore = defineStore("sftp", () => {
         setSftpTree(tabId, {
           ...latestTree,
           deletingPaths: nextDeletingPaths,
-          error:
-            firstError ||
-            (error instanceof Error
-              ? error.message
-              : '删除后刷新目录失败'),
+          error: firstError || (error instanceof Error ? error.message : "删除后刷新目录失败"),
         });
       }
     }

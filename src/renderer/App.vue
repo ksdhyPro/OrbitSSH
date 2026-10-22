@@ -1,13 +1,5 @@
 <script setup lang="ts">
-import {
-  computed,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  reactive,
-  ref,
-  watch,
-} from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import "@xterm/xterm/css/xterm.css";
 
 import ConnectionDialog from "./components/ConnectionDialog.vue";
@@ -111,7 +103,7 @@ function getSidebarPanelMinimumHeight(panel: SidebarPanel): number {
 /** 返回分隔线下方紧邻的面板，用于将拖拽高度在相邻面板间转移。 */
 function getNextSidebarPanel(panel: SidebarPanel): SidebarPanel | null {
   const panelIndex = sidebarPanelOrder.value.indexOf(panel);
-  return panelIndex >= 0 ? sidebarPanelOrder.value[panelIndex + 1] ?? null : null;
+  return panelIndex >= 0 ? (sidebarPanelOrder.value[panelIndex + 1] ?? null) : null;
 }
 
 /** 将侧栏实际可用高度同步为响应式数据，供窗口缩放后的布局重新计算使用。 */
@@ -124,9 +116,10 @@ function refreshSidebarPanelsHeight(): void {
 
   const sidebarStyle = window.getComputedStyle(sidebarElement);
   // clientHeight 包含上下内边距，需扣除后才是面板实际可分配的内容高度。
-  sidebarPanelsHeight.value = sidebarElement.clientHeight
-    - Number.parseFloat(sidebarStyle.paddingTop)
-    - Number.parseFloat(sidebarStyle.paddingBottom);
+  sidebarPanelsHeight.value =
+    sidebarElement.clientHeight -
+    Number.parseFloat(sidebarStyle.paddingTop) -
+    Number.parseFloat(sidebarStyle.paddingBottom);
 }
 
 function getSidebarPanelMaxHeight(panel: SidebarPanel): number {
@@ -138,8 +131,7 @@ function getSidebarPanelMaxHeight(panel: SidebarPanel): number {
   // 排在最下面的面板自动填充余下空间，因此调整其他面板时始终为其保留最小可用高度。
   const lastPanelMinimumHeight = getSidebarPanelMinimumHeight(lastPanel);
   // 非末尾面板的分隔条始终保留，折叠时同样占用布局高度。
-  const resizerHeight = sidebarPanelOrder.value.slice(0, -1).length
-    * SIDEBAR_PANEL_RESIZER_HEIGHT;
+  const resizerHeight = sidebarPanelOrder.value.slice(0, -1).length * SIDEBAR_PANEL_RESIZER_HEIGHT;
 
   return Math.max(
     SIDEBAR_PANEL_MIN_HEIGHT,
@@ -155,19 +147,15 @@ function clampSidebarPanelHeight(height: number, panel: SidebarPanel): number {
 }
 
 // 保留用户保存的高度；窗口变小时仅收紧当前显示高度，恢复窗口后可自动还原。
-function getSidebarPanelDisplayHeight(
-  height: number,
-  panel: SidebarPanel,
-): number {
+function getSidebarPanelDisplayHeight(height: number, panel: SidebarPanel): number {
   const containerHeight = sidebarPanelsHeight.value;
   if (!containerHeight) return height;
 
   const lastPanel = sidebarPanelOrder.value.at(-1) ?? "remoteFiles";
   const fixedPanels = sidebarPanelOrder.value.slice(0, -1);
   const lastPanelMinimumHeight = getSidebarPanelMinimumHeight(lastPanel);
-  const fixedPanelsHeight = containerHeight
-    - lastPanelMinimumHeight
-    - fixedPanels.length * SIDEBAR_PANEL_RESIZER_HEIGHT;
+  const fixedPanelsHeight =
+    containerHeight - lastPanelMinimumHeight - fixedPanels.length * SIDEBAR_PANEL_RESIZER_HEIGHT;
   let allocatedHeight = 0;
 
   for (let index = 0; index < fixedPanels.length; index += 1) {
@@ -175,10 +163,7 @@ function getSidebarPanelDisplayHeight(
     const candidateMinimumHeight = getSidebarPanelMinimumHeight(candidate);
     const followingMinimumHeight = fixedPanels
       .slice(index + 1)
-      .reduce(
-        (total, followingPanel) => total + getSidebarPanelHeight(followingPanel),
-        0,
-      );
+      .reduce((total, followingPanel) => total + getSidebarPanelHeight(followingPanel), 0);
     // 优先展示保存高度；空间不足时从上到下收紧，同时为后续面板和末尾面板保留最小高度。
     const availableHeight = fixedPanelsHeight - allocatedHeight - followingMinimumHeight;
     const displayHeight = Math.max(
@@ -245,8 +230,8 @@ function handleSidebarPanelResizeMove(event: PointerEvent): void {
   if (adjacentPanel && !isLastSidebarPanel(adjacentPanel)) {
     // 中间分隔线优先在两侧面板间转移高度；相邻面板已到最小高度时，
     // 允许从底部自动填充面板的剩余空间取高度，避免分隔线被完全卡死。
-    const adjacentSlack = resizingAdjacentPanelStartHeight
-      - getSidebarPanelMinimumHeight(adjacentPanel);
+    const adjacentSlack =
+      resizingAdjacentPanelStartHeight - getSidebarPanelMinimumHeight(adjacentPanel);
     const appliedDelta = Math.min(
       Math.max(
         Math.round(requestedDelta),
@@ -307,21 +292,17 @@ function startSidebarPanelResize(event: PointerEvent, panel: SidebarPanel): void
   }
   sidebarPanelResizeStartY = event.clientY;
   resizingSidebarPanel = panel;
-  resizingPanelStartHeight = getSidebarPanelDisplayHeight(
-    appSettings.sidebar[panel].height,
-    panel,
-  );
+  resizingPanelStartHeight = getSidebarPanelDisplayHeight(appSettings.sidebar[panel].height, panel);
   const adjacentPanel = getNextSidebarPanel(panel);
-  resizingAdjacentSidebarPanel = adjacentPanel && !appSettings.sidebar[adjacentPanel].collapsed
-    ? adjacentPanel
-    : null;
+  resizingAdjacentSidebarPanel =
+    adjacentPanel && !appSettings.sidebar[adjacentPanel].collapsed ? adjacentPanel : null;
   resizingAdjacentPanelStartHeight = resizingAdjacentSidebarPanel
     ? isLastSidebarPanel(resizingAdjacentSidebarPanel)
       ? appSettings.sidebar[resizingAdjacentSidebarPanel].height
       : getSidebarPanelDisplayHeight(
-        appSettings.sidebar[resizingAdjacentSidebarPanel].height,
-        resizingAdjacentSidebarPanel,
-      )
+          appSettings.sidebar[resizingAdjacentSidebarPanel].height,
+          resizingAdjacentSidebarPanel,
+        )
     : 0;
   isResizingSidebarPanels.value = true;
   document.body.style.cursor = "row-resize";
@@ -380,11 +361,8 @@ const writeRendererLog = coreStore.writeRendererLog;
 // settings：appSettings 是 reactive 对象，直接取引用即保留响应性
 const appSettings = settingsStore.appSettings;
 const selectionBackgroundOptions = settingsStore.selectionBackgroundOptions;
-const {
-  isSettingsDialogOpen,
-  isSelectionBackgroundDropdownOpen,
-  activeSettingsSection,
-} = storeToRefs(settingsStore);
+const { isSettingsDialogOpen, isSelectionBackgroundDropdownOpen, activeSettingsSection } =
+  storeToRefs(settingsStore);
 const {
   openSettingsDialog,
   closeSettingsDialog,
@@ -425,16 +403,9 @@ const { sidebarWidth, isResizingSidebar } = storeToRefs(sidebarStore);
 const { startSidebarResize } = sidebarStore;
 
 // downloads
-const {
-  isTaskListOpen,
-  transferBatches,
-  transferNodes,
-  hasTransferTasks,
-} = storeToRefs(downloadsStore);
-const {
-  controlManagedTask,
-  isManagedTaskOperating,
-} = downloadsStore;
+const { isTaskListOpen, transferBatches, transferNodes, hasTransferTasks } =
+  storeToRefs(downloadsStore);
+const { controlManagedTask, isManagedTaskOperating } = downloadsStore;
 
 const {
   servers,
@@ -622,8 +593,7 @@ const isWindows = computed(() => appPlatform.value === "win32");
 const isMac = computed(() => appPlatform.value === "darwin");
 
 function handleGlobalKeydown(event: KeyboardEvent): void {
-  const isSearchShortcut =
-    (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f";
+  const isSearchShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f";
 
   if (isSearchShortcut) {
     event.preventDefault();
@@ -776,12 +746,14 @@ function handleAppMenuAction(action: AppMenuAction): void {
 }
 
 async function deleteServer(serverId: string): Promise<void> {
-  await serversStore.deleteServer(serverId, () => requestConfirm({
-    title: "删除服务器",
-    message: "确认删除该服务器配置？",
-    confirmLabel: "删除",
-    danger: true,
-  }));
+  await serversStore.deleteServer(serverId, () =>
+    requestConfirm({
+      title: "删除服务器",
+      message: "确认删除该服务器配置？",
+      confirmLabel: "删除",
+      danger: true,
+    }),
+  );
 }
 
 // 左侧服务器列表的置顶操作由 store 统一处理并持久化。
@@ -931,8 +903,7 @@ onMounted(() => {
       "error",
     );
   });
-  stopAppMenuListener =
-    orbitSSHApi.value?.appMenu.onAction(handleAppMenuAction) ?? null;
+  stopAppMenuListener = orbitSSHApi.value?.appMenu.onAction(handleAppMenuAction) ?? null;
   initUpdate();
 
   window.addEventListener("resize", handleWindowResize);
@@ -973,7 +944,8 @@ onUnmounted(() => {
       @open-changelog="openHelpChangelog"
       @minimize-window="minimizeWindow"
       @toggle-maximize-window="toggleMaximizeWindow"
-      @close-window="closeWindow" />
+      @close-window="closeWindow"
+    />
 
     <TransferTaskDialog
       :open="isTaskListOpen"
@@ -981,16 +953,16 @@ onUnmounted(() => {
       :nodes="transferNodes"
       :is-operating="isManagedTaskOperating"
       @close="isTaskListOpen = false"
-      @control="controlManagedTask" />
+      @control="controlManagedTask"
+    />
 
     <PortForwardDialog
       :open="isPortForwardDialogOpen"
       :servers="servers"
-      @close="isPortForwardDialogOpen = false" />
+      @close="isPortForwardDialogOpen = false"
+    />
 
-    <div
-      class="content-shell"
-      :style="{ '--sidebar-width': `${sidebarWidth}px` }">
+    <div class="content-shell" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
       <aside ref="sidebarPanelsElement" class="sidebar">
         <template v-for="panel in displayedSidebarPanels" :key="panel">
           <div
@@ -1008,7 +980,8 @@ onUnmounted(() => {
             @dragstart="startSidebarPanelDrag($event, panel)"
             @dragover.prevent
             @drop="finishSidebarPanelDrag($event, panel)"
-            @dragend="clearSidebarPanelDrag">
+            @dragend="clearSidebarPanelDrag"
+          >
             <ServerSidebar
               v-if="panel === 'servers'"
               :servers="servers"
@@ -1029,13 +1002,15 @@ onUnmounted(() => {
               @set-server-color="setServerColor"
               @set-server-pinned="setServerPinned"
               @delete-server="deleteServer"
-              @toggle-collapsed="!isAiWorkspace && toggleSidebarPanel('servers')" />
+              @toggle-collapsed="!isAiWorkspace && toggleSidebarPanel('servers')"
+            />
 
             <AutomationSidebar
               v-else-if="panel === 'automation'"
               :active-tab="activeTab"
               :collapsed="appSettings.sidebar.automation.collapsed"
-              @toggle-collapsed="toggleSidebarPanel('automation')" />
+              @toggle-collapsed="toggleSidebarPanel('automation')"
+            />
 
             <SftpPanel
               v-else
@@ -1083,7 +1058,8 @@ onUnmounted(() => {
               @commit-rename="handleCommitRename"
               @cancel-rename="handleCancelRename"
               @create-blank-node="handleCreateBlankNode"
-              @toggle-collapsed="toggleSidebarPanel('remoteFiles')" />
+              @toggle-collapsed="toggleSidebarPanel('remoteFiles')"
+            />
           </div>
 
           <div
@@ -1097,7 +1073,8 @@ onUnmounted(() => {
             role="separator"
             aria-orientation="horizontal"
             :aria-label="`调整${panel === 'servers' ? '服务器' : panel === 'automation' ? '自定义指令' : '远程文件'}面板高度`"
-            @pointerdown="startSidebarPanelResize($event, panel)"></div>
+            @pointerdown="startSidebarPanelResize($event, panel)"
+          ></div>
         </template>
       </aside>
 
@@ -1106,7 +1083,8 @@ onUnmounted(() => {
         role="separator"
         aria-orientation="vertical"
         aria-label="调整侧边栏宽度"
-        @mousedown="startSidebarResize"></div>
+        @mousedown="startSidebarResize"
+      ></div>
 
       <TerminalPanel
         :ai-workspace="isAiWorkspace"
@@ -1128,7 +1106,8 @@ onUnmounted(() => {
         @search="searchActiveTerminal"
         @toggle-case-sensitive="toggleTerminalSearchCaseSensitive"
         @close-search="closeTerminalSearch"
-        @open-connection-dialog="openConnectionDialog">
+        @open-connection-dialog="openConnectionDialog"
+      >
         <AiPanel
           layout="workspace"
           :open="true"
@@ -1156,7 +1135,8 @@ onUnmounted(() => {
           @run-approved="runAiApprovedCommand"
           @reject-approval="rejectAiApproval"
           @select-model="updateAiSetting('activeConfigId', $event)"
-          @open-ssh="openTerminalDialog(activeTabId)" />
+          @open-ssh="openTerminalDialog(activeTabId)"
+        />
       </TerminalPanel>
     </div>
 
@@ -1168,20 +1148,30 @@ onUnmounted(() => {
       :is-submitting-server="isSubmittingServer"
       @close="closeConnectionDialog"
       @submit="submitConnectionForm"
-      @select-private-key="selectPrivateKeyFile" />
+      @select-private-key="selectPrivateKeyFile"
+    />
 
     <DataTransferDialog
       v-if="isDataTransferDialogOpen"
       :servers="servers"
       :is-mac="isMac"
-      :active-source="activeTab ? { serverId: activeTab.serverId, currentPath: activeSftpTree?.homePath ?? activeTab.currentPath } : undefined"
-      @close="closeDataTransferDialog" />
+      :active-source="
+        activeTab
+          ? {
+              serverId: activeTab.serverId,
+              currentPath: activeSftpTree?.homePath ?? activeTab.currentPath,
+            }
+          : undefined
+      "
+      @close="closeDataTransferDialog"
+    />
 
     <ImagePreviewDialog
       :open="isImagePreviewOpen"
       :image-preview="imagePreview"
       @close="closeImagePreview"
-      @download="downloadImagePreviewFile" />
+      @download="downloadImagePreviewFile"
+    />
 
     <RemoteFileEditorDialog
       :is-open="isFileEditorOpen"
@@ -1209,13 +1199,15 @@ onUnmounted(() => {
       @close-search="closeFileEditorSearch"
       @save="saveFileEditor"
       @discard="discardFileEditorChanges"
-      @save-and-close="saveAndCloseFileEditor" />
+      @save-and-close="saveAndCloseFileEditor"
+    />
 
     <SftpPathPromptDialog
       :open="isSftpPathPromptOpen"
       :title="sftpPathPromptTitle"
       :message="sftpPathPromptMessage"
-      @close="closeSftpPathPrompt" />
+      @close="closeSftpPathPrompt"
+    />
 
     <DeleteConfirmDialog
       :open="deleteConfirmDialog.open"
@@ -1224,22 +1216,19 @@ onUnmounted(() => {
       :confirm-label="deleteConfirmDialog.confirmLabel"
       :danger="deleteConfirmDialog.danger"
       @cancel="resolveDeleteConfirm(false)"
-      @confirm="resolveDeleteConfirm(true)" />
+      @confirm="resolveDeleteConfirm(true)"
+    />
 
     <SettingsDialog
       :open="isSettingsDialogOpen"
       :app-settings="appSettings"
       :active-settings-section="activeSettingsSection"
       :is-mac="isMac"
-      :is-selection-background-dropdown-open="
-        isSelectionBackgroundDropdownOpen
-      "
+      :is-selection-background-dropdown-open="isSelectionBackgroundDropdownOpen"
       :selection-background-options="selectionBackgroundOptions"
       @close="closeSettingsDialog"
       @update-active-section="activeSettingsSection = $event"
-      @update-selection-dropdown-open="
-        isSelectionBackgroundDropdownOpen = $event
-      "
+      @update-selection-dropdown-open="isSelectionBackgroundDropdownOpen = $event"
       @step-terminal-number-setting="stepTerminalNumberSetting"
       @update-keepalive-interval-seconds="updateKeepaliveIntervalSeconds"
       @update-idle-disconnect-minutes="updateIdleDisconnectMinutes"
@@ -1247,7 +1236,8 @@ onUnmounted(() => {
       @update-ai-setting="updateAiSetting"
       @update-ai-settings="updateAiSettings"
       @update-theme-mode="updateThemeMode"
-      @select-selection-background="selectSelectionBackground" />
+      @select-selection-background="selectSelectionBackground"
+    />
 
     <UpdateDialog
       :open="isUpdateDialogOpen"
@@ -1261,7 +1251,8 @@ onUnmounted(() => {
       @close="isUpdateDialogOpen = false"
       @check="checkForUpdates"
       @download="downloadUpdate"
-      @install="installUpdate" />
+      @install="installUpdate"
+    />
 
     <HostKeyPromptDialog />
   </main>

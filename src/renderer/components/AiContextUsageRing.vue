@@ -9,9 +9,10 @@ const props = defineProps<{
   usage?: AiContextUsage;
 }>();
 
-const visible = computed(() =>
-  Number.isSafeInteger(props.config?.contextTokenLimitK) &&
-  (props.config?.contextTokenLimitK ?? 0) > 0,
+const visible = computed(
+  () =>
+    Number.isSafeInteger(props.config?.contextTokenLimitK) &&
+    (props.config?.contextTokenLimitK ?? 0) > 0,
 );
 
 const percent = computed(() => {
@@ -42,7 +43,8 @@ const title = computed(() => {
     aria-label="上下文使用量"
     aria-valuemin="0"
     aria-valuemax="100"
-    :aria-valuenow="Math.round(percent)">
+    :aria-valuenow="Math.round(percent)"
+  >
     <span>{{ Math.round(percent) }}%</span>
   </div>
 </template>

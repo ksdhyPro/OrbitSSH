@@ -12,10 +12,7 @@ import {
 } from "../../dist-electron/main/ai/ai-response-parser.js";
 
 test("承诺执行但未调用工具的回复不会被判定为完成", () => {
-  const result = evaluateAssistantTurnProtocol(
-    "好的，我来帮你检查 nginx 配置。",
-    [],
-  );
+  const result = evaluateAssistantTurnProtocol("好的，我来帮你检查 nginx 配置。", []);
 
   assert.equal(result.outcome, "protocol_error");
   assert.equal(result.retryable, true);
@@ -23,24 +20,23 @@ test("承诺执行但未调用工具的回复不会被判定为完成", () => {
 });
 
 test("纯文本回复会保留原文而不是生成内部协议说明", () => {
-  const result = evaluateAssistantTurnProtocol(
-    "当前信息不足，建议先确认服务名称。",
-    [],
-  );
+  const result = evaluateAssistantTurnProtocol("当前信息不足，建议先确认服务名称。", []);
 
   assert.equal(result.fallbackReply, "当前信息不足，建议先确认服务名称。");
   assert.doesNotMatch(result.fallbackReply, /有效工具动作|重新规划/);
 });
 
 test("finish_response 明确标记 Agent 正常完成", () => {
-  const result = evaluateAssistantTurnProtocol("", [{
-    id: "finish-1",
-    type: "function",
-    function: {
-      name: "finish_response",
-      arguments: JSON.stringify({ message: "nginx 配置检查完成。" }),
+  const result = evaluateAssistantTurnProtocol("", [
+    {
+      id: "finish-1",
+      type: "function",
+      function: {
+        name: "finish_response",
+        arguments: JSON.stringify({ message: "nginx 配置检查完成。" }),
+      },
     },
-  }]);
+  ]);
 
   assert.equal(result.outcome, "finish");
   assert.equal(result.retryable, false);
@@ -48,23 +44,27 @@ test("finish_response 明确标记 Agent 正常完成", () => {
 });
 
 test("仅接受参数有效的已知工具动作", () => {
-  const valid = evaluateAssistantTurnProtocol("准备检查。", [{
-    id: "command-1",
-    type: "function",
-    function: {
-      name: "run_shell_command",
-      arguments: JSON.stringify({
-        command: "nginx -T",
-        reason: "读取 nginx 完整配置",
-        risk: "low",
-      }),
+  const valid = evaluateAssistantTurnProtocol("准备检查。", [
+    {
+      id: "command-1",
+      type: "function",
+      function: {
+        name: "run_shell_command",
+        arguments: JSON.stringify({
+          command: "nginx -T",
+          reason: "读取 nginx 完整配置",
+          risk: "low",
+        }),
+      },
     },
-  }]);
-  const unknown = evaluateAssistantTurnProtocol("准备检查。", [{
-    id: "unknown-1",
-    type: "function",
-    function: { name: "inspect_nginx", arguments: "{}" },
-  }]);
+  ]);
+  const unknown = evaluateAssistantTurnProtocol("准备检查。", [
+    {
+      id: "unknown-1",
+      type: "function",
+      function: { name: "inspect_nginx", arguments: "{}" },
+    },
+  ]);
 
   assert.equal(valid.outcome, "tool_call");
   assert.equal(valid.retryable, false);
@@ -73,26 +73,30 @@ test("仅接受参数有效的已知工具动作", () => {
 });
 
 test("长命令和进度汇报使用独立工具协议", () => {
-  const longCall = [{
-    id: "long-1",
-    type: "function",
-    function: {
-      name: "run_long_shell_command",
-      arguments: JSON.stringify({
-        command: "docker pull nginx:latest",
-        reason: "拉取镜像",
-        risk: "high",
-      }),
+  const longCall = [
+    {
+      id: "long-1",
+      type: "function",
+      function: {
+        name: "run_long_shell_command",
+        arguments: JSON.stringify({
+          command: "docker pull nginx:latest",
+          reason: "拉取镜像",
+          risk: "high",
+        }),
+      },
     },
-  }];
-  const progressCall = [{
-    id: "progress-1",
-    type: "function",
-    function: {
-      name: "report_long_command_progress",
-      arguments: JSON.stringify({ message: "镜像仍在拉取中。" }),
+  ];
+  const progressCall = [
+    {
+      id: "progress-1",
+      type: "function",
+      function: {
+        name: "report_long_command_progress",
+        arguments: JSON.stringify({ message: "镜像仍在拉取中。" }),
+      },
     },
-  }];
+  ];
 
   assert.equal(evaluateAssistantTurnProtocol("", longCall).outcome, "tool_call");
   assert.equal(parseRunLongShellToolCalls(longCall)[0].command, "docker pull nginx:latest");
@@ -100,18 +104,21 @@ test("长命令和进度汇报使用独立工具协议", () => {
     evaluateAssistantTurnProtocol("", progressCall, "long_command_running").outcome,
     "tool_call",
   );
+  assert.equal(parseLongCommandProgressToolCalls(progressCall)[0].message, "镜像仍在拉取中。");
   assert.equal(
-    parseLongCommandProgressToolCalls(progressCall)[0].message,
-    "镜像仍在拉取中。",
-  );
-  assert.equal(
-    evaluateAssistantTurnProtocol("", [{
-      type: "function",
-      function: {
-        name: "finish_response",
-        arguments: JSON.stringify({ message: "已经完成" }),
-      },
-    }], "long_command_running").outcome,
+    evaluateAssistantTurnProtocol(
+      "",
+      [
+        {
+          type: "function",
+          function: {
+            name: "finish_response",
+            arguments: JSON.stringify({ message: "已经完成" }),
+          },
+        },
+      ],
+      "long_command_running",
+    ).outcome,
     "protocol_error",
   );
 });
@@ -152,24 +159,32 @@ test("只解析 run_shell_command 工具", () => {
   assert.deepEqual(unknown, []);
 
   const allowed = parseRunShellToolCalls([
-    { type: "function", function: { name: "run_shell_command", arguments: '{"command":"pwd","reason":"检查路径","risk":"low"}' } },
+    {
+      type: "function",
+      function: {
+        name: "run_shell_command",
+        arguments: '{"command":"pwd","reason":"检查路径","risk":"low"}',
+      },
+    },
   ]);
   assert.equal(allowed[0].command, "pwd");
 });
 
 test("已保存服务器工具接受三档权限所需的风险级别", () => {
-  const commands = parseSavedServerToolCalls([{
-    type: "function",
-    function: {
-      name: "run_saved_server_command",
-      arguments: JSON.stringify({
-        serverName: "backup",
-        command: "systemctl restart nginx",
-        reason: "重启备机服务",
-        risk: "medium",
-      }),
+  const commands = parseSavedServerToolCalls([
+    {
+      type: "function",
+      function: {
+        name: "run_saved_server_command",
+        arguments: JSON.stringify({
+          serverName: "backup",
+          command: "systemctl restart nginx",
+          reason: "重启备机服务",
+          risk: "medium",
+        }),
+      },
     },
-  }]);
+  ]);
 
   assert.equal(commands[0].serverName, "backup");
   assert.equal(commands[0].risk, "medium");
@@ -192,9 +207,7 @@ test("Agent 的 Responses 和 Chat 请求都强制模型调用工具", async () 
     new URL("../../src/main/ai/ai-provider.ts", import.meta.url),
     "utf8",
   );
-  const requiredToolChoiceCount = providerSource.match(
-    /tool_choice:\s*"required"/g,
-  )?.length ?? 0;
+  const requiredToolChoiceCount = providerSource.match(/tool_choice:\s*"required"/g)?.length ?? 0;
 
   assert.equal(requiredToolChoiceCount, 2);
 });
@@ -210,14 +223,17 @@ function createSseBody(lines) {
 }
 
 test("finish_response 的最终答复在参数流式到达时逐步预览", async () => {
-  const message = "磁盘使用率 \"50%\"\n建议清理 /var/log";
+  const message = '磁盘使用率 "50%"\n建议清理 /var/log';
   const args = JSON.stringify({ message });
   // 每 3 个字符一个分片，模拟模型逐步输出工具参数。
   const pieces = args.match(/[\s\S]{1,3}/g);
   const lines = [
     `data: ${JSON.stringify({ choices: [{ delta: { content: "我来总结一下。" } }] })}\n\n`,
     `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "finish-1", type: "function", function: { name: "finish_response", arguments: "" } }] } }] })}\n\n`,
-    ...pieces.map(piece => `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }] })}\n\n`),
+    ...pieces.map(
+      piece =>
+        `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }] })}\n\n`,
+    ),
     "data: [DONE]\n\n",
   ];
   const previews = [];
@@ -234,15 +250,21 @@ test("finish_response 的最终答复在参数流式到达时逐步预览", asyn
   assert.equal(content.join(""), "我来总结一下。");
   assert.ok(previews.length > 5, `预览次数 ${previews.length}`);
   assert.equal(previews.at(-1), message);
-  assert.ok(previews.every((preview, index) => index === 0 || preview.startsWith(previews[index - 1])));
+  assert.ok(
+    previews.every((preview, index) => index === 0 || preview.startsWith(previews[index - 1])),
+  );
   assert.equal(activity, lines.length);
   assert.equal(result.toolCalls[0].arguments, args);
 });
 
 test("流式请求收到网页而不是 SSE/JSON 时标记为无法解析", async () => {
-  const result = await collectSseStream(createSseBody(["<!doctype html><html><body>登录页</body></html>"]));
+  const result = await collectSseStream(
+    createSseBody(["<!doctype html><html><body>登录页</body></html>"]),
+  );
   assert.equal(result.unparsable, true);
 
-  const valid = await collectSseStream(createSseBody([`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`]));
+  const valid = await collectSseStream(
+    createSseBody([`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`]),
+  );
   assert.equal(valid.unparsable, false);
 });

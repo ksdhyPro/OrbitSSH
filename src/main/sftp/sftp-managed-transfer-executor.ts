@@ -1,21 +1,12 @@
-import type SftpClient from 'ssh2-sftp-client'
+import type SftpClient from "ssh2-sftp-client";
 
-import {
-  lstat,
-  mkdir,
-  open as openLocalFile,
-  rm,
-  statfs
-} from 'node:fs/promises'
-import { dirname, join as joinLocalPath } from 'node:path'
-import { tmpdir } from 'node:os'
+import { lstat, mkdir, open as openLocalFile, rm, statfs } from "node:fs/promises";
+import { dirname, join as joinLocalPath } from "node:path";
+import { tmpdir } from "node:os";
 
-import { appConfig } from '../../shared/config.js'
-import { compareFileFingerprints, createLocalFileFingerprintReader } from './file-fingerprint.js'
-import {
-  acquireSftpConnection,
-  type SftpConnectionLease
-} from './sftp-connection-pool.js'
+import { appConfig } from "../../shared/config.js";
+import { compareFileFingerprints, createLocalFileFingerprintReader } from "./file-fingerprint.js";
+import { acquireSftpConnection, type SftpConnectionLease } from "./sftp-connection-pool.js";
 import {
   closeRemoteHandle,
   createRemoteFileFingerprintReader,
@@ -28,118 +19,116 @@ import {
   openRemoteReadHandle,
   readRemoteChunk,
   replaceLocalFile,
-  uploadLocalFileToRemote
-} from './sftp-transfer-common.js'
+  uploadLocalFileToRemote,
+} from "./sftp-transfer-common.js";
 
 export interface ManagedTransferControl {
-  paused: boolean
-  canceled: boolean
+  paused: boolean;
+  canceled: boolean;
   /** 暂停期间由任务管理器调用，用于立即恢复当前传输上下文。 */
-  resume?: () => void
+  resume?: () => void;
 }
 
 interface ManagedTransferBase {
-  nodeId: string
-  size: number
-  control: ManagedTransferControl
-  onProgress: (transferredBytes: number, speedBytesPerSecond: number) => void
+  nodeId: string;
+  size: number;
+  control: ManagedTransferControl;
+  onProgress: (transferredBytes: number, speedBytesPerSecond: number) => void;
   /** 暂停超时后重新调度时，直接使用已保存的续传进度。 */
-  skipVerification?: boolean
+  skipVerification?: boolean;
   /** 内存连接释放后，供上传直接使用的已确认连续写入偏移。 */
-  resumeOffset?: number
+  resumeOffset?: number;
 }
 
 export interface ManagedUploadFileInput extends ManagedTransferBase {
-  kind: 'upload'
-  serverId: string
-  localPath: string
-  remotePath: string
-  expectedModifyTime?: number
+  kind: "upload";
+  serverId: string;
+  localPath: string;
+  remotePath: string;
+  expectedModifyTime?: number;
 }
 
 export interface ManagedDownloadFileInput extends ManagedTransferBase {
-  kind: 'download'
-  serverId: string
-  remotePath: string
-  localPath: string
-  expectedModifyTime?: number
+  kind: "download";
+  serverId: string;
+  remotePath: string;
+  localPath: string;
+  expectedModifyTime?: number;
 }
 
 export interface ManagedRelayFileInput extends ManagedTransferBase {
-  kind: 'relay'
-  sourceServerId: string
-  targetServerId: string
-  sourcePath: string
-  targetPath: string
-  localPath: string
-  expectedModifyTime?: number
+  kind: "relay";
+  sourceServerId: string;
+  targetServerId: string;
+  sourcePath: string;
+  targetPath: string;
+  localPath: string;
+  expectedModifyTime?: number;
 }
 
 export type ManagedFileTransferInput =
-  | ManagedUploadFileInput
-  | ManagedDownloadFileInput
-  | ManagedRelayFileInput
+  ManagedUploadFileInput | ManagedDownloadFileInput | ManagedRelayFileInput;
 
-export type ManagedTransferResult = 'completed' | 'paused' | 'canceled'
+export type ManagedTransferResult = "completed" | "paused" | "canceled";
 
-const localFingerprintReader = createLocalFileFingerprintReader()
-const RESERVED_DISK_BYTES = 1024 * 1024 * 1024
-const PAUSED_CONNECTION_HOLD_MS = 3 * 60 * 1000
-let reservedRelayBytes = 0
+const localFingerprintReader = createLocalFileFingerprintReader();
+const RESERVED_DISK_BYTES = 1024 * 1024 * 1024;
+const PAUSED_CONNECTION_HOLD_MS = 3 * 60 * 1000;
+let reservedRelayBytes = 0;
 
 /** 暂停时最多保留三分钟连接和工作槽，继续后直接恢复当前传输。 */
 async function waitForTransferResume(control: ManagedTransferControl): Promise<boolean> {
-  if (control.canceled) return false
-  if (!control.paused) return true
+  if (control.canceled) return false;
+  if (!control.paused) return true;
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const timeout = setTimeout(() => {
-      control.resume = undefined
-      resolve(false)
-    }, PAUSED_CONNECTION_HOLD_MS)
+      control.resume = undefined;
+      resolve(false);
+    }, PAUSED_CONNECTION_HOLD_MS);
 
     control.resume = () => {
-      clearTimeout(timeout)
-      control.resume = undefined
-      resolve(!control.canceled)
-    }
-  })
+      clearTimeout(timeout);
+      control.resume = undefined;
+      resolve(!control.canceled);
+    };
+  });
 }
 
 async function assertRemoteSourceUnchanged(
   client: SftpClient,
   path: string,
   size: number,
-  expectedModifyTime?: number
+  expectedModifyTime?: number,
 ): Promise<void> {
-  const sourceStat = await lstatRemotePath(client, path)
-  if (sourceStat.isSymbolicLink) throw new Error('暂不支持符号链接')
-  if (!sourceStat.isFile) throw new Error('传输源文件不存在或类型已变化')
-  if (sourceStat.size !== size) throw new Error('传输源文件大小已发生变化')
+  const sourceStat = await lstatRemotePath(client, path);
+  if (sourceStat.isSymbolicLink) throw new Error("暂不支持符号链接");
+  if (!sourceStat.isFile) throw new Error("传输源文件不存在或类型已变化");
+  if (sourceStat.size !== size) throw new Error("传输源文件大小已发生变化");
   if (
-    typeof expectedModifyTime === 'number'
-    && Math.trunc(sourceStat.modifyTime) !== Math.trunc(expectedModifyTime)
+    typeof expectedModifyTime === "number" &&
+    Math.trunc(sourceStat.modifyTime) !== Math.trunc(expectedModifyTime)
   ) {
-    throw new Error('传输源文件修改时间已发生变化')
+    throw new Error("传输源文件修改时间已发生变化");
   }
 }
 
 function createProgressReporter(
-  onProgress: ManagedTransferBase['onProgress'],
-  initialBytes = 0
+  onProgress: ManagedTransferBase["onProgress"],
+  initialBytes = 0,
 ): (transferredBytes: number) => void {
-  let lastAt = Date.now()
-  let lastBytes = initialBytes
+  let lastAt = Date.now();
+  let lastBytes = initialBytes;
 
-  return (transferredBytes) => {
-    const now = Date.now()
-    const elapsedSeconds = Math.max((now - lastAt) / 1000, 0.001)
-    const speed = Math.max((transferredBytes - lastBytes) / elapsedSeconds, 0)
+  return transferredBytes => {
+    const now = Date.now();
+    const elapsedSeconds = Math.max((now - lastAt) / 1000, 0.001);
+    const speed = Math.max((transferredBytes - lastBytes) / elapsedSeconds, 0);
 
-    lastAt = now
-    lastBytes = transferredBytes
-    onProgress(transferredBytes, speed)
-  }
+    lastAt = now;
+    lastBytes = transferredBytes;
+    onProgress(transferredBytes, speed);
+  };
 }
 
 async function downloadRemoteFileToPath(
@@ -148,115 +137,109 @@ async function downloadRemoteFileToPath(
   localPath: string,
   totalBytes: number,
   control: ManagedTransferControl,
-  onProgress: (transferredBytes: number) => void
+  onProgress: (transferredBytes: number) => void,
 ): Promise<void> {
-  let localSize = await getLocalFileSize(localPath)
+  let localSize = await getLocalFileSize(localPath);
 
   if (localSize > totalBytes) {
-    await rm(localPath, { force: true }).catch(() => undefined)
-    localSize = 0
+    await rm(localPath, { force: true }).catch(() => undefined);
+    localSize = 0;
   }
 
-  const resumeOffset = Math.min(localSize, totalBytes)
-  onProgress(resumeOffset)
+  const resumeOffset = Math.min(localSize, totalBytes);
+  onProgress(resumeOffset);
   if (totalBytes === 0) {
-    const emptyFile = await openLocalFile(localPath, 'w')
-    await emptyFile.close()
-    return
+    const emptyFile = await openLocalFile(localPath, "w");
+    await emptyFile.close();
+    return;
   }
-  if (resumeOffset >= totalBytes || control.paused || control.canceled) return
+  if (resumeOffset >= totalBytes || control.paused || control.canceled) return;
 
-  const rawSftp = getRawSftpClient(client)
-  const remoteHandle = await openRemoteReadHandle(rawSftp, remotePath)
-  const localFile = await openLocalFile(localPath, resumeOffset > 0 ? 'r+' : 'w')
-  let nextReadPosition = resumeOffset
-  let contiguousTransferredBytes = resumeOffset
-  const completedChunks = new Map<number, number>()
+  const rawSftp = getRawSftpClient(client);
+  const remoteHandle = await openRemoteReadHandle(rawSftp, remotePath);
+  const localFile = await openLocalFile(localPath, resumeOffset > 0 ? "r+" : "w");
+  let nextReadPosition = resumeOffset;
+  let contiguousTransferredBytes = resumeOffset;
+  const completedChunks = new Map<number, number>();
 
   const recordCompletedChunk = (position: number, length: number): void => {
-    completedChunks.set(position, length)
+    completedChunks.set(position, length);
 
     while (true) {
-      const chunkLength = completedChunks.get(contiguousTransferredBytes)
-      if (!chunkLength) break
-      completedChunks.delete(contiguousTransferredBytes)
-      contiguousTransferredBytes += chunkLength
+      const chunkLength = completedChunks.get(contiguousTransferredBytes);
+      if (!chunkLength) break;
+      completedChunks.delete(contiguousTransferredBytes);
+      contiguousTransferredBytes += chunkLength;
     }
 
-    onProgress(contiguousTransferredBytes)
-  }
+    onProgress(contiguousTransferredBytes);
+  };
 
   try {
     const readRemainingChunks = async (): Promise<void> => {
       while (!control.paused && !control.canceled && nextReadPosition < totalBytes) {
-        const position = nextReadPosition
+        const position = nextReadPosition;
         const length = Math.min(
           appConfig.sftp.download.fastGetChunkSizeBytes,
-          totalBytes - position
-        )
-        nextReadPosition += length
-        const chunk = await readRemoteChunk(rawSftp, remoteHandle, length, position)
+          totalBytes - position,
+        );
+        nextReadPosition += length;
+        const chunk = await readRemoteChunk(rawSftp, remoteHandle, length, position);
 
-        if (chunk.length === 0 || control.paused || control.canceled) return
+        if (chunk.length === 0 || control.paused || control.canceled) return;
 
-        await localFile.write(chunk, 0, chunk.length, position)
-        recordCompletedChunk(position, chunk.length)
+        await localFile.write(chunk, 0, chunk.length, position);
+        recordCompletedChunk(position, chunk.length);
       }
-    }
+    };
 
     await Promise.all(
-      Array.from(
-        { length: appConfig.sftp.download.fastGetConcurrency },
-        () => readRemainingChunks()
-      )
-    )
+      Array.from({ length: appConfig.sftp.download.fastGetConcurrency }, () =>
+        readRemainingChunks(),
+      ),
+    );
   } finally {
-    await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined)
-    await localFile.close().catch(() => undefined)
+    await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined);
+    await localFile.close().catch(() => undefined);
   }
 }
 
 async function runUpload(input: ManagedUploadFileInput): Promise<ManagedTransferResult> {
   if (!input.skipVerification) {
-    const sourceStat = await lstat(input.localPath)
-    if (sourceStat.isSymbolicLink()) throw new Error('暂不支持符号链接')
-    if (!sourceStat.isFile()) throw new Error('上传源文件不存在或类型已变化')
-    if (sourceStat.size !== input.size) throw new Error('上传源文件大小已发生变化')
+    const sourceStat = await lstat(input.localPath);
+    if (sourceStat.isSymbolicLink()) throw new Error("暂不支持符号链接");
+    if (!sourceStat.isFile()) throw new Error("上传源文件不存在或类型已变化");
+    if (sourceStat.size !== input.size) throw new Error("上传源文件大小已发生变化");
     if (
-      typeof input.expectedModifyTime === 'number'
-      && Math.trunc(sourceStat.mtimeMs) !== Math.trunc(input.expectedModifyTime)
+      typeof input.expectedModifyTime === "number" &&
+      Math.trunc(sourceStat.mtimeMs) !== Math.trunc(input.expectedModifyTime)
     ) {
-      throw new Error('上传源文件修改时间已发生变化')
+      throw new Error("上传源文件修改时间已发生变化");
     }
   }
 
-  const lease = await acquireSftpConnection(input.serverId, input.nodeId)
-  let reusable = true
+  const lease = await acquireSftpConnection(input.serverId, input.nodeId);
+  let reusable = true;
 
   try {
-    const client = lease.client
-    const tempRemotePath = getTransferTempPath(input.remotePath)
-    let resumeOffset = Math.min(Math.max(input.resumeOffset ?? 0, 0), input.size)
+    const client = lease.client;
+    const tempRemotePath = getTransferTempPath(input.remotePath);
+    let resumeOffset = Math.min(Math.max(input.resumeOffset ?? 0, 0), input.size);
     if (!input.skipVerification) {
-      await client.mkdir(dirname(input.remotePath).replace(/\\/g, '/'), true)
+      await client.mkdir(dirname(input.remotePath).replace(/\\/g, "/"), true);
       const comparison = await compareFileFingerprints(
         { reader: localFingerprintReader, path: input.localPath },
         { reader: createRemoteFileFingerprintReader(client), path: input.remotePath },
-        input.size
-      )
-      if (comparison.matched) return 'completed'
-      resumeOffset = await getRemoteUploadResumeOffset(
-        client,
-        tempRemotePath,
         input.size,
-        true
-      )
+      );
+      if (comparison.matched) return "completed";
+      resumeOffset = await getRemoteUploadResumeOffset(client, tempRemotePath, input.size, true);
     } else {
       // 跳过比对仍确保目标目录存在；这不会读取或校验传输文件。
-      await client.mkdir(dirname(input.remotePath).replace(/\\/g, '/'), true)
+      await client.mkdir(dirname(input.remotePath).replace(/\\/g, "/"), true);
     }
 
-    const reportProgress = createProgressReporter(input.onProgress, resumeOffset)
+    const reportProgress = createProgressReporter(input.onProgress, resumeOffset);
     while (!input.control.canceled) {
       await uploadLocalFileToRemote(
         input.control,
@@ -265,33 +248,34 @@ async function runUpload(input: ManagedUploadFileInput): Promise<ManagedTransfer
         input.remotePath,
         input.size,
         resumeOffset,
-        (transferredBytes) => {
-          resumeOffset = transferredBytes
-          reportProgress(transferredBytes)
-        }
-      )
-      if (!input.control.paused) break
-      if (!await waitForTransferResume(input.control)) return input.control.canceled ? 'canceled' : 'paused'
+        transferredBytes => {
+          resumeOffset = transferredBytes;
+          reportProgress(transferredBytes);
+        },
+      );
+      if (!input.control.paused) break;
+      if (!(await waitForTransferResume(input.control)))
+        return input.control.canceled ? "canceled" : "paused";
     }
 
     if (input.control.canceled) {
-      await client.delete(tempRemotePath).catch(() => undefined)
-      return 'canceled'
+      await client.delete(tempRemotePath).catch(() => undefined);
+      return "canceled";
     }
-    if (input.control.paused) return 'paused'
-    return 'completed'
+    if (input.control.paused) return "paused";
+    return "completed";
   } catch (error) {
-    reusable = false
-    throw error
+    reusable = false;
+    throw error;
   } finally {
-    await lease.release(reusable)
+    await lease.release(reusable);
   }
 }
 
 async function runDownload(input: ManagedDownloadFileInput): Promise<ManagedTransferResult> {
-  const lease = await acquireSftpConnection(input.serverId, input.nodeId)
-  const tempLocalPath = getTransferTempPath(input.localPath)
-  let reusable = true
+  const lease = await acquireSftpConnection(input.serverId, input.nodeId);
+  const tempLocalPath = getTransferTempPath(input.localPath);
+  let reusable = true;
 
   try {
     if (!input.skipVerification) {
@@ -299,11 +283,11 @@ async function runDownload(input: ManagedDownloadFileInput): Promise<ManagedTran
         lease.client,
         input.remotePath,
         input.size,
-        input.expectedModifyTime
-      )
+        input.expectedModifyTime,
+      );
     }
-    await mkdir(dirname(input.localPath), { recursive: true })
-    const reportProgress = createProgressReporter(input.onProgress)
+    await mkdir(dirname(input.localPath), { recursive: true });
+    const reportProgress = createProgressReporter(input.onProgress);
     while (!input.control.canceled) {
       await downloadRemoteFileToPath(
         lease.client,
@@ -311,82 +295,83 @@ async function runDownload(input: ManagedDownloadFileInput): Promise<ManagedTran
         tempLocalPath,
         input.size,
         input.control,
-        reportProgress
-      )
-      if (!input.control.paused) break
-      if (!await waitForTransferResume(input.control)) return input.control.canceled ? 'canceled' : 'paused'
+        reportProgress,
+      );
+      if (!input.control.paused) break;
+      if (!(await waitForTransferResume(input.control)))
+        return input.control.canceled ? "canceled" : "paused";
     }
 
     if (input.control.canceled) {
-      await rm(tempLocalPath, { force: true }).catch(() => undefined)
-      return 'canceled'
+      await rm(tempLocalPath, { force: true }).catch(() => undefined);
+      return "canceled";
     }
-    if (input.control.paused) return 'paused'
+    if (input.control.paused) return "paused";
 
     if (!input.skipVerification) {
       await assertRemoteSourceUnchanged(
         lease.client,
         input.remotePath,
         input.size,
-        input.expectedModifyTime
-      )
+        input.expectedModifyTime,
+      );
     }
 
-    await replaceLocalFile(tempLocalPath, input.localPath)
-    return 'completed'
+    await replaceLocalFile(tempLocalPath, input.localPath);
+    return "completed";
   } catch (error) {
-    reusable = false
-    throw error
+    reusable = false;
+    throw error;
   } finally {
-    await lease.release(reusable)
+    await lease.release(reusable);
   }
 }
 
 async function reserveRelayDiskSpace(localPath: string, size: number): Promise<() => void> {
-  const disk = await statfs(dirname(localPath))
-  const freeBytes = Number(disk.bavail) * Number(disk.bsize)
+  const disk = await statfs(dirname(localPath));
+  const freeBytes = Number(disk.bavail) * Number(disk.bsize);
 
   if (freeBytes - reservedRelayBytes - size < RESERVED_DISK_BYTES) {
-    throw new Error('本地中转磁盘空间不足，至少需要保留 1GB 可用空间')
+    throw new Error("本地中转磁盘空间不足，至少需要保留 1GB 可用空间");
   }
 
-  reservedRelayBytes += size
+  reservedRelayBytes += size;
   return () => {
-    reservedRelayBytes = Math.max(reservedRelayBytes - size, 0)
-  }
+    reservedRelayBytes = Math.max(reservedRelayBytes - size, 0);
+  };
 }
 
 async function runRelay(input: ManagedRelayFileInput): Promise<ManagedTransferResult> {
-  await mkdir(dirname(input.localPath), { recursive: true })
-  const releaseReservation = await reserveRelayDiskSpace(input.localPath, input.size)
-  const sourceLease = await acquireSftpConnection(input.sourceServerId, `${input.nodeId}-source`)
-  let targetLease: SftpConnectionLease | undefined
-  let sourceReusable = true
-  let targetReusable = true
+  await mkdir(dirname(input.localPath), { recursive: true });
+  const releaseReservation = await reserveRelayDiskSpace(input.localPath, input.size);
+  const sourceLease = await acquireSftpConnection(input.sourceServerId, `${input.nodeId}-source`);
+  let targetLease: SftpConnectionLease | undefined;
+  let sourceReusable = true;
+  let targetReusable = true;
 
   try {
-    targetLease = await acquireSftpConnection(input.targetServerId, `${input.nodeId}-target`)
+    targetLease = await acquireSftpConnection(input.targetServerId, `${input.nodeId}-target`);
     if (!input.skipVerification) {
       await assertRemoteSourceUnchanged(
         sourceLease.client,
         input.sourcePath,
         input.size,
-        input.expectedModifyTime
-      )
+        input.expectedModifyTime,
+      );
       const comparison = await compareFileFingerprints(
         { reader: createRemoteFileFingerprintReader(sourceLease.client), path: input.sourcePath },
         { reader: createRemoteFileFingerprintReader(targetLease.client), path: input.targetPath },
-        input.size
-      )
+        input.size,
+      );
       if (comparison.matched) {
-        await rm(input.localPath, { force: true }).catch(() => undefined)
-        return 'completed'
+        await rm(input.localPath, { force: true }).catch(() => undefined);
+        return "completed";
       }
     }
 
-    const localBytes = await getLocalFileSize(input.localPath)
+    const localBytes = await getLocalFileSize(input.localPath);
     if (localBytes < input.size) {
-      const reportDownload = createProgressReporter(input.onProgress, localBytes)
+      const reportDownload = createProgressReporter(input.onProgress, localBytes);
       while (!input.control.canceled) {
         await downloadRemoteFileToPath(
           sourceLease.client,
@@ -394,36 +379,28 @@ async function runRelay(input: ManagedRelayFileInput): Promise<ManagedTransferRe
           input.localPath,
           input.size,
           input.control,
-          reportDownload
-        )
-        if (!input.control.paused) break
-        if (!await waitForTransferResume(input.control)) {
-          return input.control.canceled ? 'canceled' : 'paused'
+          reportDownload,
+        );
+        if (!input.control.paused) break;
+        if (!(await waitForTransferResume(input.control))) {
+          return input.control.canceled ? "canceled" : "paused";
         }
       }
     }
 
     if (input.control.canceled) {
-      await rm(input.localPath, { force: true }).catch(() => undefined)
-      await targetLease.client.delete(getTransferTempPath(input.targetPath)).catch(() => undefined)
-      return 'canceled'
+      await rm(input.localPath, { force: true }).catch(() => undefined);
+      await targetLease.client.delete(getTransferTempPath(input.targetPath)).catch(() => undefined);
+      return "canceled";
     }
-    if (input.control.paused) return 'paused'
+    if (input.control.paused) return "paused";
 
-    await targetLease.client.mkdir(dirname(input.targetPath).replace(/\\/g, '/'), true)
-    const tempRemotePath = getTransferTempPath(input.targetPath)
+    await targetLease.client.mkdir(dirname(input.targetPath).replace(/\\/g, "/"), true);
+    const tempRemotePath = getTransferTempPath(input.targetPath);
     let uploadOffset = input.skipVerification
       ? Math.min(Math.max(input.resumeOffset ?? 0, 0), input.size)
-      : await getRemoteUploadResumeOffset(
-        targetLease.client,
-        tempRemotePath,
-        input.size,
-        true
-      )
-    const reportUpload = createProgressReporter(
-      input.onProgress,
-      input.size + uploadOffset
-    )
+      : await getRemoteUploadResumeOffset(targetLease.client, tempRemotePath, input.size, true);
+    const reportUpload = createProgressReporter(input.onProgress, input.size + uploadOffset);
 
     while (!input.control.canceled) {
       await uploadLocalFileToRemote(
@@ -434,52 +411,48 @@ async function runRelay(input: ManagedRelayFileInput): Promise<ManagedTransferRe
         input.size,
         uploadOffset,
         bytes => {
-          uploadOffset = bytes
-          reportUpload(input.size + bytes)
-        }
-      )
-      if (!input.control.paused) break
-      if (!await waitForTransferResume(input.control)) {
-        return input.control.canceled ? 'canceled' : 'paused'
+          uploadOffset = bytes;
+          reportUpload(input.size + bytes);
+        },
+      );
+      if (!input.control.paused) break;
+      if (!(await waitForTransferResume(input.control))) {
+        return input.control.canceled ? "canceled" : "paused";
       }
     }
 
     if (input.control.canceled) {
-      await rm(input.localPath, { force: true }).catch(() => undefined)
-      await targetLease.client.delete(tempRemotePath).catch(() => undefined)
-      return 'canceled'
+      await rm(input.localPath, { force: true }).catch(() => undefined);
+      await targetLease.client.delete(tempRemotePath).catch(() => undefined);
+      return "canceled";
     }
-    if (input.control.paused) return 'paused'
+    if (input.control.paused) return "paused";
 
-    await rm(input.localPath, { force: true }).catch(() => undefined)
-    return 'completed'
+    await rm(input.localPath, { force: true }).catch(() => undefined);
+    return "completed";
   } catch (error) {
-    sourceReusable = false
-    targetReusable = false
-    throw error
+    sourceReusable = false;
+    targetReusable = false;
+    throw error;
   } finally {
-    releaseReservation()
-    await sourceLease.release(sourceReusable)
-    await targetLease?.release(targetReusable)
+    releaseReservation();
+    await sourceLease.release(sourceReusable);
+    await targetLease?.release(targetReusable);
   }
 }
 
 export async function executeManagedFileTransfer(
-  input: ManagedFileTransferInput
+  input: ManagedFileTransferInput,
 ): Promise<ManagedTransferResult> {
-  if (input.kind === 'upload') return runUpload(input)
-  if (input.kind === 'download') return runDownload(input)
-  return runRelay(input)
+  if (input.kind === "upload") return runUpload(input);
+  if (input.kind === "download") return runDownload(input);
+  return runRelay(input);
 }
 
 export function createRelayTempPath(taskId: string, relativePath: string): string {
-  return joinLocalPath(
-    getRelayTempRoot(),
-    taskId,
-    ...relativePath.split('/').filter(Boolean)
-  )
+  return joinLocalPath(getRelayTempRoot(), taskId, ...relativePath.split("/").filter(Boolean));
 }
 
 export function getRelayTempRoot(): string {
-  return joinLocalPath(tmpdir(), 'orbitssh-transfer-tasks')
+  return joinLocalPath(tmpdir(), "orbitssh-transfer-tasks");
 }

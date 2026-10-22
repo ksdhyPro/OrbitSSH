@@ -108,9 +108,7 @@ const modeDescs: Record<AiMode, string> = {
   full_access: "授权范围内的有效命令直接执行，不再询问",
 };
 
-const currentModeOption = computed(
-  () => modeOptions.find(opt => opt.value === props.mode)!,
-);
+const currentModeOption = computed(() => modeOptions.find(opt => opt.value === props.mode)!);
 
 function closeModeMenu(): void {
   modeMenu.open = false;
@@ -156,9 +154,7 @@ const modelMenuItems = computed<ContextMenuItem[]>(() =>
 );
 
 const activeModelConfig = computed(() =>
-  props.configs.find(
-    config => config.id === props.activeConfigId,
-  ),
+  props.configs.find(config => config.id === props.activeConfigId),
 );
 
 const currentModelLabel = computed(() => {
@@ -204,9 +200,7 @@ watch(
   () => props.open,
   isOpen => {
     if (!isOpen) return;
-    const exists = props.configs.some(
-      config => config.id === props.activeConfigId,
-    );
+    const exists = props.configs.some(config => config.id === props.activeConfigId);
     if (!exists && props.configs.length > 0) {
       emit("selectModel", props.configs[0].id);
     }
@@ -257,9 +251,7 @@ function formatConversationTime(timestamp: number): string {
 // agent loop 串行执行，同一时刻只有最后一条 assistant 消息在流式。
 const streamingMessageIds = computed(() => {
   if (!props.isSending) return new Set<string>();
-  const lastAssistant = props.messages
-    .filter(m => m.role === "assistant")
-    .at(-1);
+  const lastAssistant = props.messages.filter(m => m.role === "assistant").at(-1);
   return lastAssistant ? new Set([lastAssistant.id]) : new Set<string>();
 });
 
@@ -268,9 +260,7 @@ const hasPendingApproval = computed(() =>
 );
 
 const hasRunningCommand = computed(() =>
-  props.commandCards.some(
-    card => card.status === "running" || card.status === "pending",
-  ),
+  props.commandCards.some(card => card.status === "running" || card.status === "pending"),
 );
 
 // 是否显示底部总体状态条：发送中、有命令执行中、或有待批准命令。
@@ -279,9 +269,7 @@ const hasStatusBar = computed(
 );
 
 const pendingApprovalCard = computed(
-  () =>
-    props.commandCards.find(card => card.status === "requires_approval") ??
-    null,
+  () => props.commandCards.find(card => card.status === "requires_approval") ?? null,
 );
 
 function createProcessGroupId(items: ProcessTimelineItem[]): string {
@@ -299,12 +287,9 @@ function pushProcessGroup(
     return;
   }
 
-  const running = items.some(
-    item => item.type === "card" && item.card.status === "running",
-  );
+  const running = items.some(item => item.type === "card" && item.card.status === "running");
   const durationMs =
-    typeof options.completedAt === "number" &&
-    typeof options.turnStartedAt === "number"
+    typeof options.completedAt === "number" && typeof options.turnStartedAt === "number"
       ? Math.max(0, options.completedAt - options.turnStartedAt)
       : null;
 
@@ -453,21 +438,11 @@ const processStatusText = computed(() => {
     return "处理中...";
   }
 
-  const waiting = props.commandCards.filter(
-    card => card.status === "requires_approval",
-  ).length;
-  const completed = props.commandCards.filter(
-    card => card.status === "completed",
-  ).length;
-  const failed = props.commandCards.filter(
-    card => card.status === "failed",
-  ).length;
-  const rejected = props.commandCards.filter(
-    card => card.status === "rejected",
-  ).length;
-  const cancelled = props.commandCards.filter(
-    card => card.status === "cancelled",
-  ).length;
+  const waiting = props.commandCards.filter(card => card.status === "requires_approval").length;
+  const completed = props.commandCards.filter(card => card.status === "completed").length;
+  const failed = props.commandCards.filter(card => card.status === "failed").length;
+  const rejected = props.commandCards.filter(card => card.status === "rejected").length;
+  const cancelled = props.commandCards.filter(card => card.status === "cancelled").length;
 
   if (failed > 0 || waiting > 0 || rejected > 0 || cancelled > 0) {
     return `处理完成，${completed} 条完成，${failed} 条失败，${cancelled} 条终止，${rejected} 条已拒绝`;
@@ -505,9 +480,7 @@ function scrollToBottom(behavior: ScrollBehavior = "auto"): void {
   el.scrollTo({ top: el.scrollHeight, behavior });
 }
 
-async function scheduleScrollToBottom(
-  behavior: ScrollBehavior = "auto",
-): Promise<void> {
+async function scheduleScrollToBottom(behavior: ScrollBehavior = "auto"): Promise<void> {
   await nextTick();
   if (scrollFrameId) {
     cancelAnimationFrame(scrollFrameId);
@@ -569,12 +542,8 @@ function handleComposeEnterKeydown(event: KeyboardEvent): void {
 watch(
   () =>
     [
-      props.messages
-        .map(message => `${message.id}:${message.content.length}`)
-        .join("|"),
-      props.commandCards
-        .map(card => `${card.id}:${card.status}:${card.reason.length}`)
-        .join("|"),
+      props.messages.map(message => `${message.id}:${message.content.length}`).join("|"),
+      props.commandCards.map(card => `${card.id}:${card.status}:${card.reason.length}`).join("|"),
     ] as const,
   () => {
     if (isNearMessageBottom()) {
@@ -630,7 +599,6 @@ onBeforeUnmount(() => {
     clearTimeout(copiedCodeTimer);
   }
 });
-
 </script>
 
 <template>
@@ -642,13 +610,9 @@ onBeforeUnmount(() => {
         'ai-panel-workspace': isWorkspace,
         'history-open': isWorkspace && historyOpen,
       },
-    ]">
-    <button
-      v-if="!open"
-      type="button"
-      class="ai-rail"
-      title="AI 助手"
-      @click="emit('toggle')">
+    ]"
+  >
+    <button v-if="!open" type="button" class="ai-rail" title="AI 助手" @click="emit('toggle')">
       AI
     </button>
 
@@ -659,9 +623,7 @@ onBeforeUnmount(() => {
             <img :src="aiAssistantIcon" alt="" />
             <span>AI 助手</span>
           </h2>
-          <span
-            class="ai-context-tag"
-            :title="context.serverName || '未选择服务器'">
+          <span class="ai-context-tag" :title="context.serverName || '未选择服务器'">
             {{ context.serverName || "未选择服务器" }}
           </span>
         </div>
@@ -672,7 +634,8 @@ onBeforeUnmount(() => {
             class="ai-new-conversation-btn"
             title="在弹窗中查看当前标签的终端"
             :disabled="!context.tabId"
-            @click="emit('openSsh')">
+            @click="emit('openSsh')"
+          >
             打开 SSH
           </button>
           <button
@@ -684,27 +647,20 @@ onBeforeUnmount(() => {
             ]"
             :title="isWorkspace && historyOpen ? '收起历史记录' : '历史对话'"
             :disabled="!isWorkspace && !context.tabId"
-            @click="toggleHistory">
+            @click="toggleHistory"
+          >
             历史
           </button>
           <button
             type="button"
             class="ai-new-conversation-btn"
             title="新对话"
-            :disabled="
-              isSending ||
-              hasPendingApproval ||
-              hasRunningCommand ||
-              !context.tabId
-            "
-            @click="emit('startNewConversation')">
+            :disabled="isSending || hasPendingApproval || hasRunningCommand || !context.tabId"
+            @click="emit('startNewConversation')"
+          >
             新对话
           </button>
-          <button
-            v-if="!isWorkspace"
-            type="button"
-            title="收起面板"
-            @click="emit('toggle')">
+          <button v-if="!isWorkspace" type="button" title="收起面板" @click="emit('toggle')">
             <img :src="collapseIcon" alt="收起" />
           </button>
         </div>
@@ -716,7 +672,8 @@ onBeforeUnmount(() => {
           <button
             type="button"
             :title="isWorkspace ? '收起历史记录' : '收起列表'"
-            @click="historyOpen = false">
+            @click="historyOpen = false"
+          >
             <img :src="closeIcon" alt="收起" />
           </button>
         </header>
@@ -730,17 +687,18 @@ onBeforeUnmount(() => {
           <li
             v-for="item in conversations"
             :key="item.id"
-            :class="{ active: item.id === activeConversationId }">
+            :class="{ active: item.id === activeConversationId }"
+          >
             <button
               type="button"
               class="ai-history-item-main"
               :disabled="!canSwitchConversation"
               :title="item.title"
-              @click="handleSwitchConversation(item.id)">
+              @click="handleSwitchConversation(item.id)"
+            >
               <span class="ai-history-title">{{ item.title }}</span>
               <span class="ai-history-meta">
-                {{ formatConversationTime(item.updatedAt) }} ·
-                {{ item.messageCount }} 条消息
+                {{ formatConversationTime(item.updatedAt) }} · {{ item.messageCount }} 条消息
               </span>
             </button>
             <button
@@ -748,24 +706,22 @@ onBeforeUnmount(() => {
               class="ai-history-delete"
               title="删除该对话"
               :disabled="isSending && item.id === activeConversationId"
-              @click.stop="handleDeleteConversation(item.id)">
+              @click.stop="handleDeleteConversation(item.id)"
+            >
               <img :src="trashIcon" alt="删除" />
             </button>
           </li>
         </ul>
       </div>
 
-      <section
-        ref="messageListEl"
-        class="ai-message-list"
-        :aria-busy="isSending">
+      <section ref="messageListEl" class="ai-message-list" :aria-busy="isSending">
         <div v-if="!enabled" class="ai-empty">
           请先在设置中切换到 AI 模式后再使用所选 AI 服务。常见诊断仍会提供本地建议。
         </div>
         <div v-else-if="messages.length === 0" class="ai-empty ai-welcome">
           <p>
-            可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。
-            请谨慎核对 AI 给出的操作建议。
+            可以询问当前服务器、服务状态、日志、磁盘空间或下一步命令。 请谨慎核对 AI
+            给出的操作建议。
           </p>
           <div class="ai-prompt-suggestions">
             <button
@@ -773,43 +729,37 @@ onBeforeUnmount(() => {
               :key="prompt"
               type="button"
               :disabled="isSending"
-              @click="applyPromptSuggestion(prompt)">
+              @click="applyPromptSuggestion(prompt)"
+            >
               {{ prompt }}
             </button>
           </div>
         </div>
-        <div
-          v-else-if="shouldSuggestNewConversation"
-          class="ai-empty ai-conversation-hint">
+        <div v-else-if="shouldSuggestNewConversation" class="ai-empty ai-conversation-hint">
           当前对话较长，建议新建对话以减少历史干扰。
         </div>
 
         <template v-for="item in timelineItems" :key="item.id">
           <article
             v-if="
-              item.type === 'message' &&
-              (item.message.role !== 'assistant' || item.message.content)
+              item.type === 'message' && (item.message.role !== 'assistant' || item.message.content)
             "
             :class="[
               'ai-message',
               item.message.role,
               { streaming: streamingMessageIds.has(item.message.id) },
-            ]">
+            ]"
+          >
             <header class="ai-message-header">
               <strong>{{ item.message.role === "user" ? "你" : "AI" }}</strong>
               <button
                 type="button"
                 class="ai-copy-btn"
                 :title="copiedMessageId === item.message.id ? '已复制' : '复制'"
-                :aria-label="
-                  copiedMessageId === item.message.id ? '已复制' : '复制'
-                "
-                @click="copyMessage(item.message)">
-                <span
-                  v-if="copiedMessageId === item.message.id"
-                  class="ai-copy-success"
-                  >✓</span
-                >
+                :aria-label="copiedMessageId === item.message.id ? '已复制' : '复制'"
+                @click="copyMessage(item.message)"
+              >
+                <span v-if="copiedMessageId === item.message.id" class="ai-copy-success">✓</span>
                 <img v-else :src="copyIcon" alt="" />
               </button>
             </header>
@@ -817,16 +767,15 @@ onBeforeUnmount(() => {
               v-if="item.message.role === 'assistant'"
               class="ai-markdown"
               @click="copyCodeBlock"
-              v-html="renderMarkdown(item.message.content)"></div>
+              v-html="renderMarkdown(item.message.content)"
+            ></div>
             <p v-else>{{ item.message.content }}</p>
           </article>
 
           <details v-else-if="item.type === 'process'" class="ai-process-line">
             <summary>
               <span>{{ getProcessSummary(item.items) }}</span>
-              <span
-                v-if="getProcessDurationText(item)"
-                class="ai-process-duration">
+              <span v-if="getProcessDurationText(item)" class="ai-process-duration">
                 {{ getProcessDurationText(item) }}
               </span>
             </summary>
@@ -837,7 +786,8 @@ onBeforeUnmount(() => {
                 :class="[
                   'ai-process-item',
                   { 'ai-command-process-item': processItem.type === 'card' },
-                ]">
+                ]"
+              >
                 <header>
                   <span>{{ getProcessItemTitle(processItem) }}</span>
                 </header>
@@ -851,18 +801,15 @@ onBeforeUnmount(() => {
                 <p>{{ processItem.card.reason }}</p>
                 <details
                   v-if="processItem.card.result || processItem.card.error"
-                  class="ai-command-output">
+                  class="ai-command-output"
+                >
                   <summary>输出</summary>
-                  <pre
-                    v-if="processItem.card.result?.stdout"
-                    class="ai-stdout"
-                    >{{ processItem.card.result.stdout }}</pre
-                  >
-                  <pre
-                    v-if="processItem.card.result?.stderr"
-                    class="ai-stderr"
-                    >{{ processItem.card.result.stderr }}</pre
-                  >
+                  <pre v-if="processItem.card.result?.stdout" class="ai-stdout">{{
+                    processItem.card.result.stdout
+                  }}</pre>
+                  <pre v-if="processItem.card.result?.stderr" class="ai-stderr">{{
+                    processItem.card.result.stderr
+                  }}</pre>
                   <p v-if="processItem.card.result" class="ai-exit-meta">
                     退出码：{{ processItem.card.result.exitCode ?? "未知" }}
                   </p>
@@ -877,14 +824,9 @@ onBeforeUnmount(() => {
 
         <div
           v-if="hasStatusBar"
-          :class="[
-            'ai-status-bar',
-            { 'is-active': processStatusText === '处理中...' },
-          ]">
-          <span
-            v-if="processStatusText === '处理中...'"
-            class="ai-loading-dots"
-            aria-hidden="true">
+          :class="['ai-status-bar', { 'is-active': processStatusText === '处理中...' }]"
+        >
+          <span v-if="processStatusText === '处理中...'" class="ai-loading-dots" aria-hidden="true">
             <span></span>
             <span></span>
             <span></span>
@@ -911,13 +853,15 @@ onBeforeUnmount(() => {
             <button
               type="button"
               class="btn btn-primary btn-sm"
-              @click="emit('runApproved', pendingApprovalCard)">
+              @click="emit('runApproved', pendingApprovalCard)"
+            >
               批准执行
             </button>
             <button
               type="button"
               class="btn btn-secondary btn-sm"
-              @click="emit('rejectApproval', pendingApprovalCard)">
+              @click="emit('rejectApproval', pendingApprovalCard)"
+            >
               拒绝
             </button>
           </div>
@@ -930,30 +874,22 @@ onBeforeUnmount(() => {
             rows="3"
             placeholder="向 AI 询问这台服务器..."
             :disabled="isSending"
-            @input="
-              emit(
-                'updateInputText',
-                ($event.target as HTMLTextAreaElement).value,
-              )
-            "
+            @input="emit('updateInputText', ($event.target as HTMLTextAreaElement).value)"
             @compositionstart="handleComposeCompositionStart"
             @compositionend="handleComposeCompositionEnd"
-            @keydown.enter.exact="handleComposeEnterKeydown"></textarea>
-          <AiContextUsageRing
-            :config="activeModelConfig"
-            :usage="contextUsage" />
+            @keydown.enter.exact="handleComposeEnterKeydown"
+          ></textarea>
+          <AiContextUsageRing :config="activeModelConfig" :usage="contextUsage" />
         </div>
         <div class="ai-compose-actions">
           <button
             type="button"
-            :class="[
-              'ai-mode-trigger',
-              { 'ai-mode-trigger-warning': mode === 'full_access' },
-            ]"
+            :class="['ai-mode-trigger', { 'ai-mode-trigger-warning': mode === 'full_access' }]"
             data-floating-menu-trigger
             :title="currentModeOption.label"
             :disabled="isSending"
-            @click="openModeMenu">
+            @click="openModeMenu"
+          >
             <img :src="currentModeOption.icon" alt="" />
             <span>{{ currentModeOption.label }}</span>
           </button>
@@ -961,28 +897,32 @@ onBeforeUnmount(() => {
             :menu="modeMenu"
             :items="modeMenuItems"
             @select="selectMode"
-            @close="closeModeMenu" />
+            @close="closeModeMenu"
+          />
           <button
             type="button"
             class="ai-mode-trigger ai-model-trigger"
             data-floating-menu-trigger
             :title="currentModelLabel"
             :disabled="isSending || configs.length === 0"
-            @click="openModelMenu">
+            @click="openModelMenu"
+          >
             <span class="ai-model-trigger-label">{{ currentModelLabel }}</span>
           </button>
           <ContextMenu
             :menu="modelMenu"
             :items="modelMenuItems"
             @select="selectModel"
-            @close="closeModelMenu" />
+            @close="closeModelMenu"
+          />
           <button
             v-if="!isSending"
             type="button"
             class="ai-action-btn"
             title="发送"
             :disabled="!inputText.trim()"
-            @click="emit('send')">
+            @click="emit('send')"
+          >
             <img :src="arrowUpIcon" alt="发送" />
           </button>
           <button
@@ -990,7 +930,8 @@ onBeforeUnmount(() => {
             type="button"
             class="ai-action-btn ai-stop-btn"
             title="终止"
-            @click="emit('stop')">
+            @click="emit('stop')"
+          >
             <img :src="closeIcon" alt="终止" />
           </button>
         </div>

@@ -22,11 +22,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <AppDialog
-    v-if="open"
-    title="检查更新"
-    width="medium"
-    @close="emit('close')">
+  <AppDialog v-if="open" title="检查更新" width="medium" @close="emit('close')">
     <div class="update-dialog-content">
       <!-- 当前版本 -->
       <div class="settings-field">
@@ -34,14 +30,15 @@ const emit = defineEmits<{
           <h3>当前版本</h3>
         </div>
         <div class="update-version-actions">
-          <span class="update-version-label">{{ currentVersion || '—' }}</span>
+          <span class="update-version-label">{{ currentVersion || "—" }}</span>
           <button
             v-if="status !== 'downloading'"
             type="button"
             class="btn btn-ghost"
             :disabled="status === 'checking'"
-            @click="emit('check')">
-            {{ status === 'checking' ? '检查中…' : '检查更新' }}
+            @click="emit('check')"
+          >
+            {{ status === "checking" ? "检查中…" : "检查更新" }}
           </button>
         </div>
       </div>
@@ -50,21 +47,15 @@ const emit = defineEmits<{
       <div v-if="status !== 'idle'" class="settings-field update-status-field">
         <div>
           <p>
-            <template v-if="status === 'checking'">
-              正在检查更新…
-            </template>
+            <template v-if="status === 'checking'"> 正在检查更新… </template>
             <template v-else-if="status === 'update-available'">
               <span class="update-available-text">
                 发现新版本 {{ newVersion }}
                 <template v-if="releaseDate">（{{ releaseDate }}）</template>
               </span>
-              <template v-if="releaseNotes">
-                <br />更新内容：{{ releaseNotes }}
-              </template>
+              <template v-if="releaseNotes"> <br />更新内容：{{ releaseNotes }} </template>
             </template>
-            <template v-else-if="status === 'update-not-available'">
-              已是最新版本。
-            </template>
+            <template v-else-if="status === 'update-not-available'"> 已是最新版本。 </template>
             <template v-else-if="status === 'downloading'">
               正在下载更新… {{ downloadProgress }}%
             </template>
@@ -81,14 +72,16 @@ const emit = defineEmits<{
             v-if="status === 'update-available'"
             type="button"
             class="btn btn-primary"
-            @click="emit('download')">
+            @click="emit('download')"
+          >
             下载更新
           </button>
           <button
             v-if="status === 'downloaded'"
             type="button"
             class="btn btn-primary"
-            @click="emit('install')">
+            @click="emit('install')"
+          >
             安装并重启
           </button>
         </div>
@@ -97,9 +90,7 @@ const emit = defineEmits<{
       <!-- 下载进度条 -->
       <div v-if="status === 'downloading'" class="settings-field">
         <div class="update-progress-bar-track">
-          <div
-            class="update-progress-bar-fill"
-            :style="{ width: downloadProgress + '%' }"></div>
+          <div class="update-progress-bar-fill" :style="{ width: downloadProgress + '%' }"></div>
         </div>
       </div>
     </div>

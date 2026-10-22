@@ -1,10 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 import type { LogPayload } from "../shared/logger.js";
-import type {
-  LocalDirectoryInput,
-  LocalDirectoryResult,
-} from "../shared/local-files.js";
+import type { LocalDirectoryInput, LocalDirectoryResult } from "../shared/local-files.js";
 import type {
   ServerConfig,
   ServerAppearanceInput,
@@ -22,10 +19,7 @@ import type {
   ServerPinInput,
   ServerUpdateInput,
 } from "../shared/server.js";
-import type {
-  AppSettings,
-  UpdateStatusInfo,
-} from "../shared/settings.js";
+import type { AppSettings, UpdateStatusInfo } from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
 import type { HostKeyPrompt, HostKeyPromptResponse } from "../shared/host-key.js";
 import type { OrbitSshMcpInstallInfo } from "../shared/mcp.js";
@@ -80,17 +74,21 @@ import type {
   AiStreamMessageStartEvent,
 } from "../shared/ai.js";
 import type { AutomationTaskRunEvent, AutomationTaskRunResult } from "../shared/automation.js";
-import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput, PortForwardRuntime, PortForwardStatusEvent } from "../shared/port-forward.js";
+import type {
+  PortForwardRule,
+  PortForwardRuleInput,
+  PortForwardRuleUpdateInput,
+  PortForwardRuntime,
+  PortForwardStatusEvent,
+} from "../shared/port-forward.js";
 
 const orbitSSHApi = {
   about: {
     show: () => ipcRenderer.invoke("about:show") as Promise<boolean>,
   },
   help: {
-    openFeedback: () =>
-      ipcRenderer.invoke("help:open-feedback") as Promise<boolean>,
-    openChangelog: () =>
-      ipcRenderer.invoke("help:open-changelog") as Promise<boolean>,
+    openFeedback: () => ipcRenderer.invoke("help:open-feedback") as Promise<boolean>,
+    openChangelog: () => ipcRenderer.invoke("help:open-changelog") as Promise<boolean>,
   },
   // 暴露只读应用信息，避免 Renderer 直接访问 Electron/Node。
   getAppInfo: () =>
@@ -102,8 +100,7 @@ const orbitSSHApi = {
   getMcpInstallInfo: () =>
     ipcRenderer.invoke("mcp:get-install-info") as Promise<OrbitSshMcpInstallInfo>,
   logger: {
-    write: (payload: LogPayload) =>
-      ipcRenderer.invoke("logger:write", payload) as Promise<boolean>,
+    write: (payload: LogPayload) => ipcRenderer.invoke("logger:write", payload) as Promise<boolean>,
     getPath: () => ipcRenderer.invoke("logger:get-path") as Promise<string>,
   },
   dialogs: {
@@ -111,8 +108,7 @@ const orbitSSHApi = {
       ipcRenderer.invoke("dialog:select-private-key") as Promise<string | null>,
   },
   clipboard: {
-    readText: () =>
-      ipcRenderer.invoke("clipboard:read-text") as Promise<string>,
+    readText: () => ipcRenderer.invoke("clipboard:read-text") as Promise<string>,
     writeText: (text: string) =>
       ipcRenderer.invoke("clipboard:write-text", text) as Promise<boolean>,
   },
@@ -140,40 +136,71 @@ const orbitSSHApi = {
     deleteGroup: (groupId: string) =>
       ipcRenderer.invoke("server:groups:delete", groupId) as Promise<boolean>,
     listAutomationTasks: (serverId: string) =>
-      ipcRenderer.invoke("server:automation-tasks:list", serverId) as Promise<ServerAutomationTask[]>,
+      ipcRenderer.invoke("server:automation-tasks:list", serverId) as Promise<
+        ServerAutomationTask[]
+      >,
     createAutomationTask: (input: ServerAutomationTaskInput) =>
       ipcRenderer.invoke("server:automation-tasks:create", input) as Promise<ServerAutomationTask>,
-    updateAutomationTask: (input: ServerAutomationTaskUpdateInput) => ipcRenderer.invoke("server:automation-tasks:update", input) as Promise<ServerAutomationTask>,
-    deleteAutomationTask: (serverId: string, taskId: string) => ipcRenderer.invoke("server:automation-tasks:delete", serverId, taskId) as Promise<boolean>,
-    listAutomationTaskGroups: (serverId: string) => ipcRenderer.invoke("server:automation-task-groups:list", serverId) as Promise<AutomationTaskGroup[]>,
-    createAutomationTaskGroup: (input: AutomationTaskGroupInput) => ipcRenderer.invoke("server:automation-task-groups:create", input) as Promise<AutomationTaskGroup>,
-    updateAutomationTaskGroup: (input: AutomationTaskGroupUpdateInput) => ipcRenderer.invoke("server:automation-task-groups:update", input) as Promise<AutomationTaskGroup>,
-    deleteAutomationTaskGroup: (serverId: string, groupId: string) => ipcRenderer.invoke("server:automation-task-groups:delete", serverId, groupId) as Promise<boolean>,
-    organizeAutomationTask: (input: AutomationTaskOrganizationInput) => ipcRenderer.invoke("server:automation-tasks:organize", input) as Promise<ServerAutomationTask>,
-    delete: (serverId: string) =>
-      ipcRenderer.invoke("server:delete", serverId) as Promise<boolean>,
+    updateAutomationTask: (input: ServerAutomationTaskUpdateInput) =>
+      ipcRenderer.invoke("server:automation-tasks:update", input) as Promise<ServerAutomationTask>,
+    deleteAutomationTask: (serverId: string, taskId: string) =>
+      ipcRenderer.invoke("server:automation-tasks:delete", serverId, taskId) as Promise<boolean>,
+    listAutomationTaskGroups: (serverId: string) =>
+      ipcRenderer.invoke("server:automation-task-groups:list", serverId) as Promise<
+        AutomationTaskGroup[]
+      >,
+    createAutomationTaskGroup: (input: AutomationTaskGroupInput) =>
+      ipcRenderer.invoke(
+        "server:automation-task-groups:create",
+        input,
+      ) as Promise<AutomationTaskGroup>,
+    updateAutomationTaskGroup: (input: AutomationTaskGroupUpdateInput) =>
+      ipcRenderer.invoke(
+        "server:automation-task-groups:update",
+        input,
+      ) as Promise<AutomationTaskGroup>,
+    deleteAutomationTaskGroup: (serverId: string, groupId: string) =>
+      ipcRenderer.invoke(
+        "server:automation-task-groups:delete",
+        serverId,
+        groupId,
+      ) as Promise<boolean>,
+    organizeAutomationTask: (input: AutomationTaskOrganizationInput) =>
+      ipcRenderer.invoke(
+        "server:automation-tasks:organize",
+        input,
+      ) as Promise<ServerAutomationTask>,
+    delete: (serverId: string) => ipcRenderer.invoke("server:delete", serverId) as Promise<boolean>,
   },
   automation: {
-    run: (taskId: string) => ipcRenderer.invoke("automation:run", { taskId }) as Promise<AutomationTaskRunResult>,
+    run: (taskId: string) =>
+      ipcRenderer.invoke("automation:run", { taskId }) as Promise<AutomationTaskRunResult>,
     cancel: (runId: string) => ipcRenderer.invoke("automation:cancel", runId) as Promise<boolean>,
     onRunEvent: (callback: (event: AutomationTaskRunEvent) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: AutomationTaskRunEvent) => callback(payload);
+      const listener = (_event: Electron.IpcRendererEvent, payload: AutomationTaskRunEvent) =>
+        callback(payload);
       ipcRenderer.on("automation:run-event", listener);
       return () => ipcRenderer.removeListener("automation:run-event", listener);
     },
   },
   portForwards: {
-    list: (serverId: string) => ipcRenderer.invoke("port-forward:list", serverId) as Promise<PortForwardRule[]>,
-    listRuntimes: (serverId: string) => ipcRenderer.invoke("port-forward:runtimes", serverId) as Promise<PortForwardRuntime[]>,
-    create: (input: PortForwardRuleInput) => ipcRenderer.invoke("port-forward:create", input) as Promise<PortForwardRule>,
-    update: (input: PortForwardRuleUpdateInput) => ipcRenderer.invoke("port-forward:update", input) as Promise<PortForwardRule>,
+    list: (serverId: string) =>
+      ipcRenderer.invoke("port-forward:list", serverId) as Promise<PortForwardRule[]>,
+    listRuntimes: (serverId: string) =>
+      ipcRenderer.invoke("port-forward:runtimes", serverId) as Promise<PortForwardRuntime[]>,
+    create: (input: PortForwardRuleInput) =>
+      ipcRenderer.invoke("port-forward:create", input) as Promise<PortForwardRule>,
+    update: (input: PortForwardRuleUpdateInput) =>
+      ipcRenderer.invoke("port-forward:update", input) as Promise<PortForwardRule>,
     start: (ruleId: string) => ipcRenderer.invoke("port-forward:start", ruleId) as Promise<boolean>,
     stop: (ruleId: string) => ipcRenderer.invoke("port-forward:stop", ruleId) as Promise<boolean>,
-    delete: (ruleId: string) => ipcRenderer.invoke("port-forward:delete", ruleId) as Promise<boolean>,
+    delete: (ruleId: string) =>
+      ipcRenderer.invoke("port-forward:delete", ruleId) as Promise<boolean>,
     onStatus: (callback: (event: PortForwardStatusEvent) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: PortForwardStatusEvent) => callback(payload)
-      ipcRenderer.on("port-forward:status", listener)
-      return () => ipcRenderer.removeListener("port-forward:status", listener)
+      const listener = (_event: Electron.IpcRendererEvent, payload: PortForwardStatusEvent) =>
+        callback(payload);
+      ipcRenderer.on("port-forward:status", listener);
+      return () => ipcRenderer.removeListener("port-forward:status", listener);
     },
   },
   settings: {
@@ -182,23 +209,15 @@ const orbitSSHApi = {
       ipcRenderer.invoke("settings:save", settings) as Promise<AppSettings>,
   },
   ai: {
-    chat: (input: AiChatInput) =>
-      ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
+    chat: (input: AiChatInput) => ipcRenderer.invoke("ai:chat", input) as Promise<AiChatResult>,
     runApprovedCommand: (input: AiApprovedCommandInput) =>
-      ipcRenderer.invoke(
-        "ai:run-approved-command",
-        input,
-      ) as Promise<AiChatResult>,
+      ipcRenderer.invoke("ai:run-approved-command", input) as Promise<AiChatResult>,
     rejectCommandApproval: (input: AiRejectedCommandInput) =>
       ipcRenderer.invoke("ai:reject-command-approval", input) as Promise<boolean>,
-    cancel: (input: AiCancelInput) =>
-      ipcRenderer.invoke("ai:cancel", input) as Promise<boolean>,
+    cancel: (input: AiCancelInput) => ipcRenderer.invoke("ai:cancel", input) as Promise<boolean>,
     conversations: {
       list: (serverId: string) =>
-        ipcRenderer.invoke(
-          "ai:conversations:list",
-          serverId,
-        ) as Promise<AiConversationSummary[]>,
+        ipcRenderer.invoke("ai:conversations:list", serverId) as Promise<AiConversationSummary[]>,
       get: (serverId: string, conversationId: string) =>
         ipcRenderer.invoke(
           "ai:conversations:get",
@@ -206,61 +225,38 @@ const orbitSSHApi = {
           conversationId,
         ) as Promise<AiConversationRecord | null>,
       delete: (serverId: string, conversationId: string) =>
-        ipcRenderer.invoke(
-          "ai:conversations:delete",
-          serverId,
-          conversationId,
-        ) as Promise<boolean>,
+        ipcRenderer.invoke("ai:conversations:delete", serverId, conversationId) as Promise<boolean>,
     },
     onStreamChunk: (callback: (event: AiStreamChunkEvent) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamChunkEvent) => callback(payload);
+      const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamChunkEvent) =>
+        callback(payload);
       ipcRenderer.on("ai:stream-chunk", listener);
       return () => ipcRenderer.removeListener("ai:stream-chunk", listener);
     },
-    onStreamMessageStart: (
-      callback: (event: AiStreamMessageStartEvent) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: AiStreamMessageStartEvent,
-      ) => callback(payload);
+    onStreamMessageStart: (callback: (event: AiStreamMessageStartEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: AiStreamMessageStartEvent) =>
+        callback(payload);
       ipcRenderer.on("ai:stream-message-start", listener);
-      return () =>
-        ipcRenderer.removeListener("ai:stream-message-start", listener);
+      return () => ipcRenderer.removeListener("ai:stream-message-start", listener);
     },
     onCommandCard: (callback: (event: AiCommandCardEvent) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: AiCommandCardEvent,
-      ) => callback(payload);
+      const listener = (_event: Electron.IpcRendererEvent, payload: AiCommandCardEvent) =>
+        callback(payload);
       ipcRenderer.on("ai:command-card", listener);
       return () => ipcRenderer.removeListener("ai:command-card", listener);
     },
   },
   sftp: {
     open: (tabId: string, serverId: string) =>
-      ipcRenderer.invoke(
-        "sftp:open",
-        tabId,
-        serverId,
-      ) as Promise<SftpInitResult>,
+      ipcRenderer.invoke("sftp:open", tabId, serverId) as Promise<SftpInitResult>,
     list: (input: SftpListInput) =>
       ipcRenderer.invoke("sftp:list", input) as Promise<RemoteFileNode[]>,
     probeText: (input: SftpProbeTextInput) =>
-      ipcRenderer.invoke(
-        "sftp:probe-text",
-        input,
-      ) as Promise<SftpProbeTextResult>,
+      ipcRenderer.invoke("sftp:probe-text", input) as Promise<SftpProbeTextResult>,
     readText: (input: SftpReadTextInput) =>
-      ipcRenderer.invoke(
-        "sftp:read-text",
-        input,
-      ) as Promise<SftpReadTextResult>,
+      ipcRenderer.invoke("sftp:read-text", input) as Promise<SftpReadTextResult>,
     previewImage: (input: SftpPreviewImageInput) =>
-      ipcRenderer.invoke(
-        "sftp:preview-image",
-        input,
-      ) as Promise<SftpPreviewImageResult>,
+      ipcRenderer.invoke("sftp:preview-image", input) as Promise<SftpPreviewImageResult>,
     writeText: (input: SftpWriteTextInput) =>
       ipcRenderer.invoke("sftp:write-text", input) as Promise<boolean>,
     download: (input: SftpDownloadInput) =>
@@ -268,17 +264,11 @@ const orbitSSHApi = {
     upload: (input: SftpUploadInput) =>
       ipcRenderer.invoke("sftp:upload", input) as Promise<SftpUploadResult>,
     remoteTransfer: (input: SftpRemoteTransferInput) =>
-      ipcRenderer.invoke(
-        "sftp:remote-transfer",
-        input,
-      ) as Promise<SftpRemoteTransferResult>,
+      ipcRenderer.invoke("sftp:remote-transfer", input) as Promise<SftpRemoteTransferResult>,
     controlUpload: (input: SftpUploadControlInput) =>
       ipcRenderer.invoke("sftp:upload-control", input) as Promise<boolean>,
     controlRemoteTransfer: (input: SftpRemoteTransferControlInput) =>
-      ipcRenderer.invoke(
-        "sftp:remote-transfer-control",
-        input,
-      ) as Promise<boolean>,
+      ipcRenderer.invoke("sftp:remote-transfer-control", input) as Promise<boolean>,
     controlDownload: (input: SftpDownloadControlInput) =>
       ipcRenderer.invoke("sftp:download-control", input) as Promise<boolean>,
     listManagedTasks: () =>
@@ -293,88 +283,56 @@ const orbitSSHApi = {
       ipcRenderer.invoke("sftp:create-file", input) as Promise<boolean>,
     createDirectory: (input: SftpCreateNodeInput) =>
       ipcRenderer.invoke("sftp:create-directory", input) as Promise<boolean>,
-    onDownloadProgress: (
-      callback: (event: SftpDownloadProgressEvent) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: SftpDownloadProgressEvent,
-      ) => callback(payload);
+    onDownloadProgress: (callback: (event: SftpDownloadProgressEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: SftpDownloadProgressEvent) =>
+        callback(payload);
       ipcRenderer.on("sftp:download-progress", listener);
-      return () =>
-        ipcRenderer.removeListener("sftp:download-progress", listener);
+      return () => ipcRenderer.removeListener("sftp:download-progress", listener);
     },
-    onUploadProgress: (
-      callback: (event: SftpUploadProgressEvent) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: SftpUploadProgressEvent,
-      ) => callback(payload);
+    onUploadProgress: (callback: (event: SftpUploadProgressEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: SftpUploadProgressEvent) =>
+        callback(payload);
       ipcRenderer.on("sftp:upload-progress", listener);
-      return () =>
-        ipcRenderer.removeListener("sftp:upload-progress", listener);
+      return () => ipcRenderer.removeListener("sftp:upload-progress", listener);
     },
-    onRemoteTransferProgress: (
-      callback: (event: SftpRemoteTransferProgressEvent) => void,
-    ) => {
+    onRemoteTransferProgress: (callback: (event: SftpRemoteTransferProgressEvent) => void) => {
       const listener = (
         _event: Electron.IpcRendererEvent,
         payload: SftpRemoteTransferProgressEvent,
       ) => callback(payload);
       ipcRenderer.on("sftp:remote-transfer-progress", listener);
-      return () =>
-        ipcRenderer.removeListener("sftp:remote-transfer-progress", listener);
+      return () => ipcRenderer.removeListener("sftp:remote-transfer-progress", listener);
     },
-    onManagedTaskEvent: (
-      callback: (event: SftpManagedTaskEvent) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: SftpManagedTaskEvent,
-      ) => callback(payload);
+    onManagedTaskEvent: (callback: (event: SftpManagedTaskEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: SftpManagedTaskEvent) =>
+        callback(payload);
       ipcRenderer.on("sftp:managed-task-event", listener);
-      return () =>
-        ipcRenderer.removeListener("sftp:managed-task-event", listener);
+      return () => ipcRenderer.removeListener("sftp:managed-task-event", listener);
     },
-    close: (tabId: string) =>
-      ipcRenderer.invoke("sftp:close", tabId) as Promise<boolean>,
+    close: (tabId: string) => ipcRenderer.invoke("sftp:close", tabId) as Promise<boolean>,
   },
   terminals: {
     open: (serverId: string) =>
-      ipcRenderer.invoke(
-        "terminal:open",
-        serverId,
-      ) as Promise<TerminalOpenResult>,
-    openLocal: () =>
-      ipcRenderer.invoke("terminal:open-local") as Promise<TerminalOpenResult>,
+      ipcRenderer.invoke("terminal:open", serverId) as Promise<TerminalOpenResult>,
+    openLocal: () => ipcRenderer.invoke("terminal:open-local") as Promise<TerminalOpenResult>,
     write: (tabId: string, data: string) =>
       ipcRenderer.invoke("terminal:write", tabId, data) as Promise<boolean>,
     writeAutomationCommand: (input: TerminalAutomationCommandInput) =>
       ipcRenderer.invoke("terminal:write-automation-command", input) as Promise<boolean>,
     resize: (input: TerminalResizeInput) =>
       ipcRenderer.invoke("terminal:resize", input) as Promise<boolean>,
-    close: (tabId: string) =>
-      ipcRenderer.invoke("terminal:close", tabId) as Promise<boolean>,
+    close: (tabId: string) => ipcRenderer.invoke("terminal:close", tabId) as Promise<boolean>,
     reconnect: (tabId: string, serverId: string) =>
-      ipcRenderer.invoke(
-        "terminal:reconnect",
-        tabId,
-        serverId,
-      ) as Promise<boolean>,
+      ipcRenderer.invoke("terminal:reconnect", tabId, serverId) as Promise<boolean>,
     onData: (callback: (event: TerminalDataEvent) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: TerminalDataEvent,
-      ) => callback(payload);
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalDataEvent) =>
+        callback(payload);
       ipcRenderer.on("terminal:data", listener);
       return () => ipcRenderer.removeListener("terminal:data", listener);
     },
     onStatus: (callback: (event: TerminalStatusEvent) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: TerminalStatusEvent,
-      ) => callback(payload);
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalStatusEvent) =>
+        callback(payload);
       ipcRenderer.on("terminal:status", listener);
       return () => ipcRenderer.removeListener("terminal:status", listener);
     },
@@ -387,30 +345,21 @@ const orbitSSHApi = {
     check: () => ipcRenderer.invoke("update:check") as Promise<void>,
     download: () => ipcRenderer.invoke("update:download") as Promise<void>,
     install: () => ipcRenderer.invoke("update:install") as Promise<void>,
-    getStatus: () =>
-      ipcRenderer.invoke("update:get-status") as Promise<UpdateStatusInfo>,
-    onStatusChanged: (
-      callback: (info: UpdateStatusInfo) => void,
-    ) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        payload: UpdateStatusInfo,
-      ) => callback(payload);
+    getStatus: () => ipcRenderer.invoke("update:get-status") as Promise<UpdateStatusInfo>,
+    onStatusChanged: (callback: (info: UpdateStatusInfo) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: UpdateStatusInfo) =>
+        callback(payload);
       ipcRenderer.on("update:status-changed", listener);
-      return () =>
-        ipcRenderer.removeListener("update:status-changed", listener);
+      return () => ipcRenderer.removeListener("update:status-changed", listener);
     },
   },
   hostKeys: {
-    listPending: () =>
-      ipcRenderer.invoke("host-key:list-pending") as Promise<HostKeyPrompt[]>,
+    listPending: () => ipcRenderer.invoke("host-key:list-pending") as Promise<HostKeyPrompt[]>,
     respond: (response: HostKeyPromptResponse) =>
       ipcRenderer.invoke("host-key:respond", response) as Promise<boolean>,
     onPrompt: (callback: (prompt: HostKeyPrompt) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        prompt: HostKeyPrompt,
-      ) => callback(prompt);
+      const listener = (_event: Electron.IpcRendererEvent, prompt: HostKeyPrompt) =>
+        callback(prompt);
       ipcRenderer.on("host-key:prompt", listener);
       return () => ipcRenderer.removeListener("host-key:prompt", listener);
     },
@@ -418,37 +367,27 @@ const orbitSSHApi = {
       const listener = (_event: Electron.IpcRendererEvent, requestId: string) =>
         callback(requestId);
       ipcRenderer.on("host-key:prompt-closed", listener);
-      return () =>
-        ipcRenderer.removeListener("host-key:prompt-closed", listener);
+      return () => ipcRenderer.removeListener("host-key:prompt-closed", listener);
     },
   },
   windowControls: {
     minimize: () => ipcRenderer.invoke("window:minimize") as Promise<boolean>,
-    toggleMaximize: () =>
-      ipcRenderer.invoke("window:toggle-maximize") as Promise<boolean>,
+    toggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize") as Promise<boolean>,
     close: () => ipcRenderer.invoke("window:close") as Promise<boolean>,
-    isMaximized: () =>
-      ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
-    isMinimized: () =>
-      ipcRenderer.invoke("window:is-minimized") as Promise<boolean>,
-    isFullScreen: () =>
-      ipcRenderer.invoke("window:is-full-screen") as Promise<boolean>,
+    isMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
+    isMinimized: () => ipcRenderer.invoke("window:is-minimized") as Promise<boolean>,
+    isFullScreen: () => ipcRenderer.invoke("window:is-full-screen") as Promise<boolean>,
     onFullScreenChanged: (callback: (fullScreen: boolean) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        fullScreen: boolean,
-      ) => callback(fullScreen);
+      const listener = (_event: Electron.IpcRendererEvent, fullScreen: boolean) =>
+        callback(fullScreen);
       ipcRenderer.on("window:fullscreen-changed", listener);
-      return () =>
-        ipcRenderer.removeListener("window:fullscreen-changed", listener);
+      return () => ipcRenderer.removeListener("window:fullscreen-changed", listener);
     },
   },
   appMenu: {
     onAction: (callback: (action: AppMenuAction) => void) => {
-      const listener = (
-        _event: Electron.IpcRendererEvent,
-        action: AppMenuAction,
-      ) => callback(action);
+      const listener = (_event: Electron.IpcRendererEvent, action: AppMenuAction) =>
+        callback(action);
       ipcRenderer.on("app-menu:action", listener);
       return () => ipcRenderer.removeListener("app-menu:action", listener);
     },

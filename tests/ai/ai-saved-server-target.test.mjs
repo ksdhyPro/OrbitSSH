@@ -29,7 +29,10 @@ test("支持按主机和 主机:端口 精确定位，名称中的“服务器�
 
 test("唯一的模糊匹配可用，多个候选或找不到时拒绝执行", () => {
   assert.equal(resolveSavedServerTarget("db", servers).id, "2");
-  assert.throws(() => resolveSavedServerTarget("web", servers), /匹配多个连接：web-a（deploy@10\.0\.1\.1:22）、web-b/);
+  assert.throws(
+    () => resolveSavedServerTarget("web", servers),
+    /匹配多个连接：web-a（deploy@10\.0\.1\.1:22）、web-b/,
+  );
   assert.throws(() => resolveSavedServerTarget("staging", servers), /未找到已保存的服务器/);
   assert.throws(() => resolveSavedServerTarget("  ", servers), /服务器名称不能为空/);
 });
@@ -59,7 +62,8 @@ test("跨服务器动作在审批前解析目标，执行时按已确认的服�
   assert.match(actions, /targetServer:/);
   assert.match(command, /getServerAuthConfig\(input\.target\.id\)/);
   assert.match(command, /assertSavedServerTargetUnchanged\(input\.target, server\)/);
-  const executeInput = command.match(/interface ExecuteSavedServerCommandInput \{[\s\S]*?\n\}/)?.[0] ?? "";
+  const executeInput =
+    command.match(/interface ExecuteSavedServerCommandInput \{[\s\S]*?\n\}/)?.[0] ?? "";
   assert.match(executeInput, /target: SavedServerTarget/);
   assert.doesNotMatch(executeInput, /serverReference/);
 });

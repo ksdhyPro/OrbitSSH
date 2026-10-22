@@ -15,8 +15,7 @@ export const useWindowStore = defineStore("window", () => {
   }
 
   async function toggleMaximizeWindow(): Promise<void> {
-    const maximized =
-      await core.orbitSSHApi?.windowControls.toggleMaximize();
+    const maximized = await core.orbitSSHApi?.windowControls.toggleMaximize();
     isWindowMaximized.value = Boolean(maximized);
   }
 
@@ -26,15 +25,13 @@ export const useWindowStore = defineStore("window", () => {
 
   async function initMaximized(): Promise<void> {
     if (core.orbitSSHApi) {
-      isWindowMaximized.value =
-        await core.orbitSSHApi.windowControls.isMaximized();
+      isWindowMaximized.value = await core.orbitSSHApi.windowControls.isMaximized();
     }
   }
 
   async function initFullScreen(): Promise<void> {
     if (core.orbitSSHApi) {
-      isWindowFullScreen.value =
-        await core.orbitSSHApi.windowControls.isFullScreen();
+      isWindowFullScreen.value = await core.orbitSSHApi.windowControls.isFullScreen();
     }
   }
 

@@ -65,9 +65,7 @@ export function evaluateAssistantTurnProtocol(
     return {
       outcome: "protocol_error",
       retryable: true,
-      fallbackReply: rawToolCalls.length === 0
-        ? reply.trim()
-        : undefined,
+      fallbackReply: rawToolCalls.length === 0 ? reply.trim() : undefined,
     };
   }
 
@@ -88,10 +86,7 @@ export function evaluateAssistantTurnProtocol(
     return { outcome: "protocol_error", retryable: true };
   }
 
-  if (
-    toolCall.type === "function" &&
-    toolCall.function?.name === "finish_response"
-  ) {
+  if (toolCall.type === "function" && toolCall.function?.name === "finish_response") {
     const message = parseToolArguments(toolCall.function.arguments)?.message;
     if (typeof message === "string" && message.trim()) {
       return {
@@ -164,7 +159,12 @@ export function extractPartialJsonStringField(json: string, field: string): stri
     if (code >= 0xd800 && code <= 0xdbff) {
       // 代理对需要两个 \uXXXX 都到达后再一起解码。
       const low = Number.parseInt(json.slice(index + 8, index + 12), 16);
-      if (json.length < index + 12 || json.slice(index + 6, index + 8) !== "\\u" || Number.isNaN(low)) break;
+      if (
+        json.length < index + 12 ||
+        json.slice(index + 6, index + 8) !== "\\u" ||
+        Number.isNaN(low)
+      )
+        break;
       result += String.fromCharCode(code, low);
       index += 12;
       continue;
@@ -197,7 +197,8 @@ export function parseAiTokenUsage(value: unknown): AiTokenUsage | undefined {
     !Number.isFinite(promptTokens) ||
     !Number.isFinite(completionTokens) ||
     !Number.isFinite(totalTokens)
-  ) return undefined;
+  )
+    return undefined;
 
   return {
     promptTokens: Math.max(0, Math.trunc(promptTokens)),
@@ -208,9 +209,7 @@ export function parseAiTokenUsage(value: unknown): AiTokenUsage | undefined {
 }
 
 function normalizeAiCommandRisk(value: unknown): ParsedAiCommand["risk"] {
-  return value === "low" || value === "medium" || value === "high"
-    ? value
-    : "medium";
+  return value === "low" || value === "medium" || value === "high" ? value : "medium";
 }
 
 /**
@@ -230,7 +229,7 @@ function parseToolArguments(rawArgs: unknown): Record<string, unknown> | null {
     }
   }
   return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
+    ? (parsed as Record<string, unknown>)
     : null;
 }
 
@@ -256,16 +255,11 @@ function createCommandFromRecord(
   };
 }
 
-function buildCommandsFromToolArguments(
-  rawArgs: unknown,
-  toolCallId: string,
-): ParsedAiCommand[] {
+function buildCommandsFromToolArguments(rawArgs: unknown, toolCallId: string): ParsedAiCommand[] {
   const record = parseToolArguments(rawArgs);
   if (!record) return [];
   const fallbackReason =
-    typeof record.reason === "string" && record.reason.trim()
-      ? record.reason.trim()
-      : "执行命令";
+    typeof record.reason === "string" && record.reason.trim() ? record.reason.trim() : "执行命令";
   if (Array.isArray(record.commands)) {
     // 每次工具调用只能执行一条命令；一次给出多条时整体视为无效，不静默丢弃其余命令。
     if (record.commands.length !== 1) return [];
@@ -278,11 +272,7 @@ function buildCommandsFromToolArguments(
               toolCallId,
             )
           : item && typeof item === "object"
-            ? createCommandFromRecord(
-                item as Record<string, unknown>,
-                fallbackReason,
-                toolCallId,
-              )
+            ? createCommandFromRecord(item as Record<string, unknown>, fallbackReason, toolCallId)
             : null,
       )
       .filter((item): item is ParsedAiCommand => item !== null);
@@ -302,12 +292,9 @@ export function parseRunShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCom
   );
 }
 
-export function parseRunLongShellToolCalls(
-  rawToolCalls: RawToolCall[],
-): ParsedAiCommand[] {
+export function parseRunLongShellToolCalls(rawToolCalls: RawToolCall[]): ParsedAiCommand[] {
   return rawToolCalls.flatMap(toolCall =>
-    toolCall.type !== "function" ||
-    toolCall.function?.name !== "run_long_shell_command"
+    toolCall.type !== "function" || toolCall.function?.name !== "run_long_shell_command"
       ? []
       : buildCommandsFromToolArguments(
           toolCall.function.arguments,
@@ -327,25 +314,26 @@ export function parseLongCommandProgressToolCalls(
       return [];
     }
     const message = parseToolArguments(toolCall.function.arguments)?.message;
-    return typeof message === "string" && message.trim()
-      ? [{ message: message.trim() }]
-      : [];
+    return typeof message === "string" && message.trim() ? [{ message: message.trim() }] : [];
   });
 }
 
-export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAiSavedServerCommand[] {
+export function parseSavedServerToolCalls(
+  rawToolCalls: RawToolCall[],
+): ParsedAiSavedServerCommand[] {
   return rawToolCalls.flatMap(toolCall => {
-    if (toolCall.type !== 'function' || toolCall.function?.name !== 'run_saved_server_command') return []
-    const record = parseToolArguments(toolCall.function.arguments)
-    if (!record) return []
+    if (toolCall.type !== "function" || toolCall.function?.name !== "run_saved_server_command")
+      return [];
+    const record = parseToolArguments(toolCall.function.arguments);
+    if (!record) return [];
     const command = createCommandFromRecord(
       record,
-      '在已保存服务器执行命令',
+      "在已保存服务器执行命令",
       toolCall.id || `orbitssh-call-${randomUUID()}`,
-    )
-    const serverName = typeof record.serverName === 'string' ? record.serverName.trim() : ''
-    return command && serverName ? [{ ...command, serverName }] : []
-  })
+    );
+    const serverName = typeof record.serverName === "string" ? record.serverName.trim() : "";
+    return command && serverName ? [{ ...command, serverName }] : [];
+  });
 }
 
 export async function collectSseStream(
@@ -371,12 +359,7 @@ export async function collectSseStream(
   const toolCallsByIndex = new Map<number, StreamedToolCall>();
   const trackFinishPreview = createFinishPreviewTracker(options.onFinishPreview);
 
-  const appendToolCallDelta = (
-    index: number,
-    id: unknown,
-    name: unknown,
-    args: unknown,
-  ): void => {
+  const appendToolCallDelta = (index: number, id: unknown, name: unknown, args: unknown): void => {
     const existing = toolCallsByIndex.get(index) ?? { id: "", name: "", arguments: "" };
     if (typeof id === "string" && id) existing.id = id;
     if (typeof name === "string" && name) existing.name = name;

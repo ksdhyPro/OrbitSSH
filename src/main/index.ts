@@ -79,7 +79,7 @@ async function cleanupTransfersBeforeQuit(): Promise<void> {
   // 退出清理最多等待 5 秒，避免连接异常时应用无法退出。
   await Promise.race([
     discardAllManagedTransferTasks(),
-    new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
+    new Promise<void>(resolve => setTimeout(resolve, 5_000)),
   ]);
 }
 
@@ -98,9 +98,10 @@ async function requestAppQuit(): Promise<void> {
       detail: "已传输完成的目标文件会保留，本地临时中转文件将被清理。",
       noLink: true,
     };
-    const result = mainWindow && !mainWindow.isDestroyed()
-      ? await dialog.showMessageBox(mainWindow, options)
-      : await dialog.showMessageBox(options);
+    const result =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
     isQuitPromptOpen = false;
     if (result.response !== 1) return;
   }
@@ -152,7 +153,7 @@ function createTray(): void {
 
 // 拦截普通窗口关闭行为，改为隐藏到系统托盘。
 function registerCloseToTray(mainWindow: BrowserWindow): void {
-  mainWindow.on("close", (event) => {
+  mainWindow.on("close", event => {
     if (isQuitting) {
       return;
     }
@@ -162,10 +163,7 @@ function registerCloseToTray(mainWindow: BrowserWindow): void {
   });
 }
 
-function sendAppMenuAction(
-  fallbackWindow: BrowserWindow,
-  action: AppMenuAction,
-): void {
+function sendAppMenuAction(fallbackWindow: BrowserWindow, action: AppMenuAction): void {
   const targetWindow = BrowserWindow.getFocusedWindow() ?? fallbackWindow;
 
   if (targetWindow.isDestroyed()) {
@@ -304,15 +302,12 @@ function createMainWindow(): BrowserWindow {
   });
   writeStartupDiagnostic("主窗口创建成功");
 
-  mainWindow.webContents.on(
-    "render-process-gone",
-    (_event, details) => {
-      writeStartupDiagnostic("渲染进程退出", {
-        reason: details.reason,
-        exitCode: details.exitCode,
-      });
-    },
-  );
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    writeStartupDiagnostic("渲染进程退出", {
+      reason: details.reason,
+      exitCode: details.exitCode,
+    });
+  });
 
   mainWindow.webContents.on(
     "did-fail-load",
@@ -418,43 +413,46 @@ if (!hasSingleInstanceLock) {
   // 再次启动应用时不创建新实例，直接唤醒首个实例的主窗口。
   app.on("second-instance", showMainWindow);
 
-  app.whenReady().then(() => {
-    writeStartupDiagnostic("Electron 应用 ready");
-    writeAppLog({
-      scope: "main.app",
-      message: "应用 ready",
-    });
-    // 任务不跨进程恢复，启动时清除上次异常退出遗留的中转文件。
-    void cleanupManagedTransferTempFiles();
-    registerBaseIpc();
-    // MCP 本地代理始终监听，以便区分“客户端未启动”和“访问开关未开启”。
-    void startMcpIpcServer().catch(error => {
-      writeStartupDiagnostic("MCP 本地代理启动失败", {
+  app
+    .whenReady()
+    .then(() => {
+      writeStartupDiagnostic("Electron 应用 ready");
+      writeAppLog({
+        scope: "main.app",
+        message: "应用 ready",
+      });
+      // 任务不跨进程恢复，启动时清除上次异常退出遗留的中转文件。
+      void cleanupManagedTransferTempFiles();
+      registerBaseIpc();
+      // MCP 本地代理始终监听，以便区分“客户端未启动”和“访问开关未开启”。
+      void startMcpIpcServer().catch(error => {
+        writeStartupDiagnostic("MCP 本地代理启动失败", {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+      });
+      mainWindow = createMainWindow();
+      registerCloseToTray(mainWindow);
+      createTray();
+      registerMacApplicationMenu(mainWindow);
+      initUpdateManager(mainWindow);
+
+      app.on("activate", () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+          mainWindow = createMainWindow();
+          registerCloseToTray(mainWindow);
+          registerMacApplicationMenu(mainWindow);
+        } else {
+          showMainWindow();
+        }
+      });
+    })
+    .catch(error => {
+      writeStartupDiagnostic("应用初始化失败", {
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });
     });
-    mainWindow = createMainWindow();
-    registerCloseToTray(mainWindow);
-    createTray();
-    registerMacApplicationMenu(mainWindow);
-    initUpdateManager(mainWindow);
-
-    app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        mainWindow = createMainWindow();
-        registerCloseToTray(mainWindow);
-        registerMacApplicationMenu(mainWindow);
-      } else {
-        showMainWindow();
-      }
-    });
-  }).catch(error => {
-    writeStartupDiagnostic("应用初始化失败", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-  });
 }
 
 app.on("child-process-gone", (_event, details) => {
@@ -466,7 +464,7 @@ app.on("child-process-gone", (_event, details) => {
   });
 });
 
-app.on("before-quit", (event) => {
+app.on("before-quit", event => {
   if (!isQuitting && hasManagedTransferTasks()) {
     event.preventDefault();
     void requestAppQuit();

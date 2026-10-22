@@ -1,9 +1,4 @@
-import type {
-  AiChatInput,
-  AiChatResult,
-  AiCommandCard,
-  AiMessage,
-} from "../../shared/ai.js";
+import type { AiChatInput, AiChatResult, AiCommandCard, AiMessage } from "../../shared/ai.js";
 import type { AppSettings } from "../../shared/settings.js";
 import {
   createPolicyRejectionFeedback,
@@ -14,10 +9,7 @@ import {
   type PendingApprovalState,
 } from "./ai-agent-actions.js";
 import type { AgentEmitter } from "./ai-agent-events.js";
-import type {
-  AiConversationMemory,
-  AiTokenUsage,
-} from "./ai-context-budget.js";
+import type { AiConversationMemory, AiTokenUsage } from "./ai-context-budget.js";
 import {
   formatAgentStepMessage,
   type ExecutedAiCommandContext,
@@ -92,9 +84,7 @@ export function createLongCommandProgressHandler(options: LongCommandProgressOpt
 }
 
 /** 运行单个 AI 请求的模型—动作循环，直到完成、审批暂停或预算耗尽。 */
-export async function runAgentLoop(
-  options: RunAgentLoopOptions,
-): Promise<AiChatResult> {
+export async function runAgentLoop(options: RunAgentLoopOptions): Promise<AiChatResult> {
   const { input, settings, signal, emit, storeApproval } = options;
   const messages: AiMessage[] = [];
   let budgetStartedAt = Date.now();
@@ -122,10 +112,7 @@ export async function runAgentLoop(
     const messageId = crypto.randomUUID();
     const messageCreatedAt = Date.now() + 1;
     emit?.sendMessageStart(messageId, messageCreatedAt);
-    const preparedContext = await options.prepareContext?.(
-      messages,
-      executedCommands,
-    );
+    const preparedContext = await options.prepareContext?.(messages, executedCommands);
     const parsed = await requestAiTurn(
       preparedContext?.input ?? input,
       settings,
@@ -141,11 +128,7 @@ export async function runAgentLoop(
       preparedContext?.memory ?? options.memory,
     );
     if (parsed.contextLimitExceeded) {
-      throw new AiContextWindowExceededError(
-        messages,
-        commandCards,
-        executedCommands,
-      );
+      throw new AiContextWindowExceededError(messages, commandCards, executedCommands);
     }
     if (parsed.usage) options.onTokenUsage?.(parsed.usage);
     const reply = parsed.reply?.trim();
@@ -157,11 +140,7 @@ export async function runAgentLoop(
       : "未收到有效回复。";
 
     // 保持原有语义：当前服务器的格式拒绝会反馈给模型并允许修正。
-    if (
-      action &&
-      action.type !== "saved_server" &&
-      action.policy.decision === "deny"
-    ) {
+    if (action && action.type !== "saved_server" && action.policy.decision === "deny") {
       commandCards = emitRejectedAction(input, action, commandCards, emit);
       if (localPolicyRetryCount < maxLocalPolicyRetries) {
         localPolicyRetryCount += 1;

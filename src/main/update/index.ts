@@ -97,14 +97,12 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
     sendStatus(mainWindow);
   });
 
-  autoUpdater.on("update-available", (info) => {
+  autoUpdater.on("update-available", info => {
     currentStatus = "update-available";
     newVersion = info.version;
     releaseDate = info.releaseDate;
     // latest.yml 中可自定义 releaseNotes 字段，直接读取
-    releaseNotes = (info as unknown as Record<string, unknown>).releaseNotes as
-      | string
-      | undefined;
+    releaseNotes = (info as unknown as Record<string, unknown>).releaseNotes as string | undefined;
 
     // ---- 自定义字段（latest.yml 可扩展） ----
     // newFeedUrl：下个版本的更新地址变更时，在本版本的 latest.yml 中携带，
@@ -139,7 +137,7 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
     sendStatus(mainWindow);
   });
 
-  autoUpdater.on("update-not-available", (info) => {
+  autoUpdater.on("update-not-available", info => {
     currentStatus = "update-not-available";
     writeAppLog({
       scope: "main.update",
@@ -149,13 +147,13 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
     sendStatus(mainWindow);
   });
 
-  autoUpdater.on("download-progress", (progress) => {
+  autoUpdater.on("download-progress", progress => {
     currentStatus = "downloading";
     downloadProgress = Math.round(progress.percent);
     sendStatus(mainWindow);
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
+  autoUpdater.on("update-downloaded", info => {
     currentStatus = "downloaded";
     downloadProgress = 100;
     newVersion = info.version;
@@ -166,7 +164,7 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
     sendStatus(mainWindow);
   });
 
-  autoUpdater.on("error", (error) => {
+  autoUpdater.on("error", error => {
     currentStatus = "error";
     lastError = error.message;
     writeAppLog({
@@ -183,7 +181,7 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
     writeAppLog({ scope: "main.update", message: "启动后自动检查更新" });
     // 重新应用 feed URL（用户可能在设置中改了地址但未重启 App）
     applyFeedUrl();
-    autoUpdater.checkForUpdates().catch((err) => {
+    autoUpdater.checkForUpdates().catch(err => {
       writeAppLog({
         scope: "main.update",
         message: "自动检查更新失败",
@@ -196,7 +194,7 @@ export function initUpdateManager(mainWindow: BrowserWindow): void {
 
 export function checkForUpdates(): void {
   applyFeedUrl();
-  autoUpdater.checkForUpdates().catch((err) => {
+  autoUpdater.checkForUpdates().catch(err => {
     writeAppLog({
       scope: "main.update",
       message: "检查更新失败",
@@ -207,7 +205,7 @@ export function checkForUpdates(): void {
 }
 
 export function downloadUpdate(): void {
-  autoUpdater.downloadUpdate().catch((err) => {
+  autoUpdater.downloadUpdate().catch(err => {
     writeAppLog({
       scope: "main.update",
       message: "下载更新失败",

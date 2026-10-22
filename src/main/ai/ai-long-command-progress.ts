@@ -30,15 +30,10 @@ export interface LongCommandProgressReporterOptions {
  * 为单条长命令维护一条原地更新的进度消息：
  * 有新增输出时才请求模型概括，没有新输出时直接在本地更新已运行时长，不消耗模型调用。
  */
-export function createLongCommandProgressReporter(
-  options: LongCommandProgressReporterOptions,
-) {
+export function createLongCommandProgressReporter(options: LongCommandProgressReporterOptions) {
   let progressMessage: AiMessage | null = null;
 
-  return async (
-    progress: AiLongCommandProgressContext,
-    signal: AbortSignal,
-  ): Promise<void> => {
+  return async (progress: AiLongCommandProgressContext, signal: AbortSignal): Promise<void> => {
     const summary = progress.outputChanged
       ? (await options.requestProgressMessage(progress, signal)) || LONG_COMMAND_OUTPUT_FALLBACK
       : LONG_COMMAND_IDLE_MESSAGE;

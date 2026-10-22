@@ -52,7 +52,10 @@ describe("AiPanel 跨服务器审批", () => {
     expect(popover.get(".ai-approval-target").text()).toBe(
       "目标服务器：prod-db（postgres@10.0.0.2:22）",
     );
-    await popover.findAll("button").find(button => button.text() === "批准执行")!.trigger("click");
+    await popover
+      .findAll("button")
+      .find(button => button.text() === "批准执行")!
+      .trigger("click");
     expect(wrapper.emitted("runApproved")).toEqual([[card]]);
   });
 
@@ -60,5 +63,16 @@ describe("AiPanel 跨服务器审批", () => {
     const wrapper = mountPanel([createCard({ command: "df -h", targetServer: undefined })]);
 
     expect(wrapper.find(".ai-approval-target").exists()).toBe(false);
+  });
+});
+
+describe("AiPanel 工作区标题栏", () => {
+  it("AI 模式下提供打开 SSH 入口，点击后请求打开终端弹窗", async () => {
+    const wrapper = mountPanel([]);
+    const openSsh = wrapper.findAll("button").find(button => button.text() === "打开 SSH");
+
+    expect(openSsh).toBeDefined();
+    await openSsh!.trigger("click");
+    expect(wrapper.emitted("openSsh")).toHaveLength(1);
   });
 });

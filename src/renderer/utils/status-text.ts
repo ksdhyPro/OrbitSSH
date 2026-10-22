@@ -18,10 +18,7 @@ export function getDownloadProgressPercent(task: DownloadTask): number {
     return task.status === "completed" ? 100 : 0;
   }
 
-  return Math.min(
-    Math.round((task.transferredBytes / task.totalBytes) * 100),
-    100,
-  );
+  return Math.min(Math.round((task.transferredBytes / task.totalBytes) * 100), 100);
 }
 
 export function getDownloadTaskStatusText(task: DownloadTask): string {

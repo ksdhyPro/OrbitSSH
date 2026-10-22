@@ -15,25 +15,16 @@ function isUnsupportedParameterError(
   if (status !== 400 && status !== 422) return false;
   if (!parameterPattern.test(responseText)) return false;
 
-  return /(?:not\s+supported|unsupported|unknown\s+parameter|unrecognized|unexpected|invalid\s+(?:parameter|value)|extra\s+inputs?|not\s+permitted|not\s+allowed)/i
-    .test(responseText);
-}
-
-export function isToolChoiceUnsupported(
-  status: number,
-  responseText: string,
-): boolean {
-  return isUnsupportedParameterError(
-    status,
+  return /(?:not\s+supported|unsupported|unknown\s+parameter|unrecognized|unexpected|invalid\s+(?:parameter|value)|extra\s+inputs?|not\s+permitted|not\s+allowed)/i.test(
     responseText,
-    /tool[_ -]?choice/i,
   );
 }
 
-function isStreamOptionsUnsupported(
-  status: number,
-  responseText: string,
-): boolean {
+export function isToolChoiceUnsupported(status: number, responseText: string): boolean {
+  return isUnsupportedParameterError(status, responseText, /tool[_ -]?choice/i);
+}
+
+function isStreamOptionsUnsupported(status: number, responseText: string): boolean {
   return isUnsupportedParameterError(
     status,
     responseText,

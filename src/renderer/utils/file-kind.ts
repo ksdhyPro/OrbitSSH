@@ -6,13 +6,9 @@ export const editableTextFileExtensions = new Set<string>(
   appConfig.sftp.textEditor.editableExtensions,
 );
 
-export const editableTextFileNames = new Set<string>(
-  appConfig.sftp.textEditor.editableFileNames,
-);
+export const editableTextFileNames = new Set<string>(appConfig.sftp.textEditor.editableFileNames);
 
-export const previewImageExtensions = new Set<string>(
-  appConfig.sftp.imagePreview.extensions,
-);
+export const previewImageExtensions = new Set<string>(appConfig.sftp.imagePreview.extensions);
 
 export function isKnownEditableTextFile(node: RemoteFileNode | null): boolean {
   if (!node || node.type !== "file") {
@@ -30,7 +26,7 @@ export function isKnownEditableTextFile(node: RemoteFileNode | null): boolean {
 export function isPreviewImageFile(node: RemoteFileNode | null): boolean {
   return Boolean(
     node &&
-      node.type === "file" &&
-      previewImageExtensions.has(getFileExtension(node.name.toLowerCase())),
+    node.type === "file" &&
+    previewImageExtensions.has(getFileExtension(node.name.toLowerCase())),
   );
 }

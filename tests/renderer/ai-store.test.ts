@@ -74,14 +74,21 @@ describe("useAiStore", () => {
 
     mock.emitStreamMessageStart({ ...route, messageId: "stream-1", createdAt: Date.now() + 1 });
     mock.emitStreamChunk({ ...route, messageId: "stream-1", chunk: "正在" });
-    mock.emitStreamChunk({ ...route, conversationId: "other", messageId: "stream-1", chunk: "串流" });
+    mock.emitStreamChunk({
+      ...route,
+      conversationId: "other",
+      messageId: "stream-1",
+      chunk: "串流",
+    });
     mock.emitStreamChunk({ ...route, requestId: "other", messageId: "stream-1", chunk: "串流" });
     mock.emitStreamChunk({ ...route, messageId: "stream-1", chunk: "检查" });
 
     expect(store.messages.find(message => message.id === "stream-1")?.content).toBe("正在检查");
 
     deferred.resolve({
-      messages: [{ id: "final-1", role: "assistant", content: "磁盘正常", createdAt: Date.now() + 2 }],
+      messages: [
+        { id: "final-1", role: "assistant", content: "磁盘正常", createdAt: Date.now() + 2 },
+      ],
       commandCards: [],
     });
     await sending;
@@ -93,13 +100,28 @@ describe("useAiStore", () => {
   it("进度消息支持整体替换内容，长命令进度不会越积越长", async () => {
     const store = useAiStore();
     const { deferred, sending, input } = await startPendingChat(store);
-    const route = { tabId: input.tabId, requestId: input.requestId, conversationId: input.conversationId };
+    const route = {
+      tabId: input.tabId,
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+    };
 
     mock.emitStreamMessageStart({ ...route, messageId: "progress-1", createdAt: Date.now() + 1 });
-    mock.emitStreamChunk({ ...route, messageId: "progress-1", chunk: "下载到 30%\n\n已运行 30 秒" });
-    mock.emitStreamChunk({ ...route, messageId: "progress-1", chunk: "下载到 80%\n\n已运行 2 分 0 秒", replace: true });
+    mock.emitStreamChunk({
+      ...route,
+      messageId: "progress-1",
+      chunk: "下载到 30%\n\n已运行 30 秒",
+    });
+    mock.emitStreamChunk({
+      ...route,
+      messageId: "progress-1",
+      chunk: "下载到 80%\n\n已运行 2 分 0 秒",
+      replace: true,
+    });
 
-    expect(store.messages.find(message => message.id === "progress-1")?.content).toBe("下载到 80%\n\n已运行 2 分 0 秒");
+    expect(store.messages.find(message => message.id === "progress-1")?.content).toBe(
+      "下载到 80%\n\n已运行 2 分 0 秒",
+    );
     deferred.resolve({ messages: [], commandCards: [] });
     await sending;
   });
@@ -107,10 +129,20 @@ describe("useAiStore", () => {
   it("命令卡事件只合并到身份一致的对话", async () => {
     const store = useAiStore();
     const { deferred, sending, input } = await startPendingChat(store);
-    const route = { tabId: input.tabId, requestId: input.requestId, conversationId: input.conversationId };
+    const route = {
+      tabId: input.tabId,
+      requestId: input.requestId,
+      conversationId: input.conversationId,
+    };
 
-    mock.emitCommandCard({ ...route, card: createCard({ id: "mismatch", conversationId: "other" }) });
-    mock.emitCommandCard({ ...route, card: createCard({ id: "match", conversationId: input.conversationId }) });
+    mock.emitCommandCard({
+      ...route,
+      card: createCard({ id: "mismatch", conversationId: "other" }),
+    });
+    mock.emitCommandCard({
+      ...route,
+      card: createCard({ id: "match", conversationId: input.conversationId }),
+    });
 
     expect(store.commandCards.map(card => card.id)).toEqual(["match"]);
     deferred.resolve({ messages: [], commandCards: [] });

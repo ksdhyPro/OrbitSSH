@@ -6,10 +6,7 @@ import {
   compareByModifyTime,
   toggleModifyTimeSortDirection,
 } from "../../src/renderer/utils/file-sort";
-import type {
-  SftpManagedTaskBatch,
-  SftpManagedTaskNode,
-} from "../../src/shared/sftp";
+import type { SftpManagedTaskBatch, SftpManagedTaskNode } from "../../src/shared/sftp";
 import { getStyleDeclarations, hasStyleRule } from "./helpers/styles";
 
 describe("按修改时间排序", () => {
@@ -94,7 +91,9 @@ describe("TransferTaskDialog", () => {
   });
 
   it("批次之间只用分隔线区分，批次本身不带背景和圆角", () => {
-    expect(getStyleDeclarations(".transfer-task-batch + .transfer-task-batch")["border-top"]).toBeDefined();
+    expect(
+      getStyleDeclarations(".transfer-task-batch + .transfer-task-batch")["border-top"],
+    ).toBeDefined();
     expect(hasStyleRule(".transfer-task-batch")).toBe(true);
     const batch = getStyleDeclarations(".transfer-task-batch");
     expect(batch.background).toBeUndefined();

@@ -22,9 +22,7 @@ function createExecutedCommand(index, overrides = {}) {
 }
 
 test("单轮执行达到二十条命令后停止", () => {
-  const executed = Array.from({ length: 20 }, (_, index) =>
-    createExecutedCommand(index),
-  );
+  const executed = Array.from({ length: 20 }, (_, index) => createExecutedCommand(index));
   assert.match(getAiExecutionStopReason(executed, Date.now()), /20 条命令/);
 });
 

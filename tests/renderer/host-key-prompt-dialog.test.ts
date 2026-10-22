@@ -80,13 +80,15 @@ describe("HostKeyPromptDialog", () => {
 
   it("密钥变化时并列展示前后指纹，默认操作为断开连接", async () => {
     const wrapper = await mountDialog();
-    emitPrompt(createPrompt({
-      kind: "changed",
-      keyType: "ecdsa-sha2-nistp256",
-      fingerprint: "SHA256:tt8c0+6p2BVU7KHYcCn0JlXj5aySS+/S+QzrfEmsqds",
-      previousKeyType: "ssh-ed25519",
-      previousFingerprint: "SHA256:NX3cl1iyu3EIR2jdFiIKVOcE3QNwRQw2wwKp0GOgpe0",
-    }));
+    emitPrompt(
+      createPrompt({
+        kind: "changed",
+        keyType: "ecdsa-sha2-nistp256",
+        fingerprint: "SHA256:tt8c0+6p2BVU7KHYcCn0JlXj5aySS+/S+QzrfEmsqds",
+        previousKeyType: "ssh-ed25519",
+        previousFingerprint: "SHA256:NX3cl1iyu3EIR2jdFiIKVOcE3QNwRQw2wwKp0GOgpe0",
+      }),
+    );
     await flushPromises();
 
     expect(wrapper.text()).toContain("警告：服务器主机密钥已变更");

@@ -67,9 +67,7 @@
   overflow: hidden;
   border: 1px solid var(--border-input);
   border-radius: var(--radius-xl);
-  background:
-    linear-gradient(180deg, var(--surface-gloss), transparent 72px),
-    var(--bg-elevated-2);
+  background: linear-gradient(180deg, var(--surface-gloss), transparent 72px), var(--bg-elevated-2);
   box-shadow: var(--shadow-dialog);
 }
 

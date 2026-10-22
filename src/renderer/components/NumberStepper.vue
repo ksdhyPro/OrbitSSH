@@ -27,7 +27,7 @@ const draft = ref(String(props.modelValue));
 // 外部值变化时（如载入已有连接数据）同步显示，避免与实际值脱节。
 watch(
   () => props.modelValue,
-  (value) => {
+  value => {
     if (String(value) !== draft.value) {
       draft.value = String(value);
     }
@@ -103,13 +103,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 <template>
   <div class="stepper-control number-stepper">
-    <button
-      type="button"
-      :disabled="atMin"
-      aria-label="减少"
-      @click="stepBy(-1)">
-      -
-    </button>
+    <button type="button" :disabled="atMin" aria-label="减少" @click="stepBy(-1)">-</button>
     <input
       v-model="draft"
       type="text"
@@ -118,14 +112,9 @@ function onKeydown(event: KeyboardEvent): void {
       class="stepper-input"
       @input="onInput"
       @blur="onBlur"
-      @keydown="onKeydown" />
-    <button
-      type="button"
-      :disabled="atMax"
-      aria-label="增加"
-      @click="stepBy(1)">
-      +
-    </button>
+      @keydown="onKeydown"
+    />
+    <button type="button" :disabled="atMax" aria-label="增加" @click="stepBy(1)">+</button>
   </div>
 </template>
 

@@ -11,8 +11,7 @@ export const useCoreStore = defineStore("core", () => {
     data?: Record<string, unknown>,
     level: "debug" | "info" | "warn" | "error" = "info",
   ): void {
-    const consoleMethod =
-      level === "error" ? "error" : level === "warn" ? "warn" : "log";
+    const consoleMethod = level === "error" ? "error" : level === "warn" ? "warn" : "log";
     console[consoleMethod](`[OrbitSSH renderer] ${message}`, data ?? {});
     void orbitSSHApi.value?.logger.write({
       scope: "renderer",

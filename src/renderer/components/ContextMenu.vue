@@ -54,10 +54,7 @@ function openSubmenu(item: ContextMenuItem, event: MouseEvent): void {
   const x = fitsOnRight
     ? rect.right + gap
     : Math.max(viewportMargin, rect.left - CONTEXT_MENU_SIZE.width - gap);
-  const { y } = resolveMenuPlacement(
-    { x: viewportMargin, y: rect.top - 4 },
-    item.children.length,
-  );
+  const { y } = resolveMenuPlacement({ x: viewportMargin, y: rect.top - 4 }, item.children.length);
 
   activeSubmenuKey = item.key;
   subMenu.open = true;
@@ -113,7 +110,8 @@ onUnmounted(clearSubmenuCloseTimer);
     prevent-context-menu
     @mouseenter="emit('menuEnter')"
     @mouseleave="emit('menuLeave')"
-    @close="handleClose">
+    @close="handleClose"
+  >
     <button
       v-for="(item, index) in items"
       :key="item.key"
@@ -131,7 +129,8 @@ onUnmounted(clearSubmenuCloseTimer);
       }"
       @mouseenter="openSubmenu(item, $event)"
       @mouseleave="scheduleSubmenuClose"
-      @click="selectMenuItem(item)">
+      @click="selectMenuItem(item)"
+    >
       <span v-if="item.icon" class="menu-item-icon" aria-hidden="true">
         <img :src="item.icon" alt="" />
       </span>
@@ -139,10 +138,7 @@ onUnmounted(clearSubmenuCloseTimer);
         <span class="menu-item-label">{{ item.label }}</span>
         <small v-if="item.desc">{{ item.desc }}</small>
       </span>
-      <span
-        v-if="item.children?.length"
-        class="menu-item-submenu-indicator"
-        aria-hidden="true">
+      <span v-if="item.children?.length" class="menu-item-submenu-indicator" aria-hidden="true">
         <img :src="chevronRightIcon" alt="" />
       </span>
     </button>
@@ -157,6 +153,7 @@ onUnmounted(clearSubmenuCloseTimer);
       @select="emit('select', $event)"
       @close="handleClose"
       @menu-enter="clearSubmenuCloseTimer"
-      @menu-leave="scheduleSubmenuClose" />
+      @menu-leave="scheduleSubmenuClose"
+    />
   </Teleport>
 </template>

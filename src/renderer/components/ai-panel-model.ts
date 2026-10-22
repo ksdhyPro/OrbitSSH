@@ -1,8 +1,4 @@
-import type {
-  AiCommandCard,
-  AiCommandStatus,
-  AiCommandTargetServer,
-} from "../../shared/ai";
+import type { AiCommandCard, AiCommandStatus, AiCommandTargetServer } from "../../shared/ai";
 
 export type AiPanelMessage = {
   id: string;
@@ -21,7 +17,14 @@ export type ProcessTimelineItem = {
 
 export type DisplayTimelineItem =
   | { type: "message"; id: string; createdAt: number; message: AiPanelMessage; streaming: boolean }
-  | { type: "process"; id: string; createdAt: number; items: ProcessTimelineItem[]; durationMs: number | null; running: boolean };
+  | {
+      type: "process";
+      id: string;
+      createdAt: number;
+      items: ProcessTimelineItem[];
+      durationMs: number | null;
+      running: boolean;
+    };
 
 export const statusLabels: Record<AiCommandStatus, string> = {
   suggested: "建议命令",
@@ -54,9 +57,7 @@ export function getProcessSummary(items: ProcessTimelineItem[]): string {
   if (failedCount > 0 || rejectedCount > 0 || cancelledCount > 0) {
     return `执行过程：${items.length} 条命令，${failedCount} 条失败，${cancelledCount} 条终止，${rejectedCount} 条已拒绝`;
   }
-  return items.length > 0
-    ? `执行过程：${items.length} 条命令已完成`
-    : "执行过程";
+  return items.length > 0 ? `执行过程：${items.length} 条命令已完成` : "执行过程";
 }
 
 export function getProcessItemTitle(item: ProcessTimelineItem): string {
@@ -67,9 +68,7 @@ export function getProcessDurationText(
   item: Extract<DisplayTimelineItem, { type: "process" }>,
 ): string | null {
   if (item.running) return "执行中";
-  return typeof item.durationMs === "number"
-    ? `用时 ${formatDuration(item.durationMs)}`
-    : null;
+  return typeof item.durationMs === "number" ? `用时 ${formatDuration(item.durationMs)}` : null;
 }
 
 /** 把毫秒格式化为便于浏览的累计耗时。 */
@@ -84,9 +83,7 @@ export function formatDuration(durationMs: number): string {
   }
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return minutes > 0
-    ? `${hours}小时${minutes}分钟${seconds}秒`
-    : `${hours}小时${seconds}秒`;
+  return minutes > 0 ? `${hours}小时${minutes}分钟${seconds}秒` : `${hours}小时${seconds}秒`;
 }
 
 /** 跨服务器命令的目标展示为“名称（用户@主机:端口）”，与主进程审批前解析的结果一致。 */

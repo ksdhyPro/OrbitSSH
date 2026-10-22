@@ -42,11 +42,7 @@ function normalizeBoundedString(value: unknown, label: string, maxChars: number)
   return requireBoundedString(value, label, maxChars);
 }
 
-function requireEnum<T extends string>(
-  value: unknown,
-  label: string,
-  allowed: readonly T[],
-): T {
+function requireEnum<T extends string>(value: unknown, label: string, allowed: readonly T[]): T {
   if (typeof value !== "string" || !allowed.includes(value as T)) {
     throw new Error(`${label}不在允许范围内`);
   }
@@ -71,8 +67,7 @@ function normalizeHistory(value: unknown): AiMessage[] {
   const messages = value.map((item, index): AiMessage | null => {
     const record = requireRecord(item, `AI 对话历史第 ${index + 1} 条`);
     const createdAt = Number(record.createdAt);
-    const completedAt =
-      record.completedAt === undefined ? undefined : Number(record.completedAt);
+    const completedAt = record.completedAt === undefined ? undefined : Number(record.completedAt);
     if (!Number.isFinite(createdAt)) throw new Error("AI 消息创建时间无效");
     if (completedAt !== undefined && !Number.isFinite(completedAt)) {
       throw new Error("AI 消息完成时间无效");
@@ -94,7 +89,8 @@ function normalizeHistory(value: unknown): AiMessage[] {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message) continue;
-    if (kept.length >= maxHistoryCount || totalChars + message.content.length > maxHistoryChars) break;
+    if (kept.length >= maxHistoryCount || totalChars + message.content.length > maxHistoryChars)
+      break;
     totalChars += message.content.length;
     kept.unshift(message);
   }
@@ -116,21 +112,13 @@ export function normalizeAiChatInput(input: unknown): AiChatInput {
     tabId,
     requestId: requireBoundedString(record.requestId, "AI 请求 ID", 128),
     conversationId: requireBoundedString(record.conversationId, "AI 对话 ID", 128),
-    mode: requireEnum(
-      record.mode,
-      "AI 模式",
-      ["ask", "auto", "full_access"] as const,
-    ),
+    mode: requireEnum(record.mode, "AI 模式", ["ask", "auto", "full_access"] as const),
     presetPrompt: normalizeBoundedString(
       record.presetPrompt,
       "AI 预提示词",
       AI_PRESET_PROMPT_MAX_CHARS,
     ),
-    conversationTitle: requireBoundedString(
-      record.conversationTitle,
-      "AI 对话标题",
-      128,
-    ),
+    conversationTitle: requireBoundedString(record.conversationTitle, "AI 对话标题", 128),
     conversationCreatedAt,
     messageId: requireBoundedString(record.messageId, "AI 当前消息 ID", 128),
     messageCreatedAt,

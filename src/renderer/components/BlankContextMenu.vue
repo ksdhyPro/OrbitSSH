@@ -40,9 +40,5 @@ function selectMenuItem(item: ContextMenuItem): void {
 </script>
 
 <template>
-  <ContextMenu
-    :menu="menu"
-    :items="menuItems"
-    @select="selectMenuItem"
-    @close="emit('close')" />
+  <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" @close="emit('close')" />
 </template>

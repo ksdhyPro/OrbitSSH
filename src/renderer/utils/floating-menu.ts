@@ -1,9 +1,5 @@
 export type FloatingMenuCloseReason =
-  | "outside-pointer"
-  | "outside-contextmenu"
-  | "outside-wheel"
-  | "escape"
-  | "manual";
+  "outside-pointer" | "outside-contextmenu" | "outside-wheel" | "escape" | "manual";
 
 interface FloatingMenuEntry {
   id: string;
@@ -49,9 +45,7 @@ function isFloatingMenuTrigger(event: Event): boolean {
   const path = getEventPath(event);
 
   return path.some(
-    target =>
-      target instanceof Element &&
-      Boolean(target.closest(FLOATING_MENU_TRIGGER_SELECTOR)),
+    target => target instanceof Element && Boolean(target.closest(FLOATING_MENU_TRIGGER_SELECTOR)),
   );
 }
 

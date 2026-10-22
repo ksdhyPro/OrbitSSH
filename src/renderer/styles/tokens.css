@@ -6,7 +6,8 @@
   --warning: #f0b44c;
   --warning-fill: rgba(240, 180, 76, 0.14);
   --warning-border: rgba(240, 180, 76, 0.42);
-  --warning-icon-filter: brightness(0) saturate(100%) invert(75%) sepia(42%) saturate(655%) hue-rotate(344deg) brightness(95%) contrast(95%);
+  --warning-icon-filter: brightness(0) saturate(100%) invert(75%) sepia(42%) saturate(655%)
+    hue-rotate(344deg) brightness(95%) contrast(95%);
   --bg-elevated-1: #202024; /* 侧边栏、设置导航等次级面板 */
   --bg-elevated-2: #28282c; /* 卡片面板、对话框默认底色 */
   --bg-elevated-3: rgba(255, 255, 255, 0.055); /* 轻量控件底色 */
@@ -91,7 +92,8 @@
   --radius-full: 999px; /* 胶囊、圆点 */
 
   /* ===== 字体 ===== */
-  --font-mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace; /* 路径、计数、脚本等等宽内容 */
+  --font-mono:
+    "Cascadia Mono", "SFMono-Regular", Consolas, monospace; /* 路径、计数、脚本等等宽内容 */
 
   /* ===== 字号刻度 ===== */
   --font-size-2xs: 10px; /* 角标、计数 */
@@ -117,13 +119,7 @@
   color-scheme: dark;
   color: var(--text-primary);
   background: var(--bg-base);
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "Segoe UI",
-    system-ui,
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -142,7 +138,8 @@
   --warning: #bd6f35;
   --warning-fill: rgba(189, 111, 53, 0.12);
   --warning-border: rgba(189, 111, 53, 0.38);
-  --warning-icon-filter: brightness(0) saturate(100%) invert(47%) sepia(36%) saturate(842%) hue-rotate(340deg) brightness(93%) contrast(88%);
+  --warning-icon-filter: brightness(0) saturate(100%) invert(47%) sepia(36%) saturate(842%)
+    hue-rotate(340deg) brightness(93%) contrast(88%);
   --bg-elevated-1: #f3f3f0;
   --bg-elevated-2: #fbfbf9;
   --bg-elevated-3: rgba(42, 42, 38, 0.035);

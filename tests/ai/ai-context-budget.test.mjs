@@ -34,23 +34,30 @@ test("Token 使用固定两个字符约等于一个 Token 的粗算规则", () =
 });
 
 test("上下文预算优先使用接口 usage，并在 80% 时触发", () => {
-  assert.equal(isContextBudgetReached(10, 100, {
-    promptTokens: 7_000,
-    completionTokens: 1_000,
-    totalTokens: 8_000,
-    source: "provider",
-  }), true);
+  assert.equal(
+    isContextBudgetReached(10, 100, {
+      promptTokens: 7_000,
+      completionTokens: 1_000,
+      totalTokens: 8_000,
+      source: "provider",
+    }),
+    true,
+  );
   assert.equal(isContextBudgetReached(10, 7_999), false);
 });
 
 test("上下文圆环用量按模型隔离，并限制在 100%", () => {
   const manager = new AiConversationContextManager();
-  manager.recordUsage(input, {
-    promptTokens: 9_000,
-    completionTokens: 2_000,
-    totalTokens: 11_000,
-    source: "provider",
-  }, "model-a");
+  manager.recordUsage(
+    input,
+    {
+      promptTokens: 9_000,
+      completionTokens: 2_000,
+      totalTokens: 11_000,
+      source: "provider",
+    },
+    "model-a",
+  );
 
   assert.deepEqual(manager.getContextUsage(input, "model-a", 10), {
     configId: "model-a",
@@ -67,12 +74,14 @@ test("未配置上下文上限时不会主动压缩", () => {
   const manager = new AiConversationContextManager();
   const oversizedInput = {
     ...input,
-    history: [{
-      id: "large",
-      role: "user",
-      content: "x".repeat(100_000),
-      createdAt: 1,
-    }],
+    history: [
+      {
+        id: "large",
+        role: "user",
+        content: "x".repeat(100_000),
+        createdAt: 1,
+      },
+    ],
   };
 
   assert.equal(manager.shouldCompress(oversizedInput, 0, "model-a"), false);
@@ -83,10 +92,14 @@ test("预提示词会计入上下文压缩预算", () => {
 
   assert.equal(manager.shouldCompress(input, 5, "model-a"), false);
   assert.equal(
-    manager.shouldCompress({
-      ...input,
-      presetPrompt: "规则".repeat(2_500),
-    }, 5, "model-a"),
+    manager.shouldCompress(
+      {
+        ...input,
+        presetPrompt: "规则".repeat(2_500),
+      },
+      5,
+      "model-a",
+    ),
     true,
   );
 });
@@ -107,11 +120,7 @@ test("摘要上限随历史规模动态增长，不再固定为 1500 Token", () 
       createdAt: index + 1,
     })),
   };
-  const maxTokens = calculateSummaryMaxTokens(
-    longHistoryInput,
-    { summary: "", commands: [] },
-    128,
-  );
+  const maxTokens = calculateSummaryMaxTokens(longHistoryInput, { summary: "", commands: [] }, 128);
 
   assert.ok(maxTokens > 1_500);
   assert.ok(maxTokens <= estimateTokenCount(longHistoryInput.history) * 0.2);
@@ -133,10 +142,17 @@ test("命令及回复占满新上下文时不再提交摘要请求", () => {
     },
   };
 
-  assert.equal(calculateSummaryMaxTokens(input, {
-    summary: "",
-    commands: [command],
-  }, 10), 0);
+  assert.equal(
+    calculateSummaryMaxTokens(
+      input,
+      {
+        summary: "",
+        commands: [command],
+      },
+      10,
+    ),
+    0,
+  );
 });
 
 test("压缩后只发送新上下文段历史，同时保留命令及命令回复", () => {
@@ -159,12 +175,12 @@ test("压缩后只发送新上下文段历史，同时保留命令及命令回�
 
   const nextInput = {
     ...input,
-    history: [
-      ...input.history,
-      { id: "m3", role: "user", content: "再看日志", createdAt: 3 },
-    ],
+    history: [...input.history, { id: "m3", role: "user", content: "再看日志", createdAt: 3 }],
   };
-  assert.deepEqual(manager.getSegmentHistory(nextInput).map(message => message.id), ["m3"]);
+  assert.deepEqual(
+    manager.getSegmentHistory(nextInput).map(message => message.id),
+    ["m3"],
+  );
   const memory = manager.getMemory(nextInput);
   assert.equal(memory.summary, "用户正在检查 nginx 服务。");
   assert.equal(memory.commands[0].command, "systemctl status nginx");
@@ -190,10 +206,7 @@ test("同一服务器会话可在其他标签页恢复运行上下文", () => {
     commands: [],
   });
 
-  assert.equal(
-    manager.getMemory(restoredInput).summary,
-    "已经确认 nginx 正常运行。",
-  );
+  assert.equal(manager.getMemory(restoredInput).summary, "已经确认 nginx 正常运行。");
   assert.deepEqual(manager.snapshot(restoredInput), {
     summary: "已经确认 nginx 正常运行。",
     historyFloorCreatedAt: 2,
@@ -228,7 +241,10 @@ test("内存只保留最近使用的对话状态，淘汰后从持久化上下�
   assert.equal(manager.size, 2);
 
   // a 已被淘汰，再次访问时按需从持久化上下文恢复命令记忆。
-  assert.deepEqual(manager.getMemory(conversation("a")).commands.map(item => item.command), ["df -h"]);
+  assert.deepEqual(
+    manager.getMemory(conversation("a")).commands.map(item => item.command),
+    ["df -h"],
+  );
   assert.equal(loads.filter(id => id === "a").length, 2);
   assert.equal(manager.size, 2);
 });

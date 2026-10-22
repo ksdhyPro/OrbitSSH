@@ -16,21 +16,16 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <AppDialog
-    v-if="open"
-    :title="title ?? '确认删除'"
-    width="small"
-    @close="emit('cancel')">
+  <AppDialog v-if="open" :title="title ?? '确认删除'" width="small" @close="emit('cancel')">
     <section class="confirm-dialog-content delete-confirm-content">
       <p class="delete-confirm-message">{{ message }}</p>
       <footer class="dialog-actions">
-        <button type="button" class="btn btn-ghost" @click="emit('cancel')">
-          取消
-        </button>
+        <button type="button" class="btn btn-ghost" @click="emit('cancel')">取消</button>
         <button
           type="button"
           :class="['btn', danger === false ? 'btn-primary' : 'btn-danger']"
-          @click="emit('confirm')">
+          @click="emit('confirm')"
+        >
           {{ confirmLabel ?? "删除" }}
         </button>
       </footer>

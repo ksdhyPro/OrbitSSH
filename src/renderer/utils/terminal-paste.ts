@@ -46,9 +46,7 @@ export function attachMultilinePasteListener(
   };
 }
 
-export function createTerminalPasteController(
-  options: TerminalPasteControllerOptions,
-) {
+export function createTerminalPasteController(options: TerminalPasteControllerOptions) {
   const pendingTerminalPaste = ref<PendingTerminalPaste | null>(null);
   const confirmedPasteTabs = new Set<string>();
 
@@ -63,9 +61,7 @@ export function createTerminalPasteController(
     pendingTerminalPaste.value = {
       tabId,
       text,
-      previewText: text
-        .replace(/^\x1b\[200~/, "")
-        .replace(/\x1b\[201~$/, ""),
+      previewText: text.replace(/^\x1b\[200~/, "").replace(/\x1b\[201~$/, ""),
       lineCount: text.split(/\r\n|\r|\n/).length,
     };
   }

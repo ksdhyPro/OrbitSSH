@@ -89,10 +89,7 @@ const headerMenuItems = computed<ContextMenuItem[]>(() => {
 });
 
 // 复用通用右键菜单，通过按钮位置计算顶栏下拉菜单坐标。
-function activateHeaderMenu(
-  menuKey: HeaderMenuKey,
-  trigger: HTMLElement,
-): void {
+function activateHeaderMenu(menuKey: HeaderMenuKey, trigger: HTMLElement): void {
   const rect = trigger.getBoundingClientRect();
   const placement = resolveMenuPlacement(
     { x: rect.left, y: rect.bottom },
@@ -128,10 +125,7 @@ function openHeaderMenu(menuKey: HeaderMenuKey, event: MouseEvent): void {
 
 // 菜单栏已打开时，鼠标平移到其他菜单按钮上直接切换（原生菜单栏行为）。
 // 未打开时不触发，避免一进入界面 hover 就弹出菜单。
-function switchHeaderMenuOnHover(
-  menuKey: HeaderMenuKey,
-  event: MouseEvent,
-): void {
+function switchHeaderMenuOnHover(menuKey: HeaderMenuKey, event: MouseEvent): void {
   if (!headerMenu.open || activeHeaderMenu.value === menuKey) {
     return;
   }
@@ -183,16 +177,11 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
     emit("openAbout");
   }
 }
-
 </script>
 
 <template>
   <header class="topbar">
-    <div
-      v-if="isMac && !isWindowFullScreen"
-      class="mac-window-controls"
-      aria-label="窗口控制"
-    >
+    <div v-if="isMac && !isWindowFullScreen" class="mac-window-controls" aria-label="窗口控制">
       <button
         type="button"
         tabindex="-1"
@@ -272,22 +261,12 @@ function selectHeaderMenuItem(item: ContextMenuItem): void {
           <span v-if="hasTransferTasks" class="tasklist-dot"></span>
         </button>
       </div>
-      <button
-        type="button"
-        tabindex="-1"
-        aria-label="设置"
-        @click="emit('openSettings')"
-      >
+      <button type="button" tabindex="-1" aria-label="设置" @click="emit('openSettings')">
         <img :src="settingsIcon" alt="" />
       </button>
       <template v-if="isWindows">
         <span class="window-action-divider"></span>
-        <button
-          type="button"
-          tabindex="-1"
-          aria-label="最小化窗口"
-          @click="emit('minimizeWindow')"
-        >
+        <button type="button" tabindex="-1" aria-label="最小化窗口" @click="emit('minimizeWindow')">
           <img :src="minimizeIcon" alt="" />
         </button>
         <button

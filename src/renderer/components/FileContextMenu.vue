@@ -69,7 +69,7 @@ const menuItems = computed<ContextMenuItem[]>(() => {
   if (node?.type === "directory") {
     return [
       // 文件夹菜单按单一顺序展示，避免在下载操作前后插入分隔线。
-      ...createItems.map((item) => ({ ...item, group: undefined })),
+      ...createItems.map(item => ({ ...item, group: undefined })),
       {
         key: "download",
         label: "下载文件夹",
@@ -156,9 +156,5 @@ function selectMenuItem(item: ContextMenuItem): void {
 </script>
 
 <template>
-  <ContextMenu
-    :menu="menu"
-    :items="menuItems"
-    @select="selectMenuItem"
-    @close="emit('close')" />
+  <ContextMenu :menu="menu" :items="menuItems" @select="selectMenuItem" @close="emit('close')" />
 </template>

@@ -17,27 +17,39 @@ test("去掉颜色、光标与标题控制序列，回车改写统一为换行",
 });
 
 test("发送给模型的终端上下文和工具结果不包含控制序列", () => {
-  const messages = buildAiMessages({
-    tabId: "tab-1",
-    requestId: "r",
-    conversationId: "c",
-    mode: "auto",
-    presetPrompt: "",
-    conversationTitle: "t",
-    conversationCreatedAt: 1,
-    messageId: "m",
-    messageCreatedAt: 2,
-    message: "看下状态",
-    context: { tabId: "tab-1", serverId: "s" },
-    history: [],
-  }, [{
-    toolCallId: "call-1",
-    toolName: "run_shell_command",
-    command: "ls --color=always",
-    reason: "列目录",
-    risk: "low",
-    result: { stdout: "\x1b[01;34mlogs\x1b[0m", stderr: "", exitCode: 0, timedOut: false, durationMs: 1 },
-  }], "\x1b[31merror\x1b[0m line");
+  const messages = buildAiMessages(
+    {
+      tabId: "tab-1",
+      requestId: "r",
+      conversationId: "c",
+      mode: "auto",
+      presetPrompt: "",
+      conversationTitle: "t",
+      conversationCreatedAt: 1,
+      messageId: "m",
+      messageCreatedAt: 2,
+      message: "看下状态",
+      context: { tabId: "tab-1", serverId: "s" },
+      history: [],
+    },
+    [
+      {
+        toolCallId: "call-1",
+        toolName: "run_shell_command",
+        command: "ls --color=always",
+        reason: "列目录",
+        risk: "low",
+        result: {
+          stdout: "\x1b[01;34mlogs\x1b[0m",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 1,
+        },
+      },
+    ],
+    "\x1b[31merror\x1b[0m line",
+  );
 
   const serialized = JSON.stringify(messages);
   assert.doesNotMatch(serialized, /\\u001b/);

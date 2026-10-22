@@ -14,12 +14,7 @@ export interface RemovedApproval<T> {
 export class ExpiringApprovalStore<T extends { tabId: string }> {
   private readonly approvals = new Map<string, StoredApproval<T>>();
 
-  set(
-    id: string,
-    value: T,
-    ttlMs: number,
-    onExpire?: (id: string, value: T) => void,
-  ): void {
+  set(id: string, value: T, ttlMs: number, onExpire?: (id: string, value: T) => void): void {
     this.delete(id);
     const expiresAt = Date.now() + ttlMs;
     const timer = setTimeout(() => {

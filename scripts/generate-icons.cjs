@@ -85,7 +85,7 @@ function buildIco(pngs) {
     dataOffset += data.length;
   }
 
-  return Buffer.concat([header, ...dirEntries, ...pngs.map((p) => p.data)]);
+  return Buffer.concat([header, ...dirEntries, ...pngs.map(p => p.data)]);
 }
 
 function buildIcns(pngs) {
@@ -114,9 +114,7 @@ async function main() {
 
   fs.mkdirSync(ICONS_DIR, { recursive: true });
 
-  const allSizes = [...new Set([...EXTRA_PNG_SIZES, ...ICO_SIZES])].sort(
-    (a, b) => b - a,
-  );
+  const allSizes = [...new Set([...EXTRA_PNG_SIZES, ...ICO_SIZES])].sort((a, b) => b - a);
 
   // ----- 1. 生成各分辨率 PNG（直接输出到 icons/）-----
   const icoPngs = [];
@@ -140,9 +138,7 @@ async function main() {
   console.log(
     `\n✓ ${ICO_OUT}  (${(icoBuf.length / 1024).toFixed(1)} KB, ${ICO_SIZES.length} sizes)`,
   );
-  console.log(
-    `✓ ${ICONS_DIR}/  (${allSizes.length} individual PNGs)`,
-  );
+  console.log(`✓ ${ICONS_DIR}/  (${allSizes.length} individual PNGs)`);
 
   // ----- 3. 生成 macOS ICNS -----
   const icnsPngs = [];
@@ -154,7 +150,7 @@ async function main() {
   console.log(`✓ ${ICNS_OUT}  (${(icnsBuf.length / 1024).toFixed(1)} KB)`);
 }
 
-main().catch((e) => {
+main().catch(e => {
   console.error("Icon generation failed:", e);
   process.exit(1);
 });

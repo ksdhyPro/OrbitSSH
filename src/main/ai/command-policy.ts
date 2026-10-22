@@ -6,17 +6,7 @@ export interface ShellCommandSegment {
   separatorBefore: ";" | "&&" | "||" | "|" | null;
 }
 
-const DANGEROUS_TOKENS = [
-  "sudo",
-  ">",
-  "<",
-  "&&",
-  "||",
-  ";",
-  "`",
-  "$(",
-  "&",
-];
+const DANGEROUS_TOKENS = ["sudo", ">", "<", "&&", "||", ";", "`", "$(", "&"];
 
 const MAX_AI_COMMAND_CHARS = 4_096;
 
@@ -193,7 +183,9 @@ function isReadonlyFirewallCommand(normalized: string): boolean {
   if (/^ip6?tables(?:-legacy|-nft)?\b/.test(normalized)) {
     return (
       /\s(-[A-Za-z]*[LS][A-Za-z]*|--list|--list-rules)(\s|$)/.test(normalized) &&
-      !/\s(-[AIDRFXPNEZ]|--(append|insert|delete|replace|flush|delete-chain|policy|new-chain|rename-chain|zero))\b/.test(normalized)
+      !/\s(-[AIDRFXPNEZ]|--(append|insert|delete|replace|flush|delete-chain|policy|new-chain|rename-chain|zero))\b/.test(
+        normalized,
+      )
     );
   }
   return /^(nft\s+list\b|ufw\s+status\b|firewall-cmd\s+(--state|--list-\S+|--get-\S+|--query-\S+)\b|ipset\s+(list|-L)\b)/.test(
@@ -214,7 +206,9 @@ const SENSITIVE_WRITE_PATH_PATTERNS = [
 
 function isSensitiveWritePath(path: string): boolean {
   const normalized = path.trim();
-  return Boolean(normalized) && SENSITIVE_WRITE_PATH_PATTERNS.some(pattern => pattern.test(normalized));
+  return (
+    Boolean(normalized) && SENSITIVE_WRITE_PATH_PATTERNS.some(pattern => pattern.test(normalized))
+  );
 }
 
 const MUST_APPROVE_GENERAL_PATTERNS = [
@@ -359,7 +353,9 @@ const READONLY_PATTERNS: RegExp[] = [
   /^nslookup\s+[A-Za-z0-9_.:-]+$/,
   /^dig\s+[A-Za-z0-9_.:-]+$/,
   new RegExp(`^ls(?:\\s+-[A-Za-z0-9A-Z@,._-]+)*(?:\\s+${SAFE_ARG})?$`),
-  new RegExp(`^find\\s+${SAFE_ARG}\\s+-maxdepth\\s+[1-5](?:\\s+-type\\s+[fdl])?(?:\\s+-name\\s+${SAFE_TEXT})?$`),
+  new RegExp(
+    `^find\\s+${SAFE_ARG}\\s+-maxdepth\\s+[1-5](?:\\s+-type\\s+[fdl])?(?:\\s+-name\\s+${SAFE_TEXT})?$`,
+  ),
   new RegExp(`^stat\\s+${SAFE_ARG}$`),
   new RegExp(`^file\\s+${SAFE_ARG}$`),
   new RegExp(`^wc\\s+(-l|-c|-m|-w)\\s+${SAFE_ARG}$`),
@@ -810,7 +806,9 @@ function parseOutputRedirects(segment: string): {
 }
 
 function isEmptyOutputCommand(commandText: string): boolean {
-  return /^(|:|true|false|cat \/dev\/null|echo( -[neE]+)*( ''| "")?|printf( ''| "")?)$/.test(commandText);
+  return /^(|:|true|false|cat \/dev\/null|echo( -[neE]+)*( ''| "")?|printf( ''| "")?)$/.test(
+    commandText,
+  );
 }
 
 function getNonOptionArguments(args: string[]): string[] {
@@ -822,7 +820,8 @@ function getOptionValues(args: string[], names: string[]): string[] {
   args.forEach((arg, index) => {
     for (const name of names) {
       if (arg === name && args[index + 1]) values.push(args[index + 1]!);
-      if (name.startsWith("--") && arg.startsWith(`${name}=`)) values.push(arg.slice(name.length + 1));
+      if (name.startsWith("--") && arg.startsWith(`${name}=`))
+        values.push(arg.slice(name.length + 1));
       if (!name.startsWith("--") && arg.startsWith(name) && arg.length > name.length) {
         values.push(arg.slice(name.length));
       }
@@ -882,19 +881,17 @@ function getWriteRiskReason(segment: string): string | null {
 
   const overwritesFile = redirects.some(
     redirect =>
-      redirect.operator !== ">>" &&
-      !/^\/dev\/(null|stdout|stderr|tty)$/.test(redirect.target),
+      redirect.operator !== ">>" && !/^\/dev\/(null|stdout|stderr|tty)$/.test(redirect.target),
   );
   if (overwritesFile && isEmptyOutputCommand(commandText)) {
     return "命令会清空文件内容，相当于删除数据";
   }
 
   const effective = getEffectiveCommand(commandText);
-  const args = readShellTokens(effective.normalized).slice(1).map(token => token.value);
-  if (
-    effective.commandName === "cp" &&
-    getNonOptionArguments(args)[0] === "/dev/null"
-  ) {
+  const args = readShellTokens(effective.normalized)
+    .slice(1)
+    .map(token => token.value);
+  if (effective.commandName === "cp" && getNonOptionArguments(args)[0] === "/dev/null") {
     return "命令会清空文件内容，相当于删除数据";
   }
 
@@ -964,11 +961,7 @@ function splitShellFallbackSegments(command: string): string[] {
 function isReadonlyFallbackChain(normalized: string): boolean {
   const segments = splitShellFallbackSegments(normalized);
 
-  if (
-    segments.length < 2 ||
-    segments.length > 8 ||
-    segments.some(segment => !segment)
-  ) {
+  if (segments.length < 2 || segments.length > 8 || segments.some(segment => !segment)) {
     return false;
   }
 
@@ -1004,8 +997,7 @@ function getMandatoryApprovalReason(
   // python3 --version 等纯版本查询不会执行脚本，不按解释器间接执行处理。
   if (
     !VERSION_QUERY_PATTERN.test(normalized) &&
-    (INDIRECT_EXECUTION_COMMANDS.has(commandName) ||
-      INDIRECT_EXECUTION_PATTERN.test(command))
+    (INDIRECT_EXECUTION_COMMANDS.has(commandName) || INDIRECT_EXECUTION_PATTERN.test(command))
   ) {
     return "命令通过 Shell、解释器或批处理包装器间接执行，必须确认";
   }
@@ -1073,20 +1065,14 @@ function isReadonlyPipeline(normalized: string): boolean {
     .split("|")
     .map(segment => stripAllowedReadonlyRedirects(segment.trim()));
 
-  if (
-    segments.length < 2 ||
-    segments.length > 4 ||
-    segments.some(segment => !segment)
-  ) {
+  if (segments.length < 2 || segments.length > 4 || segments.some(segment => !segment)) {
     return false;
   }
 
   // 管道第一段必须是有边界的只读查询，后续只允许纯过滤/计数/排序。
   return (
     isReadonlySingleCommand(segments[0]) &&
-    segments.slice(1).every(segment =>
-      PIPE_FILTER_PATTERNS.some(pattern => pattern.test(segment)),
-    )
+    segments.slice(1).every(segment => PIPE_FILTER_PATTERNS.some(pattern => pattern.test(segment)))
   );
 }
 
@@ -1123,11 +1109,7 @@ function isReadonlyCommandOrPipeline(normalized: string): boolean {
 function isReadonlyCompoundCommand(normalized: string): boolean {
   const segments = normalized.split(/\s*(?:;|&&)\s*/).map(segment => segment.trim());
 
-  if (
-    segments.length < 2 ||
-    segments.length > 12 ||
-    segments.some(segment => !segment)
-  ) {
+  if (segments.length < 2 || segments.length > 12 || segments.some(segment => !segment)) {
     return false;
   }
 
@@ -1226,14 +1208,10 @@ export function evaluateAiCommand(command: string): AiCommandPolicyResult {
   // 按 ;、&&、|| 和管道拆分后逐段审查，任一段需要审批或被拒绝时整条命令同样处理。
   const compoundSegments = splitAiShellCommands(command);
   if (compoundSegments.length > 1) {
-    const decisions = compoundSegments.map(segment =>
-      evaluateAiCommand(segment.command),
-    );
+    const decisions = compoundSegments.map(segment => evaluateAiCommand(segment.command));
     const denied = decisions.find(item => item.decision === "deny");
     if (denied) return denied;
-    const approval = decisions.find(
-      item => item.decision === "requires_approval",
-    );
+    const approval = decisions.find(item => item.decision === "requires_approval");
     if (approval) return approval;
     return isAutoAllowedQueryCommand(command)
       ? {

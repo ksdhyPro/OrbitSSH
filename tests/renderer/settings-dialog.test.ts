@@ -81,7 +81,9 @@ describe("SettingsDialog · AI", () => {
 
     await wrapper.get('[aria-label="如何安装到 Agent"]').trigger("click");
     await flushPromises();
-    const prompt = (wrapper.get('textarea[aria-label="OrbitSSH Agent 安装提示词"]').element as HTMLTextAreaElement).value;
+    const prompt = (
+      wrapper.get('textarea[aria-label="OrbitSSH Agent 安装提示词"]').element as HTMLTextAreaElement
+    ).value;
 
     expect(prompt).toContain('启动参数：["--mcp-stdio"]');
     expect(prompt).toContain("Skill 目录");

@@ -1,9 +1,6 @@
 import { ipcMain, shell } from "electron";
 
-import {
-  HELP_CHANGELOG_URL,
-  HELP_FEEDBACK_URL,
-} from "../../shared/help-links.js";
+import { HELP_CHANGELOG_URL, HELP_FEEDBACK_URL } from "../../shared/help-links.js";
 
 export type HelpLinkType = "feedback" | "changelog";
 

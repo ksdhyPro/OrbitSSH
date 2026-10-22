@@ -133,9 +133,7 @@ export function getThemeSelectionBackground(
     return selectionBackground;
   }
 
-  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(
-    selectionBackground,
-  );
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(selectionBackground);
   if (!match) {
     return "rgba(99, 99, 102, 0.2)";
   }
@@ -144,10 +142,7 @@ export function getThemeSelectionBackground(
   return `rgba(${Number.parseInt(red, 16)}, ${Number.parseInt(green, 16)}, ${Number.parseInt(blue, 16)}, 0.2)`;
 }
 
-export function getTerminalTheme(
-  themeMode: AppThemeMode,
-  selectionBackground: string,
-): ITheme {
+export function getTerminalTheme(themeMode: AppThemeMode, selectionBackground: string): ITheme {
   // xterm 的 Canvas 渲染器需要显式 ANSI 16 色，否则部分远端输出会丢失颜色。
   return {
     ...themePalettes[themeMode].terminal,
@@ -159,8 +154,6 @@ export function getEditorThemePalette(themeMode: AppThemeMode): EditorThemePalet
   return themePalettes[themeMode].editor;
 }
 
-export function getTerminalSearchDecorations(
-  themeMode: AppThemeMode,
-): TerminalSearchDecorations {
+export function getTerminalSearchDecorations(themeMode: AppThemeMode): TerminalSearchDecorations {
   return themePalettes[themeMode].terminalSearchDecorations;
 }

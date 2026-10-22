@@ -9,15 +9,7 @@ export interface AppSelectOption<T extends string = string> {
 </script>
 
 <script setup lang="ts" generic="T extends string">
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  useId,
-  watch,
-} from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import chevronDownIcon from "../../assets/icons/chevron-down.svg";
 
 const props = defineProps<{
@@ -46,18 +38,14 @@ const renderedOptions = computed<AppSelectOption<T | "">[]>(() => {
 });
 
 const selectedOption = computed(() =>
-  renderedOptions.value.find((option) => option.value === model.value),
+  renderedOptions.value.find(option => option.value === model.value),
 );
-const displayLabel = computed(
-  () => selectedOption.value?.label ?? props.placeholder ?? "请选择",
-);
+const displayLabel = computed(() => selectedOption.value?.label ?? props.placeholder ?? "请选择");
 const isPlaceholder = computed(
   () => !selectedOption.value || (model.value === "" && Boolean(props.placeholder)),
 );
 const activeOptionId = computed(() =>
-  isOpen.value && activeIndex.value >= 0
-    ? `${selectId}-option-${activeIndex.value}`
-    : undefined,
+  isOpen.value && activeIndex.value >= 0 ? `${selectId}-option-${activeIndex.value}` : undefined,
 );
 
 function findEnabledIndex(startIndex: number, direction: 1 | -1): number {
@@ -78,13 +66,13 @@ function findEnabledIndex(startIndex: number, direction: 1 | -1): number {
 
 function resolveInitialIndex(): number {
   const selectedIndex = renderedOptions.value.findIndex(
-    (option) => option.value === model.value && !option.disabled,
+    option => option.value === model.value && !option.disabled,
   );
   if (selectedIndex >= 0) {
     return selectedIndex;
   }
 
-  return renderedOptions.value.findIndex((option) => !option.disabled);
+  return renderedOptions.value.findIndex(option => !option.disabled);
 }
 
 function scrollActiveOptionIntoView(): void {
@@ -136,8 +124,7 @@ function moveToBoundary(position: "first" | "last"): void {
   const options = renderedOptions.value;
   const indexes = options.map((_, index) => index);
   const searchIndexes = position === "first" ? indexes : indexes.reverse();
-  activeIndex.value =
-    searchIndexes.find((index) => !options[index]?.disabled) ?? -1;
+  activeIndex.value = searchIndexes.find(index => !options[index]?.disabled) ?? -1;
   scrollActiveOptionIntoView();
 }
 
@@ -214,7 +201,7 @@ function handleDocumentPointerDown(event: PointerEvent): void {
 
 watch(
   () => props.disabled,
-  (disabled) => {
+  disabled => {
     if (disabled) {
       closeMenu();
     }
@@ -242,9 +229,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    ref="rootElement"
-    :class="['app-select', { open: isOpen, disabled }]">
+  <div ref="rootElement" :class="['app-select', { open: isOpen, disabled }]">
     <button
       ref="triggerElement"
       type="button"
@@ -258,18 +243,15 @@ onBeforeUnmount(() => {
       :title="title"
       :disabled="disabled"
       @click="toggleMenu"
-      @keydown="handleTriggerKeydown">
+      @keydown="handleTriggerKeydown"
+    >
       <span :class="['app-select-value', { placeholder: isPlaceholder }]">
         {{ displayLabel }}
       </span>
       <small v-if="selectedOption?.detail" class="app-select-detail">
         {{ selectedOption.detail }}
       </small>
-      <img
-        class="app-select-chevron"
-        :class="{ rotated: isOpen }"
-        :src="chevronDownIcon"
-        alt="" />
+      <img class="app-select-chevron" :class="{ rotated: isOpen }" :src="chevronDownIcon" alt="" />
     </button>
 
     <Transition name="app-select-menu">
@@ -279,7 +261,8 @@ onBeforeUnmount(() => {
         ref="listboxElement"
         class="app-select-listbox"
         role="listbox"
-        :aria-label="ariaLabel">
+        :aria-label="ariaLabel"
+      >
         <button
           v-for="(option, index) in renderedOptions"
           :id="`${selectId}-option-${index}`"
@@ -299,7 +282,8 @@ onBeforeUnmount(() => {
           :disabled="option.disabled"
           @mouseenter="!option.disabled && (activeIndex = index)"
           @mousedown.prevent
-          @click="selectOption(option)">
+          @click="selectOption(option)"
+        >
           <span>{{ option.label }}</span>
           <small v-if="option.detail" class="app-select-detail">
             {{ option.detail }}
@@ -307,7 +291,8 @@ onBeforeUnmount(() => {
           <span
             class="app-select-option-check"
             :class="{ visible: option.value === model }"
-            aria-hidden="true">✓</span
+            aria-hidden="true"
+            >✓</span
           >
         </button>
       </div>

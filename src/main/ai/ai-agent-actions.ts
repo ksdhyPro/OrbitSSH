@@ -20,27 +20,15 @@ import {
   resolveAiCommandPermission,
   resolveSavedServerCommandPermission,
 } from "./ai-permission-policy.js";
-import type {
-  ParsedAiCommand,
-  ParsedAssistantResponse,
-} from "./ai-provider.js";
+import type { ParsedAiCommand, ParsedAssistantResponse } from "./ai-provider.js";
 import {
   executeSavedServerCommand,
   resolveSavedServerTargetFromStore,
 } from "./ai-saved-server-command.js";
 import type { SavedServerTarget } from "./ai-saved-server-target.js";
-import {
-  containsRemoteShellCommand,
-  evaluateAiCommand,
-} from "./command-policy.js";
-import {
-  getAiCommandResultError,
-  getAiCommandResultStatus,
-} from "./ai-command-result.js";
-import {
-  LONG_COMMAND_TIMEOUT_MS,
-  runLongCommandMonitor,
-} from "./ai-long-command.js";
+import { containsRemoteShellCommand, evaluateAiCommand } from "./command-policy.js";
+import { getAiCommandResultError, getAiCommandResultStatus } from "./ai-command-result.js";
+import { LONG_COMMAND_TIMEOUT_MS, runLongCommandMonitor } from "./ai-long-command.js";
 
 interface EvaluatedCommand extends ParsedAiCommand {
   policy: AiCommandPolicyResult;
@@ -147,8 +135,7 @@ function createCard(
     conversationId: input.conversationId,
     command: getDisplayCommand(action),
     reason: options.reason ?? action.reason,
-    workingDirectory:
-      action.type === "saved_server" ? undefined : getWorkingDirectory(input),
+    workingDirectory: action.type === "saved_server" ? undefined : getWorkingDirectory(input),
     targetServer:
       action.type === "saved_server" && action.target
         ? {
@@ -167,19 +154,14 @@ function createCard(
   };
 }
 
-function mergeCards(
-  previousCards: AiCommandCard[],
-  nextCard: AiCommandCard,
-): AiCommandCard[] {
+function mergeCards(previousCards: AiCommandCard[], nextCard: AiCommandCard): AiCommandCard[] {
   return previousCards.some(card => card.id === nextCard.id)
     ? previousCards.map(card => (card.id === nextCard.id ? nextCard : card))
     : [...previousCards, nextCard];
 }
 
 /** 把模型的一次工具调用归一化为 Agent 唯一动作。 */
-export function getNextAgentAction(
-  parsed: ParsedAssistantResponse,
-): EvaluatedAiAction | null {
+export function getNextAgentAction(parsed: ParsedAssistantResponse): EvaluatedAiAction | null {
   const saved = parsed.savedServerCommands?.find(
     item => item.command.trim() && item.serverName.trim(),
   );
@@ -221,9 +203,7 @@ export function getNextAgentAction(
 }
 
 /** 审批恢复前重新计算本地策略，避免旧审批绕过更新后的安全规则。 */
-export function reevaluateAgentAction(
-  action: EvaluatedAiAction,
-): EvaluatedAiAction {
+export function reevaluateAgentAction(action: EvaluatedAiAction): EvaluatedAiAction {
   return {
     ...action,
     policy: evaluateAiCommand(action.command),
@@ -239,10 +219,7 @@ export function createPolicyRejectionFeedback(
   return {
     type: "local_command_policy_rejection",
     toolCallId: action.toolCallId,
-    toolName:
-      action.type === "long_shell"
-        ? "run_long_shell_command"
-        : "run_shell_command",
+    toolName: action.type === "long_shell" ? "run_long_shell_command" : "run_shell_command",
     retryCount,
     maxRetries,
     command: action.command,
@@ -274,9 +251,7 @@ export function cancelPendingApproval(
   reason: string,
   emit?: AgentEmitter,
 ): AiCommandCard {
-  const previousCard = approval.previousCards.find(
-    card => card.id === approval.cardId,
-  );
+  const previousCard = approval.previousCards.find(card => card.id === approval.cardId);
   const card = createCard(approval.input, approval.action, "cancelled", {
     id: approval.cardId,
     createdAt: previousCard?.createdAt ?? approval.createdAt,
@@ -294,17 +269,12 @@ function pauseForApproval(
   reason: string,
 ): AgentActionResult {
   const approvalId = createId();
-  const approvalCard = createCard(
-    request.input,
-    request.action,
-    "requires_approval",
-    {
-      id: cardId,
-      createdAt: cardCreatedAt,
-      approvalId,
-      reason,
-    },
-  );
+  const approvalCard = createCard(request.input, request.action, "requires_approval", {
+    id: cardId,
+    createdAt: cardCreatedAt,
+    approvalId,
+    reason,
+  });
   request.emit?.sendCommandCard(approvalCard);
   const nextCards = mergeCards(request.commandCards, approvalCard);
   request.storeApproval(approvalId, {
@@ -351,30 +321,28 @@ async function executeShellAction(
         risk: action.risk,
       },
     });
-    const result = action.type === "long_shell"
-      ? await runLongCommandMonitor({
-          toolCallId: action.toolCallId,
-          command: action.command,
-          reason: action.reason,
-          risk: action.risk,
-          signal,
-          execute: onOutput => executeTerminalCommand(
-            input.tabId,
-            action.command,
-            {
-              timeoutMs: LONG_COMMAND_TIMEOUT_MS,
-              signal,
-              workingDirectory: getWorkingDirectory(input),
-              onOutput,
-            },
-          ),
-          onProgress: request.onLongCommandProgress ?? (async () => undefined),
-        })
-      : await executeTerminalCommand(input.tabId, action.command, {
-          timeoutMs: 20_000,
-          signal,
-          workingDirectory: getWorkingDirectory(input),
-        });
+    const result =
+      action.type === "long_shell"
+        ? await runLongCommandMonitor({
+            toolCallId: action.toolCallId,
+            command: action.command,
+            reason: action.reason,
+            risk: action.risk,
+            signal,
+            execute: onOutput =>
+              executeTerminalCommand(input.tabId, action.command, {
+                timeoutMs: LONG_COMMAND_TIMEOUT_MS,
+                signal,
+                workingDirectory: getWorkingDirectory(input),
+                onOutput,
+              }),
+            onProgress: request.onLongCommandProgress ?? (async () => undefined),
+          })
+        : await executeTerminalCommand(input.tabId, action.command, {
+            timeoutMs: 20_000,
+            signal,
+            workingDirectory: getWorkingDirectory(input),
+          });
     const resultStatus = getAiCommandResultStatus(result);
     const completedCard = createCard(input, action, resultStatus, {
       id: cardId,
@@ -397,10 +365,7 @@ async function executeShellAction(
     });
     const executedCommand: ExecutedAiCommandContext = {
       toolCallId: action.toolCallId,
-      toolName:
-        action.type === "long_shell"
-          ? "run_long_shell_command"
-          : "run_shell_command",
+      toolName: action.type === "long_shell" ? "run_long_shell_command" : "run_shell_command",
       command: action.command,
       reason: action.reason,
       risk: action.risk,
@@ -412,10 +377,7 @@ async function executeShellAction(
     return {
       status: "continue",
       commandCards: nextCards,
-      executedCommands: [
-        ...request.executedCommands,
-        executedCommand,
-      ],
+      executedCommands: [...request.executedCommands, executedCommand],
     };
   } catch (error) {
     const cancelled = isAbortError(error) || signal.aborted;
@@ -426,10 +388,7 @@ async function executeShellAction(
         : String(error);
     request.onCommandExecuted?.({
       toolCallId: action.toolCallId,
-      toolName:
-        action.type === "long_shell"
-          ? "run_long_shell_command"
-          : "run_shell_command",
+      toolName: action.type === "long_shell" ? "run_long_shell_command" : "run_shell_command",
       command: action.command,
       reason: action.reason,
       risk: action.risk,
@@ -515,10 +474,7 @@ async function executeSavedServerAction(
     return {
       status: "continue",
       commandCards: nextCards,
-      executedCommands: [
-        ...request.executedCommands,
-        executedCommand,
-      ],
+      executedCommands: [...request.executedCommands, executedCommand],
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -546,11 +502,7 @@ async function executeSavedServerAction(
     });
     emit?.sendCommandCard(card);
     nextCards = mergeCards(nextCards, card);
-    messages.push(
-      createAssistantMessage(
-        `已保存服务器查询失败：${errorMessage}`,
-      ),
-    );
+    messages.push(createAssistantMessage(`已保存服务器查询失败：${errorMessage}`));
     return { status: "return", result: { messages, commandCards: nextCards } };
   }
 }
@@ -573,9 +525,7 @@ function resolveSavedServerAction(
     const reason = error instanceof Error ? error.message : String(error);
     const card = createCard(request.input, action, "rejected", { error: reason });
     request.emit?.sendCommandCard(card);
-    request.messages.push(
-      createAssistantMessage(`无法确定跨服务器命令的目标服务器：${reason}`),
-    );
+    request.messages.push(createAssistantMessage(`无法确定跨服务器命令的目标服务器：${reason}`));
     return {
       status: "return",
       result: {
@@ -625,20 +575,21 @@ export async function executeAgentAction(
     };
   }
 
-  const permission = request.action.type === "saved_server"
-    ? resolveSavedServerCommandPermission(
-        request.allowCrossServerOperations,
-        request.input.mode,
-        request.action.risk,
-        request.action.policy,
-        Boolean(request.approval),
-      )
-    : resolveAiCommandPermission(
-        request.input.mode,
-        request.action.risk,
-        request.action.policy,
-        Boolean(request.approval),
-      );
+  const permission =
+    request.action.type === "saved_server"
+      ? resolveSavedServerCommandPermission(
+          request.allowCrossServerOperations,
+          request.input.mode,
+          request.action.risk,
+          request.action.policy,
+          Boolean(request.approval),
+        )
+      : resolveAiCommandPermission(
+          request.input.mode,
+          request.action.risk,
+          request.action.policy,
+          Boolean(request.approval),
+        );
 
   if (permission.decision === "deny") {
     if (request.action.type === "saved_server") {

@@ -67,7 +67,8 @@ function requestDecision(prompt: HostKeyPrompt): Promise<boolean> {
   writeAppLog({
     scope: "main.ssh",
     level: prompt.kind === "changed" ? "warn" : "info",
-    message: prompt.kind === "changed" ? "主机密钥与已信任记录不一致" : "首次连接，等待确认主机密钥",
+    message:
+      prompt.kind === "changed" ? "主机密钥与已信任记录不一致" : "首次连接，等待确认主机密钥",
     data: {
       host: prompt.host,
       port: prompt.port,

@@ -1,96 +1,101 @@
-import SftpClient from 'ssh2-sftp-client'
-import { Client as SshClient } from 'ssh2'
+import SftpClient from "ssh2-sftp-client";
+import { Client as SshClient } from "ssh2";
 
-import { open as openLocalFile, rename, rm, stat } from 'node:fs/promises'
+import { open as openLocalFile, rename, rm, stat } from "node:fs/promises";
 
-import { writeAppLog } from '../logger.js'
-import { createServerConnectOptions } from '../ssh/auth-options.js'
-import { describeHostKeyError } from '../ssh/host-key-verification.js'
-import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
-import { appConfig } from '../../shared/config.js'
-import type { ServerAuthConfig } from '../../shared/server.js'
+import { writeAppLog } from "../logger.js";
+import { createServerConnectOptions } from "../ssh/auth-options.js";
+import { describeHostKeyError } from "../ssh/host-key-verification.js";
+import { getSshKeepaliveIntervalMs } from "../ssh/connection-options.js";
+import { appConfig } from "../../shared/config.js";
+import type { ServerAuthConfig } from "../../shared/server.js";
 import {
   SFTP_TRANSFER_CONCURRENCY_MAX,
-  SFTP_TRANSFER_CONCURRENCY_MIN
-} from '../../shared/settings.js'
-import type { FileFingerprintReader } from './file-fingerprint.js'
+  SFTP_TRANSFER_CONCURRENCY_MIN,
+} from "../../shared/settings.js";
+import type { FileFingerprintReader } from "./file-fingerprint.js";
 
 export interface RawSftpClient {
   lstat: (
     path: string,
     callback: (
       error: Error | undefined,
-      attributes: { mode?: number; size: number; mtime: number }
-    ) => void
-  ) => void
-  open: (path: string, flags: string, callback: (error: Error | undefined, handle: Buffer) => void) => void
+      attributes: { mode?: number; size: number; mtime: number },
+    ) => void,
+  ) => void;
+  open: (
+    path: string,
+    flags: string,
+    callback: (error: Error | undefined, handle: Buffer) => void,
+  ) => void;
   read: (
     handle: Buffer,
     buffer: Buffer,
     offset: number,
     length: number,
     position: number,
-    callback: (error: Error | undefined, bytesRead: number) => void
-  ) => void
+    callback: (error: Error | undefined, bytesRead: number) => void,
+  ) => void;
   write: (
     handle: Buffer,
     buffer: Buffer,
     offset: number,
     length: number,
     position: number,
-    callback: (error?: Error) => void
-  ) => void
-  close: (handle: Buffer, callback: (error?: Error) => void) => void
+    callback: (error?: Error) => void,
+  ) => void;
+  close: (handle: Buffer, callback: (error?: Error) => void) => void;
 }
 
 export interface PausableTransferTask {
-  paused: boolean
-  canceled: boolean
+  paused: boolean;
+  canceled: boolean;
 }
 
 interface TransferQueueItem<T> {
-  taskId: string
-  run: () => Promise<T>
-  resolve: (value: T) => void
-  reject: (error: unknown) => void
+  taskId: string;
+  run: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
 }
 
-const transferQueue: TransferQueueItem<unknown>[] = []
-let activeTransferCount = 0
-let maxConcurrentTransferTasks: number = appConfig.sftp.transfer.maxConcurrentTasks
+const transferQueue: TransferQueueItem<unknown>[] = [];
+let activeTransferCount = 0;
+let maxConcurrentTransferTasks: number = appConfig.sftp.transfer.maxConcurrentTasks;
 
 function getMaxConcurrentTransferTasks(): number {
-  return maxConcurrentTransferTasks
+  return maxConcurrentTransferTasks;
 }
 
 function runNextQueuedTransfer(): void {
   // 一次补满全部空闲槽位，确保调高并发数后排队任务可以立即生效。
   while (activeTransferCount < getMaxConcurrentTransferTasks()) {
-    const item = transferQueue.shift()
+    const item = transferQueue.shift();
 
     if (!item) {
-      return
+      return;
     }
 
-    activeTransferCount += 1
+    activeTransferCount += 1;
     writeAppLog({
-      scope: 'main.sftp',
-      message: '传输任务开始执行',
+      scope: "main.sftp",
+      message: "传输任务开始执行",
       data: {
         taskId: item.taskId,
         activeTransferCount,
         queuedTransferCount: transferQueue.length,
-        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
-      }
-    })
+        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks(),
+      },
+    });
 
-    void item.run()
+    void item
+      .run()
       .then(item.resolve)
       .catch(item.reject)
       .finally(() => {
-        activeTransferCount = Math.max(activeTransferCount - 1, 0)
-        runNextQueuedTransfer()
-      })
+        activeTransferCount = Math.max(activeTransferCount - 1, 0);
+        runNextQueuedTransfer();
+      });
   }
 }
 
@@ -98,12 +103,12 @@ export function setMaxConcurrentTransferTasks(value: number): void {
   const normalizedValue = Number.isFinite(value)
     ? Math.min(
         Math.max(Math.trunc(value), SFTP_TRANSFER_CONCURRENCY_MIN),
-        SFTP_TRANSFER_CONCURRENCY_MAX
+        SFTP_TRANSFER_CONCURRENCY_MAX,
       )
-    : appConfig.sftp.transfer.maxConcurrentTasks
+    : appConfig.sftp.transfer.maxConcurrentTasks;
 
-  maxConcurrentTransferTasks = normalizedValue
-  runNextQueuedTransfer()
+  maxConcurrentTransferTasks = normalizedValue;
+  runNextQueuedTransfer();
 }
 
 export function enqueueTransferTask<T>(taskId: string, run: () => Promise<T>): Promise<T> {
@@ -112,278 +117,281 @@ export function enqueueTransferTask<T>(taskId: string, run: () => Promise<T>): P
       taskId,
       run: run as () => Promise<unknown>,
       resolve: resolve as (value: unknown) => void,
-      reject
-    })
+      reject,
+    });
 
     writeAppLog({
-      scope: 'main.sftp',
-      message: '传输任务进入队列',
+      scope: "main.sftp",
+      message: "传输任务进入队列",
       data: {
         taskId,
         activeTransferCount,
         queuedTransferCount: transferQueue.length,
-        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks()
-      }
-    })
-    runNextQueuedTransfer()
-  })
+        maxConcurrentTransferTasks: getMaxConcurrentTransferTasks(),
+      },
+    });
+    runNextQueuedTransfer();
+  });
 }
 
 export async function getLocalFileSize(path: string): Promise<number> {
   try {
-    const metadata = await stat(path)
+    const metadata = await stat(path);
 
-    return metadata.isFile() ? metadata.size : 0
+    return metadata.isFile() ? metadata.size : 0;
   } catch {
-    return 0
+    return 0;
   }
 }
 
 export function getRawSftpClient(client: SftpClient): RawSftpClient {
-  const rawSftp = (client as unknown as { sftp?: RawSftpClient }).sftp
+  const rawSftp = (client as unknown as { sftp?: RawSftpClient }).sftp;
 
   if (!rawSftp) {
-    throw new Error('SFTP 连接尚未初始化')
+    throw new Error("SFTP 连接尚未初始化");
   }
 
-  return rawSftp
+  return rawSftp;
 }
 
 export function openRemoteReadHandle(sftp: RawSftpClient, path: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    sftp.open(path, 'r', (error, handle) => {
+    sftp.open(path, "r", (error, handle) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      resolve(handle)
-    })
-  })
+      resolve(handle);
+    });
+  });
 }
 
 export function openRemoteWriteHandle(
   sftp: RawSftpClient,
   path: string,
-  flags: 'w' | 'r+'
+  flags: "w" | "r+",
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     sftp.open(path, flags, (error, handle) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      resolve(handle)
-    })
-  })
+      resolve(handle);
+    });
+  });
 }
 
 export function closeRemoteHandle(sftp: RawSftpClient, handle: Buffer): Promise<void> {
   return new Promise((resolve, reject) => {
-    sftp.close(handle, (error) => {
+    sftp.close(handle, error => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      resolve()
-    })
-  })
+      resolve();
+    });
+  });
 }
 
 export function writeRemoteChunk(
   sftp: RawSftpClient,
   handle: Buffer,
   buffer: Buffer,
-  position: number
+  position: number,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    sftp.write(handle, buffer, 0, buffer.length, position, (error) => {
+    sftp.write(handle, buffer, 0, buffer.length, position, error => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      resolve()
-    })
-  })
+      resolve();
+    });
+  });
 }
 
 export function readRemoteChunk(
   sftp: RawSftpClient,
   handle: Buffer,
   length: number,
-  position: number
+  position: number,
 ): Promise<Buffer> {
-  const buffer = Buffer.allocUnsafe(length)
+  const buffer = Buffer.allocUnsafe(length);
 
   return new Promise((resolve, reject) => {
     sftp.read(handle, buffer, 0, length, position, (error, bytesRead) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      resolve(bytesRead === length ? buffer : buffer.subarray(0, bytesRead))
-    })
-  })
+      resolve(bytesRead === length ? buffer : buffer.subarray(0, bytesRead));
+    });
+  });
 }
 
 export function normalizeRemotePath(path: string): string {
-  const trimmedPath = path.trim()
+  const trimmedPath = path.trim();
 
-  return trimmedPath ? trimmedPath.replace(/\/+/g, '/') : '.'
+  return trimmedPath ? trimmedPath.replace(/\/+/g, "/") : ".";
 }
 
 export function joinRemotePath(parentPath: string, childName: string): string {
-  const normalizedParentPath = normalizeRemotePath(parentPath)
-  const pathPrefix = normalizedParentPath.endsWith('/') ? normalizedParentPath : `${normalizedParentPath}/`
+  const normalizedParentPath = normalizeRemotePath(parentPath);
+  const pathPrefix = normalizedParentPath.endsWith("/")
+    ? normalizedParentPath
+    : `${normalizedParentPath}/`;
 
-  return `${pathPrefix}${childName.replace(/\\/g, '/')}`.replace(/\/+/g, '/')
+  return `${pathPrefix}${childName.replace(/\\/g, "/")}`.replace(/\/+/g, "/");
 }
 
 export function getTransferTempPath(path: string): string {
-  return `${path}.download`
+  return `${path}.download`;
 }
 
 export async function replaceLocalFile(sourcePath: string, targetPath: string): Promise<void> {
   // 类型冲突时也只在临时文件完整落盘后删除旧目标，避免传输失败提前丢失原内容。
-  await rm(targetPath, { recursive: true, force: true }).catch(() => undefined)
-  await rename(sourcePath, targetPath)
+  await rm(targetPath, { recursive: true, force: true }).catch(() => undefined);
+  await rename(sourcePath, targetPath);
 }
 
 export function lstatRemotePath(
   client: SftpClient,
-  path: string
+  path: string,
 ): Promise<{ isFile: boolean; isSymbolicLink: boolean; size: number; modifyTime: number }> {
   return new Promise((resolve, reject) => {
     getRawSftpClient(client).lstat(path, (error, attributes) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      const fileType = (attributes.mode ?? 0) & 0o170000
+      const fileType = (attributes.mode ?? 0) & 0o170000;
       resolve({
         isFile: fileType === 0o100000,
         isSymbolicLink: fileType === 0o120000,
         size: attributes.size,
-        modifyTime: attributes.mtime
-      })
-    })
-  })
+        modifyTime: attributes.mtime,
+      });
+    });
+  });
 }
 
 export async function replaceRemoteFile(
   client: SftpClient,
   sourcePath: string,
-  targetPath: string
+  targetPath: string,
 ): Promise<void> {
   try {
-    const targetStat = await client.stat(targetPath)
+    const targetStat = await client.stat(targetPath);
 
     if (targetStat.isDirectory) {
-      await client.rmdir(targetPath, true)
+      await client.rmdir(targetPath, true);
     } else {
-      await client.delete(targetPath)
+      await client.delete(targetPath);
     }
   } catch {
     // 目标不存在时直接将完整临时文件改名到最终位置。
   }
-  await client.rename(sourcePath, targetPath)
+  await client.rename(sourcePath, targetPath);
 }
 
-export async function createSftpClient(name: string, server: ServerAuthConfig): Promise<SftpClient> {
-  const client = new SftpClient(name)
+export async function createSftpClient(
+  name: string,
+  server: ServerAuthConfig,
+): Promise<SftpClient> {
+  const client = new SftpClient(name);
 
   try {
     await client.connect({
       ...(await createServerConnectOptions(server)),
       readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs()
-    })
-    return client
+      keepaliveInterval: getSshKeepaliveIntervalMs(),
+    });
+    return client;
   } catch (error) {
-    const hostKeyError = describeHostKeyError(error)
-    throw hostKeyError ? new Error(hostKeyError) : error
+    const hostKeyError = describeHostKeyError(error);
+    throw hostKeyError ? new Error(hostKeyError) : error;
   }
 }
 
 export async function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
-  const connectOptions = await createServerConnectOptions(server)
-  const client = new SshClient()
+  const connectOptions = await createServerConnectOptions(server);
+  const client = new SshClient();
 
   return new Promise((resolve, reject) => {
     client
-      .once('ready', () => resolve(client))
-      .once('error', error => {
-        const hostKeyError = describeHostKeyError(error)
-        reject(hostKeyError ? new Error(hostKeyError) : error)
+      .once("ready", () => resolve(client))
+      .once("error", error => {
+        const hostKeyError = describeHostKeyError(error);
+        reject(hostKeyError ? new Error(hostKeyError) : error);
       })
       .connect({
         ...connectOptions,
         readyTimeout: 15000,
-        keepaliveInterval: getSshKeepaliveIntervalMs()
-      })
-  })
+        keepaliveInterval: getSshKeepaliveIntervalMs(),
+      });
+  });
 }
 
 export function execSshCommand(
   client: SshClient,
-  command: string
+  command: string,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     client.exec(command, (error, stream) => {
       if (error) {
-        reject(error)
-        return
+        reject(error);
+        return;
       }
 
-      const stdout: Buffer[] = []
-      const stderr: Buffer[] = []
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
 
-      stream.on('data', (chunk: Buffer) => stdout.push(chunk))
-      stream.stderr.on('data', (chunk: Buffer) => stderr.push(chunk))
-      stream.on('close', (code: number) => {
-        const stdoutText = Buffer.concat(stdout).toString('utf8')
-        const stderrText = Buffer.concat(stderr).toString('utf8')
+      stream.on("data", (chunk: Buffer) => stdout.push(chunk));
+      stream.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+      stream.on("close", (code: number) => {
+        const stdoutText = Buffer.concat(stdout).toString("utf8");
+        const stderrText = Buffer.concat(stderr).toString("utf8");
 
         if (code === 0) {
-          resolve({ stdout: stdoutText, stderr: stderrText })
-          return
+          resolve({ stdout: stdoutText, stderr: stderrText });
+          return;
         }
 
-        reject(new Error(stderrText.trim() || `远端命令执行失败：${code}`))
-      })
-      stream.on('error', reject)
-    })
-  })
+        reject(new Error(stderrText.trim() || `远端命令执行失败：${code}`));
+      });
+      stream.on("error", reject);
+    });
+  });
 }
 
 export function createRemoteFileFingerprintReader(client: SftpClient): FileFingerprintReader {
   return {
     async stat(path) {
       try {
-        const metadata = await client.stat(path)
+        const metadata = await client.stat(path);
 
-        return metadata.isFile
-          ? { size: metadata.size, modifyTime: metadata.modifyTime }
-          : null
+        return metadata.isFile ? { size: metadata.size, modifyTime: metadata.modifyTime } : null;
       } catch {
-        return null
+        return null;
       }
     },
     async open(path) {
-      const rawSftp = getRawSftpClient(client)
-      const handle = await openRemoteReadHandle(rawSftp, path)
+      const rawSftp = getRawSftpClient(client);
+      const handle = await openRemoteReadHandle(rawSftp, path);
 
       return {
         read: (offset, length) => readRemoteChunk(rawSftp, handle, length, offset),
-        close: () => closeRemoteHandle(rawSftp, handle)
-      }
-    }
-  }
+        close: () => closeRemoteHandle(rawSftp, handle),
+      };
+    },
+  };
 }
 
 export async function getRemoteUploadResumeOffset(
@@ -391,34 +399,34 @@ export async function getRemoteUploadResumeOffset(
   remotePath: string,
   totalBytes: number,
   allowResume: boolean,
-  safeResumeOffset?: number
+  safeResumeOffset?: number,
 ): Promise<number> {
   if (!allowResume || totalBytes <= 0) {
-    return 0
+    return 0;
   }
 
   try {
-    const remoteStat = await client.stat(remotePath)
+    const remoteStat = await client.stat(remotePath);
 
     if (remoteStat.isDirectory) {
-      throw new Error(`目标路径已存在同名目录：${remotePath}`)
+      throw new Error(`目标路径已存在同名目录：${remotePath}`);
     }
 
     if (remoteStat.size > totalBytes) {
-      return 0
+      return 0;
     }
 
-    if (typeof safeResumeOffset === 'number') {
-      return Math.min(Math.max(safeResumeOffset, 0), remoteStat.size, totalBytes)
+    if (typeof safeResumeOffset === "number") {
+      return Math.min(Math.max(safeResumeOffset, 0), remoteStat.size, totalBytes);
     }
 
-    return Math.min(remoteStat.size, totalBytes)
+    return Math.min(remoteStat.size, totalBytes);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('目标路径已存在同名目录')) {
-      throw error
+    if (error instanceof Error && error.message.includes("目标路径已存在同名目录")) {
+      throw error;
     }
 
-    return 0
+    return 0;
   }
 }
 
@@ -429,90 +437,99 @@ export async function uploadLocalFileToRemote(
   remotePath: string,
   totalBytes: number,
   resumeOffset: number,
-  onChunk: (transferredBytes: number) => void
+  onChunk: (transferredBytes: number) => void,
 ): Promise<void> {
-  const rawSftp = getRawSftpClient(client)
-  const tempRemotePath = getTransferTempPath(remotePath)
+  const rawSftp = getRawSftpClient(client);
+  const tempRemotePath = getTransferTempPath(remotePath);
 
   if (totalBytes === 0) {
-    const emptyRemoteHandle = await openRemoteWriteHandle(rawSftp, tempRemotePath, 'w')
+    const emptyRemoteHandle = await openRemoteWriteHandle(rawSftp, tempRemotePath, "w");
 
-    await closeRemoteHandle(rawSftp, emptyRemoteHandle).catch(() => undefined)
-    onChunk(0)
-    await replaceRemoteFile(client, tempRemotePath, remotePath)
-    return
+    await closeRemoteHandle(rawSftp, emptyRemoteHandle).catch(() => undefined);
+    onChunk(0);
+    await replaceRemoteFile(client, tempRemotePath, remotePath);
+    return;
   }
 
   if (resumeOffset > 0) {
     // 目标端已有半成品时从对应偏移继续写，避免上传阶段暂停后回到 50% 重新上传。
-    onChunk(resumeOffset)
+    onChunk(resumeOffset);
   }
 
   if (resumeOffset >= totalBytes) {
-    await replaceRemoteFile(client, tempRemotePath, remotePath)
-    return
+    await replaceRemoteFile(client, tempRemotePath, remotePath);
+    return;
   }
 
-  const localFile = await openLocalFile(localPath, 'r')
-  let remoteHandle: Buffer | undefined
-  let nextReadPosition = resumeOffset
-  let contiguousTransferredBytes = resumeOffset
-  const completedChunks = new Map<number, number>()
+  const localFile = await openLocalFile(localPath, "r");
+  let remoteHandle: Buffer | undefined;
+  let nextReadPosition = resumeOffset;
+  let contiguousTransferredBytes = resumeOffset;
+  const completedChunks = new Map<number, number>();
   const recordCompletedChunk = (position: number, length: number): void => {
-    const previousTransferredBytes = contiguousTransferredBytes
+    const previousTransferredBytes = contiguousTransferredBytes;
 
-    completedChunks.set(position, length)
+    completedChunks.set(position, length);
 
     while (true) {
-      const chunkLength = completedChunks.get(contiguousTransferredBytes)
+      const chunkLength = completedChunks.get(contiguousTransferredBytes);
 
       if (!chunkLength) {
-        break
+        break;
       }
 
-      completedChunks.delete(contiguousTransferredBytes)
-      contiguousTransferredBytes += chunkLength
+      completedChunks.delete(contiguousTransferredBytes);
+      contiguousTransferredBytes += chunkLength;
     }
 
     if (contiguousTransferredBytes > previousTransferredBytes) {
-      onChunk(contiguousTransferredBytes)
+      onChunk(contiguousTransferredBytes);
     }
-  }
+  };
 
   try {
-    remoteHandle = await openRemoteWriteHandle(rawSftp, tempRemotePath, resumeOffset > 0 ? 'r+' : 'w')
+    remoteHandle = await openRemoteWriteHandle(
+      rawSftp,
+      tempRemotePath,
+      resumeOffset > 0 ? "r+" : "w",
+    );
 
     const uploadRemainingChunks = async (): Promise<void> => {
       while (!task.paused && !task.canceled && nextReadPosition < totalBytes) {
-        const readPosition = nextReadPosition
-        const readLength = Math.min(appConfig.sftp.download.fastGetChunkSizeBytes, totalBytes - readPosition)
-        nextReadPosition += readLength
-        const buffer = Buffer.allocUnsafe(readLength)
-        const { bytesRead } = await localFile.read(buffer, 0, readLength, readPosition)
+        const readPosition = nextReadPosition;
+        const readLength = Math.min(
+          appConfig.sftp.download.fastGetChunkSizeBytes,
+          totalBytes - readPosition,
+        );
+        nextReadPosition += readLength;
+        const buffer = Buffer.allocUnsafe(readLength);
+        const { bytesRead } = await localFile.read(buffer, 0, readLength, readPosition);
 
         if (bytesRead === 0 || task.paused || task.canceled) {
-          return
+          return;
         }
 
-        const chunk = bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead)
+        const chunk = bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead);
 
         // 并发写入剩余分块，进度只推进到连续完成的位置，保证后续仍可安全续传。
-        await writeRemoteChunk(rawSftp, remoteHandle as Buffer, chunk, readPosition)
-        recordCompletedChunk(readPosition, chunk.length)
+        await writeRemoteChunk(rawSftp, remoteHandle as Buffer, chunk, readPosition);
+        recordCompletedChunk(readPosition, chunk.length);
       }
-    }
+    };
 
     await Promise.all(
-      Array.from({ length: appConfig.sftp.download.fastGetConcurrency }, () => uploadRemainingChunks())
-    )
+      Array.from({ length: appConfig.sftp.download.fastGetConcurrency }, () =>
+        uploadRemainingChunks(),
+      ),
+    );
   } finally {
     if (remoteHandle) {
-      await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined)
+      await closeRemoteHandle(rawSftp, remoteHandle).catch(() => undefined);
     }
-    await localFile.close().catch(() => undefined)
+    await localFile.close().catch(() => undefined);
   }
 
   if (!task.paused && !task.canceled) {
-    await replaceRemoteFile(client, tempRemotePath, remotePath)
+    await replaceRemoteFile(client, tempRemotePath, remotePath);
   }
 }

@@ -14,11 +14,7 @@ interface GroupedDragState<T extends GroupedItem> {
   recentlyDroppedTargetId: Ref<string | null>;
   showUngroupedDock: ComputedRef<boolean>;
   startDrag: (event: DragEvent, item: T) => void;
-  enterDropTarget: (
-    event: DragEvent,
-    groupId?: string,
-    onDwell?: () => void,
-  ) => void;
+  enterDropTarget: (event: DragEvent, groupId?: string, onDwell?: () => void) => void;
   leaveDropTarget: (event: DragEvent, groupId?: string) => void;
   finishDrag: (groupId?: string) => Promise<void>;
   cancelDrag: () => void;
@@ -37,9 +33,7 @@ export function useGroupedDrag<T extends GroupedItem>(
   const draggedId = ref<string | null>(null);
   const hoveredTargetId = ref<string | null>(null);
   const recentlyDroppedTargetId = ref<string | null>(null);
-  const draggedItem = computed(() =>
-    getItems().find(item => item.id === draggedId.value),
-  );
+  const draggedItem = computed(() => getItems().find(item => item.id === draggedId.value));
   const showUngroupedDock = computed(() => Boolean(draggedItem.value?.groupId));
   let dwellTimer = 0;
   let recentDropTimer = 0;
@@ -64,11 +58,7 @@ export function useGroupedDrag<T extends GroupedItem>(
     if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
   }
 
-  function enterDropTarget(
-    event: DragEvent,
-    groupId?: string,
-    onDwell?: () => void,
-  ): void {
+  function enterDropTarget(event: DragEvent, groupId?: string, onDwell?: () => void): void {
     if (!isDropAvailable(groupId)) return;
     hoveredTargetId.value = targetId(groupId);
     if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
@@ -88,8 +78,7 @@ export function useGroupedDrag<T extends GroupedItem>(
       return;
 
     clearDwellTimer();
-    if (hoveredTargetId.value === targetId(groupId))
-      hoveredTargetId.value = null;
+    if (hoveredTargetId.value === targetId(groupId)) hoveredTargetId.value = null;
   }
 
   async function finishDrag(groupId?: string): Promise<void> {

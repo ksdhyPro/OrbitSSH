@@ -23,8 +23,7 @@
   border-radius: var(--radius-md);
   outline: none;
   padding: 0 34px 0 10px;
-  background:
-    linear-gradient(180deg, var(--surface-gloss), transparent), var(--bg-input);
+  background: linear-gradient(180deg, var(--surface-gloss), transparent), var(--bg-input);
   color: var(--text-primary);
   font: inherit;
   font-size: var(--font-size-sm);
@@ -39,8 +38,7 @@
 .app-select-trigger:hover:not(:disabled) {
   border-color: var(--border-hover-strong);
   background:
-    linear-gradient(180deg, var(--surface-gloss-hover), transparent),
-    var(--bg-hover-soft);
+    linear-gradient(180deg, var(--surface-gloss-hover), transparent), var(--bg-hover-soft);
 }
 
 .app-select-trigger:focus-visible,

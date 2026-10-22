@@ -5,10 +5,7 @@ export type ModifyTimeSortDirection = "asc" | "desc";
  * 缺少修改时间的项目固定排在末尾，切换方向时不参与翻转。
  */
 export function compareByModifyTime(direction: ModifyTimeSortDirection) {
-  return (
-    left: { modifyTime?: number },
-    right: { modifyTime?: number },
-  ): number => {
+  return (left: { modifyTime?: number }, right: { modifyTime?: number }): number => {
     const leftTime = left.modifyTime;
     const rightTime = right.modifyTime;
 

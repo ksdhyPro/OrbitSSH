@@ -14,7 +14,10 @@ test("可按标签页清理审批且不影响其他标签页", () => {
   const store = new ExpiringApprovalStore();
   store.set("a", { tabId: "tab-1" }, 1_000);
   store.set("b", { tabId: "tab-2" }, 1_000);
-  assert.deepEqual(store.clearForTab("tab-1").map(item => item.id), ["a"]);
+  assert.deepEqual(
+    store.clearForTab("tab-1").map(item => item.id),
+    ["a"],
+  );
   assert.equal(store.get("a"), null);
   assert.deepEqual(store.get("b"), { tabId: "tab-2" });
 });

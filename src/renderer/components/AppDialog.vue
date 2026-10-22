@@ -26,7 +26,8 @@ const emit = defineEmits<{
           :class="['app-dialog', `app-dialog-${width}`]"
           role="dialog"
           aria-modal="true"
-          :aria-label="title">
+          :aria-label="title"
+        >
           <header class="app-dialog-header">
             <div>
               <h2>{{ title }}</h2>
@@ -36,7 +37,8 @@ const emit = defineEmits<{
               type="button"
               class="icon-btn icon-btn-sm"
               aria-label="关闭弹窗"
-              @click="emit('close')">
+              @click="emit('close')"
+            >
               <img :src="closeIcon" alt="" />
             </button>
           </header>

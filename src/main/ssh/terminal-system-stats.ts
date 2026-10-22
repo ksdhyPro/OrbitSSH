@@ -27,8 +27,7 @@ interface CpuSample {
 }
 
 type TerminalSystemStatsTarget =
-  | { kind: "local"; cwd: string }
-  | { kind: "ssh"; sshClient: Client };
+  { kind: "local"; cwd: string } | { kind: "ssh"; sshClient: Client };
 
 const remoteOSCache = new Map<string, CachedOSInfo>();
 const execFileAsync = promisify(execFile);
@@ -37,24 +36,24 @@ let localCpuSample: CpuSample | undefined;
 // 远端统计脚本只读取系统资源，不修改服务器状态。
 const UNIX_STATS_SCRIPT = [
   "os=$(uname -s 2>/dev/null)",
-  "os_name=\"$os\"",
+  'os_name="$os"',
   'if [ "$os" = "Linux" ]; then',
   '  os_name=$(cat /etc/os-release 2>/dev/null | awk -F= \'/^PRETTY_NAME=/ {gsub(/"/,""); print $2}\')',
   '  [ -z "$os_name" ] && os_name="Linux"',
   "  cpu=$(top -bn1 2>/dev/null | awk '/^%Cpu\\(s\\):/ {printf \"%.0f\", 100-$8}')",
-  "  [ -z \"$cpu\" ] && cpu=$(awk '{u=$2+$4; t=u+$5} END {printf \"%.0f\", u/t*100}' /proc/stat 2>/dev/null || echo 0)",
-  '  mem_line=$(free 2>/dev/null | awk \'/^Mem:/ {printf "%.0f %d %d", $3/$2*100, $3*1024, $2*1024}\')',
+  '  [ -z "$cpu" ] && cpu=$(awk \'{u=$2+$4; t=u+$5} END {printf "%.0f", u/t*100}\' /proc/stat 2>/dev/null || echo 0)',
+  "  mem_line=$(free 2>/dev/null | awk '/^Mem:/ {printf \"%.0f %d %d\", $3/$2*100, $3*1024, $2*1024}')",
   "  set -- $mem_line; mem_pct=${1:-0}; mem_used=${2:-0}; mem_total=${3:-0}",
   "  disk_line=$(df -B1 . 2>/dev/null | awk 'NR==2{print $4, $2}')",
   "  set -- $disk_line; disk_free=${1:-0}; disk_total=${2:-0}",
   'elif [ "$os" = "Darwin" ]; then',
-  '  os_ver=$(sw_vers -productVersion 2>/dev/null)',
+  "  os_ver=$(sw_vers -productVersion 2>/dev/null)",
   '  [ -n "$os_ver" ] && os_name="macOS ${os_ver}" || os_name="macOS"',
-  "  cpu=$(top -l 1 -n 0 2>/dev/null | awk '/CPU usage:/ {gsub(/%/,\"\"); printf \"%.0f\", 100-$7}')",
+  '  cpu=$(top -l 1 -n 0 2>/dev/null | awk \'/CPU usage:/ {gsub(/%/,""); printf "%.0f", 100-$7}\')',
   '  [ -z "$cpu" ] && cpu=0',
   "  mem_total=$(sysctl -n hw.memsize 2>/dev/null || echo 0)",
   "  pg=$(sysctl -n hw.pagesize 2>/dev/null || echo 16384)",
-  "  mem_used=$(vm_stat 2>/dev/null | awk -v pg=\"$pg\" '/Pages wired down/ {wired=$NF} /^Pages active/ {active=$NF} /^Pages occupied by compressor/ {compressed=$NF} END {gsub(/\\./,\"\",wired); gsub(/\\./,\"\",active); gsub(/\\./,\"\",compressed); printf \"%.0f\", (wired+active+compressed)*pg}')",
+  '  mem_used=$(vm_stat 2>/dev/null | awk -v pg="$pg" \'/Pages wired down/ {wired=$NF} /^Pages active/ {active=$NF} /^Pages occupied by compressor/ {compressed=$NF} END {gsub(/\\./,"",wired); gsub(/\\./,"",active); gsub(/\\./,"",compressed); printf "%.0f", (wired+active+compressed)*pg}\')',
   '  [ -z "$mem_used" ] && mem_used=0',
   '  if [ "${mem_total:-0}" -gt 0 ] 2>/dev/null; then mem_pct=$(awk "BEGIN {printf \\"%.0f\\", $mem_used/$mem_total*100}"); else mem_pct=0; fi',
   "  disk_line=$(df -k . 2>/dev/null | awk 'NR==2{printf \"%.0f %.0f\", $4*1024, $2*1024}')",
@@ -84,11 +83,7 @@ const WINDOWS_STATS_SCRIPT = [
   'Write-Output "{`"cpu`":$cpu,`"mem_pct`":$memPct,`"mem_used`":$memUsed,`"mem_total`":$memTotal,`"disk_free`":$diskFree,`"disk_total`":$diskTotal,`"os_type`":`"Windows`",`"os_name`":`"Windows $osName`"}"',
 ].join("; ");
 
-function execSshCommand(
-  sshClient: Client,
-  command: string,
-  timeoutMs = 8000,
-): Promise<string> {
+function execSshCommand(sshClient: Client, command: string, timeoutMs = 8000): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -142,25 +137,16 @@ function parseStatsOutput(raw: string): RemoteSystemStats | null {
     if (jsonStart < 0 || jsonEnd <= jsonStart) return null;
 
     // 远端 shell 启动脚本可能输出欢迎语，只截取统计 JSON 解析。
-    const parsed = JSON.parse(
-      sanitized.slice(jsonStart, jsonEnd + 1),
-    ) as Record<string, unknown>;
+    const parsed = JSON.parse(sanitized.slice(jsonStart, jsonEnd + 1)) as Record<string, unknown>;
 
     return {
-      cpuUsage:
-        typeof parsed.cpu === "number" ? Math.max(0, Math.min(100, parsed.cpu)) : 0,
+      cpuUsage: typeof parsed.cpu === "number" ? Math.max(0, Math.min(100, parsed.cpu)) : 0,
       memoryUsage:
-        typeof parsed.mem_pct === "number"
-          ? Math.max(0, Math.min(100, parsed.mem_pct))
-          : 0,
-      memoryUsed:
-        typeof parsed.mem_used === "number" ? Math.max(0, parsed.mem_used) : 0,
-      memoryTotal:
-        typeof parsed.mem_total === "number" ? Math.max(0, parsed.mem_total) : 0,
-      diskFree:
-        typeof parsed.disk_free === "number" ? Math.max(0, parsed.disk_free) : 0,
-      diskTotal:
-        typeof parsed.disk_total === "number" ? Math.max(0, parsed.disk_total) : 0,
+        typeof parsed.mem_pct === "number" ? Math.max(0, Math.min(100, parsed.mem_pct)) : 0,
+      memoryUsed: typeof parsed.mem_used === "number" ? Math.max(0, parsed.mem_used) : 0,
+      memoryTotal: typeof parsed.mem_total === "number" ? Math.max(0, parsed.mem_total) : 0,
+      diskFree: typeof parsed.disk_free === "number" ? Math.max(0, parsed.disk_free) : 0,
+      diskTotal: typeof parsed.disk_total === "number" ? Math.max(0, parsed.disk_total) : 0,
       osType: normalizeOsType(parsed.os_type),
       osName: typeof parsed.os_name === "string" ? parsed.os_name : "",
     };
@@ -251,11 +237,7 @@ async function getLocalSystemStats(cwd: string): Promise<RemoteSystemStats> {
   const memoryUsed = Math.max(0, memoryTotal - memoryFree);
   const disk = await getLocalDiskStats(cwd);
   const osType =
-    process.platform === "win32"
-      ? "windows"
-      : process.platform === "darwin"
-        ? "darwin"
-        : "linux";
+    process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux";
 
   return {
     cpuUsage: getLocalCpuUsage(),
@@ -295,9 +277,7 @@ export async function collectTerminalSystemStats(
   }
 
   try {
-    const stats = parseStatsOutput(
-      await execSshCommand(target.sshClient, UNIX_STATS_COMMAND),
-    );
+    const stats = parseStatsOutput(await execSshCommand(target.sshClient, UNIX_STATS_COMMAND));
     if (stats) {
       remoteOSCache.set(tabId, {
         type: stats.osType || "linux",

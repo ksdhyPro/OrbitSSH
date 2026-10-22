@@ -17,15 +17,11 @@ interface RunLongCommandMonitorOptions {
   execute: (
     onOutput: (stream: "stdout" | "stderr", text: string) => void,
   ) => Promise<AiCommandResult>;
-  onProgress: (
-    progress: AiLongCommandProgressContext,
-    signal: AbortSignal,
-  ) => Promise<void>;
+  onProgress: (progress: AiLongCommandProgressContext, signal: AbortSignal) => Promise<void>;
 }
 
 type CompletionEvent =
-  | { type: "completed"; result: AiCommandResult }
-  | { type: "failed"; error: unknown };
+  { type: "completed"; result: AiCommandResult } | { type: "failed"; error: unknown };
 
 function createAbortError(): Error {
   const error = new Error("命令执行已终止");
@@ -44,23 +40,26 @@ export async function runLongCommandMonitor(
   if (options.signal.aborted) throw createAbortError();
 
   const startedAt = Date.now();
-  const intervals = options.reportIntervalMs !== undefined
-    ? [options.reportIntervalMs]
-    : options.reportIntervalsMs ?? LONG_COMMAND_REPORT_INTERVALS_MS;
+  const intervals =
+    options.reportIntervalMs !== undefined
+      ? [options.reportIntervalMs]
+      : (options.reportIntervalsMs ?? LONG_COMMAND_REPORT_INTERVALS_MS);
   let reportCount = 0;
   let stdoutDelta = "";
   let stderrDelta = "";
 
-  const completion: Promise<CompletionEvent> = options.execute((stream, text) => {
-    if (stream === "stdout") {
-      stdoutDelta = appendTail(stdoutDelta, text, 6_000);
-    } else {
-      stderrDelta = appendTail(stderrDelta, text, 4_000);
-    }
-  }).then(
-    result => ({ type: "completed", result }),
-    error => ({ type: "failed", error }),
-  );
+  const completion: Promise<CompletionEvent> = options
+    .execute((stream, text) => {
+      if (stream === "stdout") {
+        stdoutDelta = appendTail(stdoutDelta, text, 6_000);
+      } else {
+        stderrDelta = appendTail(stderrDelta, text, 4_000);
+      }
+    })
+    .then(
+      result => ({ type: "completed", result }),
+      error => ({ type: "failed", error }),
+    );
 
   while (true) {
     const intervalMs = intervals[Math.min(reportCount, intervals.length - 1)]!;
@@ -91,10 +90,7 @@ export async function runLongCommandMonitor(
 
     // 模型生成进度期间命令可能已经结束；终态优先，过时进度不再写入对话。
     const progressController = new AbortController();
-    const progressSignal = AbortSignal.any([
-      options.signal,
-      progressController.signal,
-    ]);
+    const progressSignal = AbortSignal.any([options.signal, progressController.signal]);
     const progressReport = options.onProgress(progress, progressSignal).then(
       () => ({ type: "reported" as const }),
       error => ({ type: "report_failed" as const, error }),

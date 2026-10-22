@@ -8,7 +8,11 @@ export interface SavedServerTarget extends AiCommandTargetServer {
 type SavedServerCandidate = Pick<ServerConfig, "id" | "name" | "host" | "port" | "username">;
 
 function normalizeServerReference(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "").replace(/服务器|server/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/服务器|server/g, "");
 }
 
 function toTarget(server: SavedServerCandidate): SavedServerTarget {
@@ -43,10 +47,11 @@ export function resolveSavedServerTarget(
     throw new Error("服务器名称不能为空");
   }
 
-  const exactMatches = servers.filter(server =>
-    normalizeServerReference(server.name) === normalizedReference ||
-    normalizeServerReference(server.host) === normalizedReference ||
-    normalizeServerReference(`${server.host}:${server.port}`) === normalizedReference,
+  const exactMatches = servers.filter(
+    server =>
+      normalizeServerReference(server.name) === normalizedReference ||
+      normalizeServerReference(server.host) === normalizedReference ||
+      normalizeServerReference(`${server.host}:${server.port}`) === normalizedReference,
   );
   if (exactMatches.length === 1) return toTarget(exactMatches[0]!);
   if (exactMatches.length > 1) {

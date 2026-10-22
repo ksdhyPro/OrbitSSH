@@ -54,11 +54,7 @@ const sftpTransferConcurrencyOptions: AppSelectOption[] = Array.from(
   }),
 );
 
-const aiModeOptions: AiSettings["defaultMode"][] = [
-  "ask",
-  "auto",
-  "full_access",
-];
+const aiModeOptions: AiSettings["defaultMode"][] = ["ask", "auto", "full_access"];
 
 const themeModeOptions: SegmentedOption<AppThemeMode>[] = [
   { value: "dark", label: "深色" },
@@ -83,12 +79,13 @@ const aiModeDescriptions: Record<AiSettings["defaultMode"], string> = {
   full_access: "授权范围内的有效命令直接执行，不再弹出审批。",
 };
 
-const aiModeSegmentedOptions: SegmentedOption<AiSettings["defaultMode"]>[] =
-  aiModeOptions.map((mode) => ({
+const aiModeSegmentedOptions: SegmentedOption<AiSettings["defaultMode"]>[] = aiModeOptions.map(
+  mode => ({
     value: mode,
     label: aiModeLabels[mode],
     tone: mode === "full_access" ? "warning" : undefined,
-  }));
+  }),
+);
 
 const aiConfigDraft = ref<AiModelConfig[]>([]);
 // 模型列表弹窗
@@ -113,9 +110,7 @@ const isAiPresetPromptDirty = computed(
 );
 
 const activeAiConfig = computed(() =>
-  props.appSettings.ai.configs.find(
-    config => config.id === props.appSettings.ai.activeConfigId,
-  ),
+  props.appSettings.ai.configs.find(config => config.id === props.appSettings.ai.activeConfigId),
 );
 
 const aiConfigSummary = computed(() => {
@@ -131,9 +126,7 @@ const aiConfigSummary = computed(() => {
 
 const isEditingAiConfig = computed(() => Boolean(editingAiConfigId.value));
 
-const aiConfigFormDialogTitle = computed(() =>
-  isEditingAiConfig.value ? "编辑模型" : "新增模型",
-);
+const aiConfigFormDialogTitle = computed(() => (isEditingAiConfig.value ? "编辑模型" : "新增模型"));
 
 const aiConfigFormError = computed(() =>
   validateAiConfigForm(
@@ -197,11 +190,7 @@ function validateAiConfigForm(
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedApiKey = apiKey.trim();
 
-  if (
-    !normalizedModel ||
-    /\s/.test(normalizedModel) ||
-    normalizedModel.length > 120
-  ) {
+  if (!normalizedModel || /\s/.test(normalizedModel) || normalizedModel.length > 120) {
     return "模型名不能为空、不能包含空格，且不超过 120 个字符。";
   }
 
@@ -209,18 +198,11 @@ function validateAiConfigForm(
     return "Base URL 必须是 http 或 https 地址，且不能包含空格。";
   }
 
-  if (
-    !normalizedApiKey ||
-    /\s/.test(normalizedApiKey) ||
-    normalizedApiKey.length < 8
-  ) {
+  if (!normalizedApiKey || /\s/.test(normalizedApiKey) || normalizedApiKey.length < 8) {
     return "API Key 至少 8 位，且不能包含空格。";
   }
 
-  if (
-    !Number.isSafeInteger(contextTokenLimitK) ||
-    contextTokenLimitK <= 0
-  ) {
+  if (!Number.isSafeInteger(contextTokenLimitK) || contextTokenLimitK <= 0) {
     return "上下文总 Token 限制必须是大于 0 的整数。";
   }
 
@@ -355,10 +337,7 @@ function maskApiKey(apiKey: string): string {
   return `${value.slice(0, 3)}${"*".repeat(Math.min(value.length - 6, 12))}${value.slice(-3)}`;
 }
 
-function persistAiConfigs(
-  configs: AiModelConfig[],
-  activeConfigId: string,
-): void {
+function persistAiConfigs(configs: AiModelConfig[], activeConfigId: string): void {
   emit("updateAiSettings", {
     ...props.appSettings.ai,
     activeConfigId,
@@ -393,8 +372,7 @@ function saveAiConfigForm(): void {
         config.id === editingAiConfigId.value ? normalizedConfig : config,
       )
     : [...aiConfigDraft.value, normalizedConfig];
-  const nextActiveConfigId =
-    props.appSettings.ai.activeConfigId || normalizedConfig.id;
+  const nextActiveConfigId = props.appSettings.ai.activeConfigId || normalizedConfig.id;
 
   persistAiConfigs(nextConfigs, nextActiveConfigId);
   isAiConfigFormDialogOpen.value = false;
@@ -408,9 +386,7 @@ function selectAiConfig(configId: string): void {
 }
 
 function removeAiConfig(configId: string): void {
-  const nextConfigs = aiConfigDraft.value.filter(
-    config => config.id !== configId,
-  );
+  const nextConfigs = aiConfigDraft.value.filter(config => config.id !== configId);
   const nextActiveConfigId =
     props.appSettings.ai.activeConfigId === configId
       ? (nextConfigs[0]?.id ?? "")
@@ -426,12 +402,7 @@ function removeAiConfig(configId: string): void {
 
 <template>
   <Teleport to="body">
-    <section
-      v-if="open"
-      class="settings-page"
-      role="dialog"
-      aria-modal="true"
-      aria-label="设置">
+    <section v-if="open" class="settings-page" role="dialog" aria-modal="true" aria-label="设置">
       <div class="settings-layout">
         <aside class="settings-nav" aria-label="设置分类">
           <button type="button" class="settings-back" @click="emit('close')">
@@ -441,36 +412,28 @@ function removeAiConfig(configId: string): void {
           <p class="settings-nav-label">偏好设置</p>
           <button
             type="button"
-            :class="[
-              'settings-nav-item',
-              { active: activeSettingsSection === 'general' },
-            ]"
-            @click="emit('updateActiveSection', 'general')">
+            :class="['settings-nav-item', { active: activeSettingsSection === 'general' }]"
+            @click="emit('updateActiveSection', 'general')"
+          >
             通用
           </button>
           <button
             type="button"
-            :class="[
-              'settings-nav-item',
-              { active: activeSettingsSection === 'ai' },
-            ]"
-            @click="emit('updateActiveSection', 'ai')">
+            :class="['settings-nav-item', { active: activeSettingsSection === 'ai' }]"
+            @click="emit('updateActiveSection', 'ai')"
+          >
             AI
           </button>
           <button
             type="button"
-            :class="[
-              'settings-nav-item',
-              { active: activeSettingsSection === 'shortcuts' },
-            ]"
-            @click="emit('updateActiveSection', 'shortcuts')">
+            :class="['settings-nav-item', { active: activeSettingsSection === 'shortcuts' }]"
+            @click="emit('updateActiveSection', 'shortcuts')"
+          >
             快捷键
           </button>
         </aside>
 
-        <section
-          v-if="activeSettingsSection === 'general'"
-          class="settings-content">
+        <section v-if="activeSettingsSection === 'general'" class="settings-content">
           <header class="settings-content-heading">
             <h1>通用</h1>
           </header>
@@ -482,7 +445,8 @@ function removeAiConfig(configId: string): void {
               :model-value="appSettings.appearance.themeMode"
               :options="themeModeOptions"
               ariaLabel="主题"
-              @update:model-value="emit('updateThemeMode', $event)" />
+              @update:model-value="emit('updateThemeMode', $event)"
+            />
           </div>
 
           <div class="settings-field">
@@ -490,15 +454,11 @@ function removeAiConfig(configId: string): void {
               <h3>终端字体大小</h3>
             </div>
             <div class="stepper-control">
-              <button
-                type="button"
-                @click="emit('stepTerminalNumberSetting', 'fontSize', -1)">
+              <button type="button" @click="emit('stepTerminalNumberSetting', 'fontSize', -1)">
                 -
               </button>
               <output>{{ appSettings.terminal.fontSize }}</output>
-              <button
-                type="button"
-                @click="emit('stepTerminalNumberSetting', 'fontSize', 1)">
+              <button type="button" @click="emit('stepTerminalNumberSetting', 'fontSize', 1)">
                 +
               </button>
             </div>
@@ -509,15 +469,11 @@ function removeAiConfig(configId: string): void {
               <h3>终端行高</h3>
             </div>
             <div class="stepper-control">
-              <button
-                type="button"
-                @click="emit('stepTerminalNumberSetting', 'lineHeight', -0.1)">
+              <button type="button" @click="emit('stepTerminalNumberSetting', 'lineHeight', -0.1)">
                 -
               </button>
               <output>{{ appSettings.terminal.lineHeight.toFixed(1) }}</output>
-              <button
-                type="button"
-                @click="emit('stepTerminalNumberSetting', 'lineHeight', 0.1)">
+              <button type="button" @click="emit('stepTerminalNumberSetting', 'lineHeight', 0.1)">
                 +
               </button>
             </div>
@@ -531,32 +487,26 @@ function removeAiConfig(configId: string): void {
               <button
                 type="button"
                 class="color-select-trigger"
-                @click="
-                  emit(
-                    'updateSelectionDropdownOpen',
-                    !isSelectionBackgroundDropdownOpen,
-                  )
-                ">
+                @click="emit('updateSelectionDropdownOpen', !isSelectionBackgroundDropdownOpen)"
+              >
                 <span
                   class="color-swatch"
                   :style="{
                     background: appSettings.terminal.selectionBackground,
-                  }"></span>
+                  }"
+                ></span>
                 <span>{{ appSettings.terminal.selectionBackground }}</span>
               </button>
 
-              <div
-                v-if="isSelectionBackgroundDropdownOpen"
-                class="color-select-menu">
+              <div v-if="isSelectionBackgroundDropdownOpen" class="color-select-menu">
                 <button
                   v-for="color in selectionBackgroundOptions"
                   :key="color"
                   type="button"
                   class="color-select-option"
-                  @click="emit('selectSelectionBackground', color)">
-                  <span
-                    class="color-swatch"
-                    :style="{ background: color }"></span>
+                  @click="emit('selectSelectionBackground', color)"
+                >
+                  <span class="color-swatch" :style="{ background: color }"></span>
                   <span>{{ color }}</span>
                 </button>
               </div>
@@ -574,9 +524,8 @@ function removeAiConfig(configId: string): void {
               :max="300"
               :step="5"
               placeholder="10"
-              @update:model-value="
-                emit('updateKeepaliveIntervalSeconds', $event)
-              " />
+              @update:model-value="emit('updateKeepaliveIntervalSeconds', $event)"
+            />
           </div>
 
           <div class="settings-field">
@@ -590,9 +539,8 @@ function removeAiConfig(configId: string): void {
               :max="1440"
               :step="5"
               placeholder="0"
-              @update:model-value="
-                emit('updateIdleDisconnectMinutes', $event)
-              " />
+              @update:model-value="emit('updateIdleDisconnectMinutes', $event)"
+            />
           </div>
 
           <div class="settings-field">
@@ -601,33 +549,35 @@ function removeAiConfig(configId: string): void {
               <p>上传、下载和服务器间传输共享该文件并发数；中转时每个文件最多占用两条连接。</p>
             </div>
             <AppSelect
-              :model-value="
-                String(appSettings.connection.sftpMaxConcurrentTransfers)
-              "
+              :model-value="String(appSettings.connection.sftpMaxConcurrentTransfers)"
               :options="sftpTransferConcurrencyOptions"
               ariaLabel="SFTP 同时传输数量"
-              @update:model-value="
-                emit('updateSftpMaxConcurrentTransfers', Number($event))
-              " />
+              @update:model-value="emit('updateSftpMaxConcurrentTransfers', Number($event))"
+            />
           </div>
         </section>
 
         <section
           v-else-if="activeSettingsSection === 'ai'"
-          class="settings-content ai-settings-content">
+          class="settings-content ai-settings-content"
+        >
           <header class="settings-content-heading">
             <h1>AI</h1>
           </header>
           <div class="settings-field">
             <div>
               <h3>工作模式</h3>
-              <p>普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过 AI 助手标题栏的「打开 SSH」查看终端。</p>
+              <p>
+                普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过 AI
+                助手标题栏的「打开 SSH」查看终端。
+              </p>
             </div>
             <SegmentedControl
               :model-value="appSettings.ai.enabled"
               :options="workModeOptions"
               ariaLabel="工作模式"
-              @update:model-value="emit('updateAiSetting', 'enabled', $event)" />
+              @update:model-value="emit('updateAiSetting', 'enabled', $event)"
+            />
           </div>
 
           <div class="settings-field">
@@ -638,29 +588,37 @@ function removeAiConfig(configId: string): void {
             <AppSwitch
               :model-value="appSettings.ai.allowCrossServerOperations"
               ariaLabel="是否允许跨服务器执行操作"
-              @update:model-value="emit('updateAiSetting', 'allowCrossServerOperations', $event)" />
+              @update:model-value="emit('updateAiSetting', 'allowCrossServerOperations', $event)"
+            />
           </div>
 
           <div class="settings-field">
             <div>
               <h3>允许第三方 AI 通过 MCP 使用 SSH</h3>
-              <p>默认关闭。开启后，本机第三方 AI 可使用已保存连接自由执行远程命令，不经过 OrbitSSH 的命令策略和逐条审批，但不会获得密码或私钥。</p>
+              <p>
+                默认关闭。开启后，本机第三方 AI 可使用已保存连接自由执行远程命令，不经过 OrbitSSH
+                的命令策略和逐条审批，但不会获得密码或私钥。
+              </p>
             </div>
             <AppSwitch
               :model-value="appSettings.ai.allowMcpAccess"
               ariaLabel="允许第三方 AI 通过 MCP 使用 SSH"
-              @update:model-value="emit('updateAiSetting', 'allowMcpAccess', $event)" />
+              @update:model-value="emit('updateAiSetting', 'allowMcpAccess', $event)"
+            />
           </div>
 
           <div class="settings-field">
             <div>
               <h3>允许第三方 AI 通过 MCP 使用 SFTP</h3>
-              <p>默认关闭。开启后，调用方可使用已保存连接在指定的本地路径和远程路径之间上传或下载单文件，完成后会覆盖同名目标文件。</p>
+              <p>
+                默认关闭。开启后，调用方可使用已保存连接在指定的本地路径和远程路径之间上传或下载单文件，完成后会覆盖同名目标文件。
+              </p>
             </div>
             <AppSwitch
               :model-value="appSettings.ai.allowMcpSftpAccess"
               ariaLabel="允许第三方 AI 通过 MCP 使用 SFTP"
-              @update:model-value="emit('updateAiSetting', 'allowMcpSftpAccess', $event)" />
+              @update:model-value="emit('updateAiSetting', 'allowMcpSftpAccess', $event)"
+            />
           </div>
 
           <div
@@ -670,7 +628,8 @@ function removeAiConfig(configId: string): void {
             aria-label="如何安装到 Agent"
             @click="openMcpInstallDialog"
             @keydown.enter="openMcpInstallDialog"
-            @keydown.space.prevent="openMcpInstallDialog">
+            @keydown.space.prevent="openMcpInstallDialog"
+          >
             <div>
               <h3>如何安装到 Agent？</h3>
               <p>复制适配提示词，交给支持本地 MCP 的 AI 客户端完成配置。</p>
@@ -687,7 +646,8 @@ function removeAiConfig(configId: string): void {
             aria-label="查看模型配置"
             @click="openAiConfigDialog"
             @keydown.enter="openAiConfigDialog"
-            @keydown.space.prevent="openAiConfigDialog">
+            @keydown.space.prevent="openAiConfigDialog"
+          >
             <div>
               <h3>模型配置</h3>
               <p>{{ aiConfigSummary }}</p>
@@ -705,7 +665,8 @@ function removeAiConfig(configId: string): void {
             <AppSwitch
               :model-value="appSettings.ai.shareTerminalContext"
               ariaLabel="发送最近终端输出"
-              @update:model-value="emit('updateAiSetting', 'shareTerminalContext', $event)" />
+              @update:model-value="emit('updateAiSetting', 'shareTerminalContext', $event)"
+            />
           </div>
 
           <div class="settings-field ai-preset-prompt-field">
@@ -718,14 +679,16 @@ function removeAiConfig(configId: string): void {
               class="settings-text-input ai-preset-prompt-input"
               :maxlength="AI_PRESET_PROMPT_MAX_CHARS"
               placeholder="例如：回答前先说明判断依据，命令优先兼容 Debian。"
-              aria-label="AI 预提示词" />
+              aria-label="AI 预提示词"
+            />
             <div class="ai-preset-prompt-actions">
               <span>{{ aiPresetPromptDraft.length }} / {{ AI_PRESET_PROMPT_MAX_CHARS }}</span>
               <button
                 type="button"
                 class="btn btn-primary"
                 :disabled="!isAiPresetPromptDirty"
-                @click="saveAiPresetPrompt">
+                @click="saveAiPresetPrompt"
+              >
                 保存
               </button>
             </div>
@@ -741,20 +704,16 @@ function removeAiConfig(configId: string): void {
               :model-value="appSettings.ai.defaultMode"
               :options="aiModeSegmentedOptions"
               ariaLabel="默认模式"
-              @update:model-value="emit('updateAiSetting', 'defaultMode', $event)" />
+              @update:model-value="emit('updateAiSetting', 'defaultMode', $event)"
+            />
           </div>
         </section>
 
-        <section
-          v-else-if="activeSettingsSection === 'shortcuts'"
-          class="settings-content">
+        <section v-else-if="activeSettingsSection === 'shortcuts'" class="settings-content">
           <header class="settings-content-heading">
             <h1>快捷键</h1>
           </header>
-          <div
-            v-for="section in shortcutSections"
-            :key="section.id"
-            class="shortcut-section">
+          <div v-for="section in shortcutSections" :key="section.id" class="shortcut-section">
             <header class="shortcut-section-header">
               <h3>{{ section.title }}</h3>
             </header>
@@ -762,15 +721,13 @@ function removeAiConfig(configId: string): void {
             <div
               v-for="shortcut in section.shortcuts"
               :key="shortcut.id"
-              class="settings-field shortcut-field">
+              class="settings-field shortcut-field"
+            >
               <div>
                 <h4>{{ shortcut.title }}</h4>
               </div>
               <div class="shortcut-key-group">
-                <kbd
-                  v-for="key in shortcut.keys"
-                  :key="key"
-                  class="shortcut-key">
+                <kbd v-for="key in shortcut.keys" :key="key" class="shortcut-key">
                   {{ key }}
                 </kbd>
               </div>
@@ -786,7 +743,8 @@ function removeAiConfig(configId: string): void {
     title="如何安装到 Agent？"
     description="复制下面的提示词并发送给你的 AI 客户端。"
     width="large"
-    @close="closeMcpInstallDialog">
+    @close="closeMcpInstallDialog"
+  >
     <div class="mcp-install-dialog">
       <p class="mcp-install-tip">
         适用于支持本地 STDIO MCP 的 AI 客户端。安装完成后，通常需要重启客户端或新建会话。
@@ -797,7 +755,8 @@ function removeAiConfig(configId: string): void {
         readonly
         spellcheck="false"
         aria-label="OrbitSSH Agent 安装提示词"
-        :placeholder="isMcpInstallLoading ? '正在生成安装提示词…' : ''" />
+        :placeholder="isMcpInstallLoading ? '正在生成安装提示词…' : ''"
+      />
       <div class="mcp-install-actions">
         <span :class="{ 'is-error': mcpInstallMessage.includes('失败') }">
           {{ mcpInstallMessage }}
@@ -806,7 +765,8 @@ function removeAiConfig(configId: string): void {
           type="button"
           class="btn btn-primary"
           :disabled="isMcpInstallLoading || !mcpInstallPrompt"
-          @click="copyMcpInstallPrompt">
+          @click="copyMcpInstallPrompt"
+        >
           复制提示词
         </button>
       </div>
@@ -817,17 +777,13 @@ function removeAiConfig(configId: string): void {
     v-if="isAiConfigDialogOpen"
     title="模型配置"
     width="large"
-    @close="closeAiConfigDialog">
+    @close="closeAiConfigDialog"
+  >
     <div class="ai-config-dialog">
       <div class="ai-config-toolbar">
         <p>API Key 仅加密保存在本机。</p>
         <div class="ai-config-actions">
-          <button
-            type="button"
-            class="btn btn-primary"
-            @click="startAddAiConfig">
-            新增模型
-          </button>
+          <button type="button" class="btn btn-primary" @click="startAddAiConfig">新增模型</button>
         </div>
       </div>
 
@@ -859,9 +815,9 @@ function removeAiConfig(configId: string): void {
               v-for="config in aiConfigDraft"
               :key="config.id"
               :class="{
-                'ai-config-row-active':
-                  config.id === appSettings.ai.activeConfigId,
-              }">
+                'ai-config-row-active': config.id === appSettings.ai.activeConfigId,
+              }"
+            >
               <td>
                 {{ config.model }}
               </td>
@@ -875,14 +831,16 @@ function removeAiConfig(configId: string): void {
               <td>
                 <span
                   v-if="config.id === appSettings.ai.activeConfigId"
-                  class="ai-config-current-badge">
+                  class="ai-config-current-badge"
+                >
                   当前
                 </span>
                 <button
                   v-else
                   type="button"
                   class="btn btn-secondary btn-sm"
-                  @click="selectAiConfig(config.id)">
+                  @click="selectAiConfig(config.id)"
+                >
                   使用
                 </button>
               </td>
@@ -891,13 +849,15 @@ function removeAiConfig(configId: string): void {
                   <button
                     type="button"
                     class="btn btn-secondary btn-sm"
-                    @click="startEditAiConfig(config)">
+                    @click="startEditAiConfig(config)"
+                  >
                     编辑
                   </button>
                   <button
                     type="button"
                     class="btn btn-danger-soft btn-sm"
-                    @click="removeAiConfig(config.id)">
+                    @click="removeAiConfig(config.id)"
+                  >
                     删除
                   </button>
                 </div>
@@ -914,7 +874,8 @@ function removeAiConfig(configId: string): void {
     v-if="isAiConfigFormDialogOpen"
     :title="aiConfigFormDialogTitle"
     width="medium"
-    @close="closeAiConfigFormDialog">
+    @close="closeAiConfigFormDialog"
+  >
     <form class="ai-config-form" @submit.prevent="saveAiConfigForm">
       <p class="ai-config-form-tip" :class="{ 'is-error': aiConfigFormError }">
         {{ aiConfigFormError || "填写完整后保存，API Key 仅本地保存。" }}
@@ -926,7 +887,8 @@ function removeAiConfig(configId: string): void {
           v-model="aiConfigForm.model"
           class="settings-text-input"
           type="text"
-          placeholder="deepseek-chat" />
+          placeholder="deepseek-chat"
+        />
       </label>
 
       <label>
@@ -935,7 +897,8 @@ function removeAiConfig(configId: string): void {
           v-model="aiConfigForm.baseUrl"
           class="settings-text-input"
           type="url"
-          placeholder="https://api.example.com" />
+          placeholder="https://api.example.com"
+        />
       </label>
 
       <label>
@@ -945,7 +908,8 @@ function removeAiConfig(configId: string): void {
           class="settings-text-input"
           type="password"
           autocomplete="off"
-          placeholder="sk-..." />
+          placeholder="sk-..."
+        />
       </label>
 
       <label>
@@ -957,24 +921,15 @@ function removeAiConfig(configId: string): void {
             type="number"
             min="1"
             step="1"
-            placeholder="128" />
+            placeholder="128"
+          />
           <span>K</span>
         </div>
       </label>
 
       <div class="ai-config-form-actions">
-        <button
-          type="button"
-          class="btn btn-ghost"
-          @click="closeAiConfigFormDialog">
-          取消
-        </button>
-        <button
-          type="submit"
-          class="btn btn-primary"
-          :disabled="!canSaveAiConfigForm">
-          保存
-        </button>
+        <button type="button" class="btn btn-ghost" @click="closeAiConfigFormDialog">取消</button>
+        <button type="submit" class="btn btn-primary" :disabled="!canSaveAiConfigForm">保存</button>
       </div>
     </form>
   </AppDialog>

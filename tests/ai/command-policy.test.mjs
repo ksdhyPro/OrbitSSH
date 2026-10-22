@@ -93,11 +93,7 @@ test("高风险命令及常见包装形式必须审批", () => {
     "echo $(rm -rf /tmp/demo)",
   ];
   for (const command of commands) {
-    assert.equal(
-      evaluateAiCommand(command).decision,
-      "requires_approval",
-      command,
-    );
+    assert.equal(evaluateAiCommand(command).decision, "requires_approval", command);
   }
 });
 
@@ -108,18 +104,9 @@ test("非法或无法安全展示的命令直接拒绝", () => {
 });
 
 test("复合只读命令保留自动执行能力", () => {
-  assert.equal(
-    evaluateAiCommand("pwd && df -h; free -h").decision,
-    "allow_readonly",
-  );
-  assert.equal(
-    evaluateAiCommand("pwd; rm -rf /tmp/demo").decision,
-    "requires_approval",
-  );
-  assert.equal(
-    evaluateAiCommand("docker ps -q | wc -l && docker ps").decision,
-    "allow_readonly",
-  );
+  assert.equal(evaluateAiCommand("pwd && df -h; free -h").decision, "allow_readonly");
+  assert.equal(evaluateAiCommand("pwd; rm -rf /tmp/demo").decision, "requires_approval");
+  assert.equal(evaluateAiCommand("docker ps -q | wc -l && docker ps").decision, "allow_readonly");
 });
 
 test("任何常见包装形式的跨服务器 Shell 都会被识别", () => {
@@ -153,7 +140,7 @@ test("无法逐段审查的 Shell 结构在自主执行模式下必须审批", (
     "! rm -rf /data",
     "ls | xargs rm",
     "diff <(cat a) <(cat b)",
-    "echo \"$(rm -rf /data)\"",
+    'echo "$(rm -rf /data)"',
   ];
   for (const command of commands) {
     assert.equal(evaluateAiCommand(command).decision, "requires_approval", command);

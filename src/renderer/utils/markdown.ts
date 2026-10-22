@@ -38,8 +38,7 @@ if (defaultCodeBlockRenderer) {
 
 const defaultLinkOpen =
   markdown.renderer.rules.link_open ??
-  ((tokens, idx, options, _env, self) =>
-    self.renderToken(tokens, idx, options));
+  ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
 
 markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   const token = tokens[idx];

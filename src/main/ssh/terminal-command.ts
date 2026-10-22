@@ -7,10 +7,7 @@ import type { AiCommandResult } from "../../shared/ai.js";
 
 const execAsync = promisify(exec);
 
-export type TerminalCommandOutputHandler = (
-  stream: "stdout" | "stderr",
-  text: string,
-) => void;
+export type TerminalCommandOutputHandler = (stream: "stdout" | "stderr", text: string) => void;
 
 function createCommandAbortError(): Error {
   const error = new Error("命令执行已终止");
@@ -135,10 +132,7 @@ export function executeSshTerminalCommand(
 
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    const effectiveCommand = buildSshCommandInWorkingDirectory(
-      command,
-      workingDirectory,
-    );
+    const effectiveCommand = buildSshCommandInWorkingDirectory(command, workingDirectory);
     sshClient.exec(effectiveCommand, (error, openedStream) => {
       if (error) {
         fail(error);
@@ -165,11 +159,7 @@ export async function executeSshTextCommand(
   command: string,
   timeoutMs: number,
 ): Promise<string> {
-  const result = await executeSshTerminalCommand(
-    sshClient,
-    command,
-    timeoutMs,
-  );
+  const result = await executeSshTerminalCommand(sshClient, command, timeoutMs);
 
   if (result.timedOut) {
     throw new Error("远端命令超时");
@@ -187,13 +177,7 @@ export async function executeLocalTerminalCommand(
   onOutput?: TerminalCommandOutputHandler,
 ): Promise<AiCommandResult> {
   if (onOutput) {
-    return executeStreamingLocalTerminalCommand(
-      cwd,
-      command,
-      timeoutMs,
-      signal,
-      onOutput,
-    );
+    return executeStreamingLocalTerminalCommand(cwd, command, timeoutMs, signal, onOutput);
   }
 
   const startedAt = Date.now();
@@ -228,9 +212,10 @@ export async function executeLocalTerminalCommand(
 
     return {
       stdout: String(record.stdout ?? "").slice(0, 20_000),
-      stderr: String(
-        record.stderr ?? (error instanceof Error ? error.message : ""),
-      ).slice(0, 10_000),
+      stderr: String(record.stderr ?? (error instanceof Error ? error.message : "")).slice(
+        0,
+        10_000,
+      ),
       exitCode: typeof record.code === "number" ? record.code : null,
       timedOut: Boolean(record.killed),
       durationMs: Date.now() - startedAt,

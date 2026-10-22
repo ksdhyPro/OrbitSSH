@@ -33,7 +33,8 @@ export function parseResponsesTokenUsage(value: unknown): AiTokenUsage | undefin
     !Number.isFinite(promptTokens) ||
     !Number.isFinite(completionTokens) ||
     !Number.isFinite(totalTokens)
-  ) return undefined;
+  )
+    return undefined;
 
   return {
     promptTokens: Math.max(0, Math.trunc(promptTokens)),
@@ -80,13 +81,15 @@ export function buildResponsesTools(tools: ReadonlyArray<Record<string, unknown>
     const fn = tool.function;
     if (tool.type !== "function" || !fn || typeof fn !== "object") return [];
     const record = fn as Record<string, unknown>;
-    return [{
-      type: "function",
-      name: record.name,
-      description: record.description,
-      parameters: record.parameters,
-      strict: record.strict,
-    }];
+    return [
+      {
+        type: "function",
+        name: record.name,
+        description: record.description,
+        parameters: record.parameters,
+        strict: record.strict,
+      },
+    ];
   });
 }
 
@@ -113,20 +116,18 @@ export function parseResponsesPayload(value: unknown): ParsedResponsesResult {
         const text = (part as Record<string, unknown>).text;
         if (typeof text === "string" && text) textParts.push(text);
       }
-    } else if (
-      outputItem.type === "function_call" &&
-      typeof outputItem.name === "string"
-    ) {
+    } else if (outputItem.type === "function_call" && typeof outputItem.name === "string") {
       toolCalls.push({
-        id: typeof outputItem.call_id === "string"
-          ? outputItem.call_id
-          : typeof outputItem.id === "string" ? outputItem.id : undefined,
+        id:
+          typeof outputItem.call_id === "string"
+            ? outputItem.call_id
+            : typeof outputItem.id === "string"
+              ? outputItem.id
+              : undefined,
         type: "function",
         function: {
           name: outputItem.name,
-          arguments: typeof outputItem.arguments === "string"
-            ? outputItem.arguments
-            : "",
+          arguments: typeof outputItem.arguments === "string" ? outputItem.arguments : "",
         },
       });
     }
@@ -212,7 +213,7 @@ export async function collectResponsesSseStream(
       } else if (type === "response.completed" || type === "response.failed") {
         const response = event.response as Record<string, unknown> | undefined;
         usage = parseResponsesTokenUsage(response?.usage) ?? usage;
-        responseError = response ? getResponseError(response) ?? responseError : responseError;
+        responseError = response ? (getResponseError(response) ?? responseError) : responseError;
       }
     } catch {
       // 单个 SSE 事件损坏时跳过，继续接收后续事件。
@@ -254,9 +255,8 @@ export async function collectResponsesSseStream(
         toolCallsByIndex.set(index, {
           id: toolCall.id ?? "",
           name: toolCall.function?.name ?? "",
-          arguments: typeof toolCall.function?.arguments === "string"
-            ? toolCall.function.arguments
-            : "",
+          arguments:
+            typeof toolCall.function?.arguments === "string" ? toolCall.function.arguments : "",
         });
       });
       if (contentText) sendChunk?.(contentText);

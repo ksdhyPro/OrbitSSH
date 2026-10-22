@@ -8,24 +8,14 @@ import {
 } from "../../shared/settings";
 import { useCoreStore } from "./useCoreStore";
 
-export const selectionBackgroundOptions = [
-  "#244763",
-  "#365A46",
-  "#5B4B2A",
-  "#543A5F",
-  "#5A2D35",
-];
+export const selectionBackgroundOptions = ["#244763", "#365A46", "#5B4B2A", "#543A5F", "#5A2D35"];
 
 export const useSettingsStore = defineStore("settings", () => {
   const core = useCoreStore();
-  const appSettings = reactive<AppSettings>(
-    structuredClone(defaultAppSettings),
-  );
+  const appSettings = reactive<AppSettings>(structuredClone(defaultAppSettings));
   const isSettingsDialogOpen = ref(false);
   const isSelectionBackgroundDropdownOpen = ref(false);
-  const activeSettingsSection = ref<"general" | "ai" | "shortcuts">(
-    "general",
-  );
+  const activeSettingsSection = ref<"general" | "ai" | "shortcuts">("general");
 
   function toPlainAppSettings(): AppSettings {
     return {
@@ -39,11 +29,9 @@ export const useSettingsStore = defineStore("settings", () => {
         panelOrder: [...appSettings.sidebar.panelOrder],
       },
       connection: {
-        keepaliveIntervalSeconds:
-          appSettings.connection.keepaliveIntervalSeconds,
+        keepaliveIntervalSeconds: appSettings.connection.keepaliveIntervalSeconds,
         idleDisconnectMinutes: appSettings.connection.idleDisconnectMinutes,
-        sftpMaxConcurrentTransfers:
-          appSettings.connection.sftpMaxConcurrentTransfers,
+        sftpMaxConcurrentTransfers: appSettings.connection.sftpMaxConcurrentTransfers,
       },
       terminal: {
         fontSize: appSettings.terminal.fontSize,
@@ -81,9 +69,7 @@ export const useSettingsStore = defineStore("settings", () => {
 
   async function saveAppSettings(): Promise<void> {
     try {
-      const savedSettings = await core.orbitSSHApi?.settings.save(
-        toPlainAppSettings(),
-      );
+      const savedSettings = await core.orbitSSHApi?.settings.save(toPlainAppSettings());
 
       if (savedSettings) {
         applySavedSettings(savedSettings);
@@ -195,16 +181,14 @@ export const useSettingsStore = defineStore("settings", () => {
         terminal: savedSettings.terminal,
         ai: {
           enabled: savedSettings.ai.enabled,
-          allowCrossServerOperations:
-            savedSettings.ai.allowCrossServerOperations,
+          allowCrossServerOperations: savedSettings.ai.allowCrossServerOperations,
           shareTerminalContext: savedSettings.ai.shareTerminalContext,
           activeConfigId: savedSettings.ai.activeConfigId,
           configCount: savedSettings.ai.configs.length,
           defaultMode: savedSettings.ai.defaultMode,
           hasActiveApiKey: Boolean(
-            savedSettings.ai.configs.find(
-              config => config.id === savedSettings.ai.activeConfigId,
-            )?.apiKey,
+            savedSettings.ai.configs.find(config => config.id === savedSettings.ai.activeConfigId)
+              ?.apiKey,
           ),
         },
       });

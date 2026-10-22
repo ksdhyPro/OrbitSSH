@@ -26,7 +26,8 @@ const model = defineModel<T>({ required: true });
     :class="['segmented', `segmented-${props.variant}`]"
     :style="{ '--segmented-count': options.length }"
     role="radiogroup"
-    :aria-label="ariaLabel">
+    :aria-label="ariaLabel"
+  >
     <button
       v-for="option in options"
       :key="String(option.value)"
@@ -40,7 +41,8 @@ const model = defineModel<T>({ required: true });
           'is-warning': option.tone === 'warning',
         },
       ]"
-      @click="model = option.value">
+      @click="model = option.value"
+    >
       {{ option.label }}
     </button>
   </div>

@@ -53,19 +53,10 @@ const emit = defineEmits<{
   selectAll: [];
   clearSelection: [];
   marqueeSelect: [paths: string[]];
-  dragStartNode: [
-    event: DragEvent,
-    node: RemoteFileNode & { isVirtualParent?: boolean },
-  ];
-  dragOverNode: [
-    event: DragEvent,
-    node: RemoteFileNode & { isVirtualParent?: boolean },
-  ];
+  dragStartNode: [event: DragEvent, node: RemoteFileNode & { isVirtualParent?: boolean }];
+  dragOverNode: [event: DragEvent, node: RemoteFileNode & { isVirtualParent?: boolean }];
   dragLeaveNode: [event: DragEvent, node: RemoteFileNode];
-  dropNode: [
-    event: DragEvent,
-    node: RemoteFileNode & { isVirtualParent?: boolean },
-  ];
+  dropNode: [event: DragEvent, node: RemoteFileNode & { isVirtualParent?: boolean }];
   dragEndNode: [];
   previewContextFile: [];
   editContextFile: [];
@@ -89,8 +80,8 @@ function updateRenameValue(value: string): void {
 const isSftpDisconnected = computed(() =>
   Boolean(
     props.activeSftpTree?.disconnected ||
-      props.activeTab?.status === "disconnected" ||
-      props.activeTab?.status === "error",
+    props.activeTab?.status === "disconnected" ||
+    props.activeTab?.status === "error",
   ),
 );
 
@@ -110,11 +101,10 @@ const remoteFileEmptyText = computed(() => {
     title="远程文件"
     content-id="file-panel-content"
     :collapsed="collapsed"
-    @toggle-collapsed="emit('toggleCollapsed')">
+    @toggle-collapsed="emit('toggleCollapsed')"
+  >
     <template #title-extra>
-      <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
-        已断开
-      </span>
+      <span v-if="isSftpDisconnected" class="sftp-disconnected-badge"> 已断开 </span>
     </template>
     <template #actions>
       <button
@@ -122,7 +112,8 @@ const remoteFileEmptyText = computed(() => {
         class="icon-btn"
         aria-label="刷新目录"
         :disabled="!activeTab || isSftpDisconnected"
-        @click.stop="emit('refresh')">
+        @click.stop="emit('refresh')"
+      >
         <img :src="refreshIcon" alt="" />
       </button>
     </template>
@@ -137,17 +128,17 @@ const remoteFileEmptyText = computed(() => {
         :placeholder="hasSftpError ? 'SFTP 文件会话不可用' : filePanelHint"
         :title="activeSftpTree?.error || filePathInput"
         aria-label="远程路径"
-        @input="
-          emit('update:filePathInput', ($event.target as HTMLInputElement).value)
-        "
-        @keydown.enter.prevent="emit('submitPath')" />
+        @input="emit('update:filePathInput', ($event.target as HTMLInputElement).value)"
+        @keydown.enter.prevent="emit('submitPath')"
+      />
       <button
         type="button"
         class="icon-btn"
         :disabled="!activeSftpTree?.homePath || isSftpDisconnected"
         title="复制当前路径"
         aria-label="复制当前路径"
-        @click="emit('copyPath')">
+        @click="emit('copyPath')"
+      >
         <img :src="copyIcon" alt="" />
       </button>
       <button
@@ -156,14 +147,13 @@ const remoteFileEmptyText = computed(() => {
         :disabled="!activeTab?.currentPath || isSftpDisconnected"
         title="同步到当前终端路径"
         aria-label="同步到当前终端路径"
-        @click="emit('syncPath')">
+        @click="emit('syncPath')"
+      >
         <img :src="syncPathIcon" alt="" />
       </button>
     </div>
 
-    <div
-      v-if="visibleFileTree.length > 0"
-      class="file-list-header">
+    <div v-if="visibleFileTree.length > 0" class="file-list-header">
       <span>名称</span>
       <span>大小/类型</span>
       <span
@@ -174,12 +164,14 @@ const remoteFileEmptyText = computed(() => {
         :aria-label="`修改时间，当前${modifyTimeSortDirection === 'asc' ? '正序' : '倒序'}，点击切换为${modifyTimeSortDirection === 'asc' ? '倒序' : '正序'}`"
         @click="emit('toggleModifyTimeSort')"
         @keydown.enter.prevent="emit('toggleModifyTimeSort')"
-        @keydown.space.prevent="emit('toggleModifyTimeSort')">
+        @keydown.space.prevent="emit('toggleModifyTimeSort')"
+      >
         <span>修改时间</span>
         <img
           :class="['file-list-sort-arrow', { descending: modifyTimeSortDirection === 'desc' }]"
           :src="sortArrowIcon"
-          alt="" />
+          alt=""
+        />
       </span>
     </div>
 
@@ -200,9 +192,7 @@ const remoteFileEmptyText = computed(() => {
       @select-node="(event, node) => emit('selectNode', event, node)"
       @clear-selection="emit('clearSelection')"
       @marquee-select="emit('marqueeSelect', $event)"
-      @open-context-menu="
-        (event, node) => emit('openContextMenu', event, node)
-      "
+      @open-context-menu="(event, node) => emit('openContextMenu', event, node)"
       @open-node="emit('openFileByDoubleClick', $event)"
       @drag-start-node="(event, node) => emit('dragStartNode', event, node)"
       @drag-over-node="(event, node) => emit('dragOverNode', event, node)"
@@ -212,7 +202,8 @@ const remoteFileEmptyText = computed(() => {
       @select-all="emit('selectAll')"
       @update-rename-value="updateRenameValue"
       @commit-rename="emit('commitRename')"
-      @cancel-rename="emit('cancelRename')" />
+      @cancel-rename="emit('cancelRename')"
+    />
 
     <FileContextMenu
       :menu="fileContextMenu"
@@ -227,11 +218,13 @@ const remoteFileEmptyText = computed(() => {
       @create="emit('createBlankNode', $event)"
       @rename="emit('renameContextFile')"
       @delete="emit('deleteContextFile')"
-      @close="emit('closeFileContextMenu')" />
+      @close="emit('closeFileContextMenu')"
+    />
 
     <BlankContextMenu
       :menu="blankContextMenu"
       @create="emit('createBlankNode', $event)"
-      @close="emit('closeBlankContextMenu')" />
+      @close="emit('closeBlankContextMenu')"
+    />
   </SidebarPanel>
 </template>

@@ -1,9 +1,5 @@
 import type { AiChatInput } from "../../shared/ai.js";
-import type {
-  AiModelConfig,
-  AiProvider,
-  AppSettings,
-} from "../../shared/settings.js";
+import type { AiModelConfig, AiProvider, AppSettings } from "../../shared/settings.js";
 import { writeAppLog } from "../logger.js";
 import { getTerminalContextSnapshot } from "../ssh/session-manager.js";
 import {
@@ -90,7 +86,8 @@ const aiTools = [
           risk: {
             type: "string",
             enum: ["low", "medium", "high"],
-            description: "命令风险级别：low=只读查询，medium=常规写入、安装或重启，high=删除、提权、凭据或不可逆操作",
+            description:
+              "命令风险级别：low=只读查询，medium=常规写入、安装或重启，high=删除、提权、凭据或不可逆操作",
           },
         },
         required: ["command", "reason", "risk"],
@@ -103,7 +100,8 @@ const aiTools = [
     type: "function" as const,
     function: {
       name: "run_saved_server_command",
-      description: "通过 OrbitSSH 已保存的 SSH 连接，在用户明确提及的服务器执行一条命令。授权模式和本地策略仍会生效。",
+      description:
+        "通过 OrbitSSH 已保存的 SSH 连接，在用户明确提及的服务器执行一条命令。授权模式和本地策略仍会生效。",
       parameters: {
         type: "object" as const,
         properties: {
@@ -126,11 +124,15 @@ const aiTools = [
     type: "function" as const,
     function: {
       name: "run_long_shell_command",
-      description: "在当前服务器启动一条可能长时间运行的 Shell 命令。本地会保持本次对话运行并定期把新增输出交回模型；不确定命令长短时优先使用此工具。",
+      description:
+        "在当前服务器启动一条可能长时间运行的 Shell 命令。本地会保持本次对话运行并定期把新增输出交回模型；不确定命令长短时优先使用此工具。",
       parameters: {
         type: "object" as const,
         properties: {
-          command: { type: "string", description: "要执行一次的完整 Shell 命令，不能包含后台执行符号" },
+          command: {
+            type: "string",
+            description: "要执行一次的完整 Shell 命令，不能包含后台执行符号",
+          },
           reason: { type: "string", description: "为什么执行这条命令，用中文简短说明" },
           risk: {
             type: "string",
@@ -148,7 +150,8 @@ const aiTools = [
     type: "function" as const,
     function: {
       name: "report_long_command_progress",
-      description: "仅在长命令状态为 running 时汇报当前进度，并让本地继续等待同一条命令。不得用于启动或重复执行命令。",
+      description:
+        "仅在长命令状态为 running 时汇报当前进度，并让本地继续等待同一条命令。不得用于启动或重复执行命令。",
       parameters: {
         type: "object" as const,
         properties: {
@@ -230,9 +233,7 @@ function toFailureResult(failure: AiRequestFailure, serverBusy = false): AiTurnA
 
 function createDeadline(streaming: boolean) {
   return createRequestDeadline({
-    firstByteMs: streaming
-      ? AI_STREAM_FIRST_BYTE_TIMEOUT_MS
-      : AI_NON_STREAM_RESPONSE_TIMEOUT_MS,
+    firstByteMs: streaming ? AI_STREAM_FIRST_BYTE_TIMEOUT_MS : AI_NON_STREAM_RESPONSE_TIMEOUT_MS,
     idleMs: AI_STREAM_IDLE_TIMEOUT_MS,
     totalMs: AI_REQUEST_TOTAL_TIMEOUT_MS,
   });
@@ -268,8 +269,8 @@ async function requestPreferredApi(
     "Content-Type": "application/json",
   };
   const compatibilityKey = getCompatibilityKey(activeConfig);
-  const createCompatibilityFallbackHandler = (protocol: AiApiProtocol) =>
-    (parameter: AiCompatibilityFallbackParameter) => {
+  const createCompatibilityFallbackHandler =
+    (protocol: AiApiProtocol) => (parameter: AiCompatibilityFallbackParameter) => {
       if (parameter === "tool_choice") {
         // 同一接口和模型以后不再发送已确认不支持的参数，结果跨重启保留。
         rememberToolChoiceUnsupported(compatibilityKey, protocol);
@@ -379,9 +380,7 @@ async function requestAiTurnOnce(
   const activeConfig = resolveActiveAiConfig(settings);
   if (!activeConfig) return { reply: getAiUnavailableMessage(settings), commands: [] };
   const deadline = createDeadline(Boolean(sink));
-  const requestSignal = signal
-    ? AbortSignal.any([signal, deadline.signal])
-    : deadline.signal;
+  const requestSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
 
   const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
   let rawResponseText = "";
@@ -467,9 +466,14 @@ async function requestAiTurnOnce(
         onActivity: () => deadline.markActivity(),
         onFinishPreview: createFinishPreviewForwarder(sink),
       };
-      const streamed = protocol === "responses"
-        ? await collectResponsesSseStream(response.body, text => sink.append(text), collectorOptions)
-        : await collectSseStream(response.body, text => sink.append(text), collectorOptions);
+      const streamed =
+        protocol === "responses"
+          ? await collectResponsesSseStream(
+              response.body,
+              text => sink.append(text),
+              collectorOptions,
+            )
+          : await collectSseStream(response.body, text => sink.append(text), collectorOptions);
       reply = streamed.contentText;
       rawResponseText = streamed.rawResponseText;
       usage = streamed.usage;
@@ -518,9 +522,7 @@ async function requestAiTurnOnce(
       normalizedToolCalls,
       longCommandProgress ? "long_command_running" : "normal",
     );
-    const acceptedToolCalls = protocolEvaluation.outcome === "tool_call"
-      ? normalizedToolCalls
-      : [];
+    const acceptedToolCalls = protocolEvaluation.outcome === "tool_call" ? normalizedToolCalls : [];
     const commands = parseRunShellToolCalls(acceptedToolCalls);
     const longCommands = parseRunLongShellToolCalls(acceptedToolCalls);
     const progressReports = parseLongCommandProgressToolCalls(acceptedToolCalls);
@@ -578,26 +580,21 @@ async function requestAiTurnOnce(
         contentLength: reply.length,
         toolCallCount: normalizedToolCalls.length,
         hasCommands:
-          commands.length > 0 ||
-          longCommands.length > 0 ||
-          savedServerCommands.length > 0,
+          commands.length > 0 || longCommands.length > 0 || savedServerCommands.length > 0,
         api: protocol,
       },
     });
     const resolvedUsage = usage ?? {
       promptTokens: estimateTokenCount(preferredResponse.requestBody),
       completionTokens: estimateTokenCount(reply),
-      totalTokens:
-        estimateTokenCount(preferredResponse.requestBody) +
-        estimateTokenCount(reply),
+      totalTokens: estimateTokenCount(preferredResponse.requestBody) + estimateTokenCount(reply),
       source: "estimated" as const,
     };
     // 明确记录 Token 来源，便于核对圆环显示和上下文压缩触发依据。
     writeAppLog({
       scope: "main.ai",
-      message: resolvedUsage.source === "provider"
-        ? "AI Token 用量：接口统计"
-        : "AI Token 用量：本地估算",
+      message:
+        resolvedUsage.source === "provider" ? "AI Token 用量：接口统计" : "AI Token 用量：本地估算",
       data: {
         provider: providerName,
         model: activeConfig.model,
@@ -752,15 +749,15 @@ export async function summarizeAiConversation(
   if (!activeConfig) throw new Error(getAiUnavailableMessage(settings));
 
   const deadline = createDeadline(false);
-  const requestSignal = signal
-    ? AbortSignal.any([signal, deadline.signal])
-    : deadline.signal;
-  const historyText = redactSensitiveTerminalText(JSON.stringify(
-    input.history.map(message => ({
-      role: message.role,
-      content: message.content,
-    })),
-  ));
+  const requestSignal = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+  const historyText = redactSensitiveTerminalText(
+    JSON.stringify(
+      input.history.map(message => ({
+        role: message.role,
+        content: message.content,
+      })),
+    ),
+  );
   const summaryMessages = [
     {
       role: "system" as const,
@@ -805,8 +802,11 @@ export async function summarizeAiConversation(
     const { response, protocol } = preferredResponse;
 
     if (!response.ok) {
-      const responseText = preferredResponse.responseText || await response.text().catch(() => "");
-      throw new Error(`上下文压缩请求失败：${describeHttpFailure(response.status, responseText).message}`);
+      const responseText =
+        preferredResponse.responseText || (await response.text().catch(() => ""));
+      throw new Error(
+        `上下文压缩请求失败：${describeHttpFailure(response.status, responseText).message}`,
+      );
     }
     const responseText = await response.text();
     const payload = JSON.parse(responseText) as Record<string, unknown>;
@@ -823,7 +823,10 @@ export async function summarizeAiConversation(
     if (!summary) throw new Error("模型未返回有效的上下文摘要");
     return summary;
   } catch (error) {
-    if (signal?.aborted || (error instanceof Error && error.message.startsWith("上下文压缩请求失败"))) {
+    if (
+      signal?.aborted ||
+      (error instanceof Error && error.message.startsWith("上下文压缩请求失败"))
+    ) {
       throw error;
     }
     if (error instanceof Error && error.message === "模型未返回有效的上下文摘要") throw error;
