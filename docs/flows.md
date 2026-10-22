@@ -109,7 +109,9 @@ Agent 将无动作误判为完成并结束
 
 ### 4.3 Responses 与 Chat Completions 兼容
 
-模型配置的 `provider` 为 DeepSeek 或 GLM 时直接使用 Chat Completions。其他服务（包括在设置界面新增、`provider` 为 `other` 的模型）优先尝试 OpenAI Responses 格式；只有服务端明确表现为不支持 Responses 时，才回退 Chat Completions。
+DeepSeek 和 GLM 只提供 Chat Completions 兼容接口，直接使用 Chat Completions。设置界面新增的模型统一保存为 `other`，使用时按 Base URL 的域名识别：`deepseek.com`、`bigmodel.cn`、`z.ai` 及其子域名视为对应服务。只认官方域名，是因为自建代理或网关可能同时支持 Responses，无法仅凭地址判断。
+
+其他服务优先尝试 OpenAI Responses 格式；只有服务端明确表现为不支持 Responses 时，才回退 Chat Completions。
 
 探测结果按“Base URL + 模型名”保存在本地，应用重启后直接使用已确认的协议，不会每次启动都先请求一次不存在的 `/responses`。修改 Base URL 或模型名会重新探测。
 

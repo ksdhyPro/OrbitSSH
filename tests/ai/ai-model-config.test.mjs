@@ -6,6 +6,7 @@ import {
   AI_DISABLED_MESSAGE,
   AI_MODEL_NOT_CONFIGURED_MESSAGE,
   getAiUnavailableMessage,
+  inferAiProvider,
   resolveActiveAiConfig,
 } from "../../dist-electron/main/ai/ai-model-config.js";
 import { defaultAppSettings } from "../../dist-electron/shared/settings.js";
@@ -42,6 +43,42 @@ test("只有 AI 开启且模型字段完整时才返回规范化后的配置", (
   assert.equal(
     resolveActiveAiConfig(createSettings({ enabled: false, configs: [completeConfig] })),
     null,
+  );
+});
+
+test("按 Base URL 的官方域名识别 DeepSeek 与 GLM，其他地址保持 other", () => {
+  assert.equal(inferAiProvider("https://api.deepseek.com/v1"), "deepseek");
+  assert.equal(inferAiProvider("https://API.DeepSeek.com"), "deepseek");
+  assert.equal(inferAiProvider("https://open.bigmodel.cn/api/paas/v4"), "glm");
+  assert.equal(inferAiProvider("https://api.z.ai/api/paas/v4"), "glm");
+
+  // 仿冒域名、代理网关和无效地址都不能被识别为已知服务。
+  for (const baseUrl of [
+    "https://deepseek.com.evil.example/v1",
+    "https://notdeepseek.com/v1",
+    "https://bigmodel.cn.proxy.example/v4",
+    "https://gateway.example.com/deepseek/v1",
+    "http://127.0.0.1:8080/v1",
+    "not a url",
+  ]) {
+    assert.equal(inferAiProvider(baseUrl), "other", baseUrl);
+  }
+});
+
+test("只在 provider 为 other 时按 Base URL 推断，已明确的 provider 保持不变", () => {
+  const resolve = config =>
+    resolveActiveAiConfig(createSettings({ configs: [config], activeConfigId: config.id }));
+
+  assert.equal(resolve({ ...completeConfig, provider: "other" }).provider, "deepseek");
+  assert.equal(
+    resolve({ ...completeConfig, provider: "other", baseUrl: "https://llm.example.com/v1" })
+      .provider,
+    "other",
+  );
+  assert.equal(
+    resolve({ ...completeConfig, provider: "deepseek", baseUrl: "https://llm.example.com/v1" })
+      .provider,
+    "deepseek",
   );
 });
 

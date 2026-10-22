@@ -465,3 +465,12 @@ test("DeepSeek 直接使用 Chat Completions，其他服务探测一次后记住
     "http://gateway.local/v1/chat/completions",
   ]);
 });
+
+test("界面新增的 DeepSeek 与 GLM 模型按 Base URL 识别，直接使用 Chat Completions", async () => {
+  for (const baseUrl of ["https://api.deepseek.com/v1", "https://open.bigmodel.cn/api/paas/v4"]) {
+    reset();
+    model.responses.push(finish("ok"));
+    await runtime.runAiChat(createInput(), createSettings({ provider: "other", baseUrl }));
+    assert.deepEqual(model.urls, [`${baseUrl}/chat/completions`]);
+  }
+});

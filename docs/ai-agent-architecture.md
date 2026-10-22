@@ -44,7 +44,7 @@ Agent 支持三种模式：
 | `ai-saved-server-target.ts` | 按名称或主机解析用户点名的已保存服务器 |
 | `ai-saved-server-command.ts` | 在展示审批卡前确定目标服务器，并通过已保存连接执行受控的跨服务器命令 |
 | `ai-command-result.ts` | 把各命令适配器的结果统一映射为命令卡终态 |
-| `ai-model-config.ts` | 读取当前生效的模型配置；AI 关闭或未配置时给出明确提示而不发起请求 |
+| `ai-model-config.ts` | 读取当前生效的模型配置并按 Base URL 识别 DeepSeek/GLM；AI 关闭或未配置时给出明确提示而不发起请求 |
 | `ai-limits.ts` | 命令数量、单轮时长和模型请求超时等全局限制 |
 | `ai-approval-store.ts` | 一次性审批、五分钟 TTL 和按标签页清理 |
 | `ai-input.ts` | IPC 输入结构、请求身份、标签页一致性和长度限制 |
@@ -127,7 +127,7 @@ Agent 支持三种模式：
 ## 6. 模型适配
 
 - 使用 OpenAI 兼容的工具调用格式；单轮返回多个工具动作、无效工具参数或纯文本无动作时会拒绝并带协议纠正提示立即重试一次。
-- 接口协议：`provider` 为 DeepSeek 或 GLM 时直接使用 Chat Completions；其他服务（包括在设置界面新增的模型）先尝试 Responses，服务端明确表现为不支持时回退 Chat Completions。探测结果按 Base URL + 模型名跨重启保存，不支持 `tool_choice` 的结论同样会被记住。
+- 接口协议：DeepSeek 和 GLM 直接使用 Chat Completions。设置界面新增的模型统一保存为 `other`，使用时按 Base URL 域名识别：`deepseek.com`、`bigmodel.cn`、`z.ai` 及其子域名视为对应服务；自建代理或网关无法确认能力，仍按其他服务处理。其他服务先尝试 Responses，服务端明确表现为不支持时回退 Chat Completions。探测结果按 Base URL + 模型名跨重启保存，不支持 `tool_choice` 的结论同样会被记住。
 - 请求超时由三个计时器组成：流式请求等待响应头最多 60 秒，两次数据之间最多间隔 60 秒，单次请求最长 10 分钟；非流式请求等待完整响应最多 180 秒。持续输出的长回答不会被打断。
 - 自动重试：408、429 和 5xx 视为服务端繁忙，最多尝试 3 次，优先按 `Retry-After`（最多 30 秒）等待，否则按 1 秒、2 秒退避；网络异常和超时最多尝试 2 次，间隔 1 秒；401、403、404 和其他 4xx 参数错误不重试。上下文超限进入压缩流程，不按普通错误重试。
 - 失败时展示具体原因，例如 API Key 无效、Base URL 或模型名错误、额度不足、服务长时间无响应，并附带脱敏截断后的服务端说明。
