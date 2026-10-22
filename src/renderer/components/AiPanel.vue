@@ -719,10 +719,10 @@ onBeforeUnmount(() => {
             <img :src="closeIcon" alt="收起" />
           </button>
         </header>
-        <p v-if="isWorkspace && !context.tabId" class="ai-history-empty">
+        <p v-if="isWorkspace && !context.tabId" class="empty-state ai-history-empty">
           点击左侧服务器后显示该服务器的历史对话
         </p>
-        <p v-else-if="conversations.length === 0" class="ai-history-empty">
+        <p v-else-if="conversations.length === 0" class="empty-state ai-history-empty">
           暂无历史对话
         </p>
         <ul v-else>

@@ -34,7 +34,7 @@ const emit = defineEmits<{
             </div>
             <button
               type="button"
-              class="icon-button"
+              class="icon-btn icon-btn-sm"
               aria-label="关闭弹窗"
               @click="emit('close')">
               <img :src="closeIcon" alt="" />

@@ -150,7 +150,7 @@ function sendAction(
 <template>
   <AppDialog v-if="open" title="传输任务" width="transfer" @close="emit('close')">
     <div class="transfer-task-list">
-      <div v-if="batches.length === 0" class="transfer-task-empty">暂无传输任务</div>
+      <div v-if="batches.length === 0" class="empty-state empty-state-fill">暂无传输任务</div>
       <section v-for="batch in batches" :key="batch.taskId" class="transfer-task-batch">
         <div class="transfer-task-children">
           <div

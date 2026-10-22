@@ -17,13 +17,6 @@
   overflow: auto;
 }
 
-.transfer-task-empty {
-  display: grid;
-  height: 100%;
-  place-items: center;
-  color: var(--text-muted);
-}
-
 .transfer-task-batch {
   min-width: 860px;
 }

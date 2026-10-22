@@ -16,6 +16,8 @@ import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import AppDialog from "./AppDialog.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 import NumberStepper from "./NumberStepper.vue";
+import AppSwitch from "./ui/AppSwitch.vue";
+import SegmentedControl, { type SegmentedOption } from "./ui/SegmentedControl.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -58,6 +60,17 @@ const aiModeOptions: AiSettings["defaultMode"][] = [
   "full_access",
 ];
 
+const themeModeOptions: SegmentedOption<AppThemeMode>[] = [
+  { value: "dark", label: "深色" },
+  { value: "light", label: "浅色" },
+];
+
+// 工作模式直接映射 ai.enabled：普通模式关闭 AI，AI 模式开启 AI 并切换为对话主视图。
+const workModeOptions: SegmentedOption<boolean>[] = [
+  { value: false, label: "普通模式" },
+  { value: true, label: "AI 模式" },
+];
+
 const aiModeLabels: Record<AiSettings["defaultMode"], string> = {
   ask: "请求批准",
   auto: "自主执行",
@@ -69,6 +82,13 @@ const aiModeDescriptions: Record<AiSettings["defaultMode"], string> = {
   auto: "常规操作自动执行，仅高风险和敏感操作需要确认。",
   full_access: "授权范围内的有效命令直接执行，不再弹出审批。",
 };
+
+const aiModeSegmentedOptions: SegmentedOption<AiSettings["defaultMode"]>[] =
+  aiModeOptions.map((mode) => ({
+    value: mode,
+    label: aiModeLabels[mode],
+    tone: mode === "full_access" ? "warning" : undefined,
+  }));
 
 const aiConfigDraft = ref<AiModelConfig[]>([]);
 // 模型列表弹窗
@@ -458,26 +478,11 @@ function removeAiConfig(configId: string): void {
             <div>
               <h3>主题</h3>
             </div>
-            <div class="theme-mode-control" aria-label="主题">
-              <button
-                type="button"
-                :class="[
-                  'theme-mode-option',
-                  { active: appSettings.appearance.themeMode === 'dark' },
-                ]"
-                @click="emit('updateThemeMode', 'dark')">
-                深色
-              </button>
-              <button
-                type="button"
-                :class="[
-                  'theme-mode-option',
-                  { active: appSettings.appearance.themeMode === 'light' },
-                ]"
-                @click="emit('updateThemeMode', 'light')">
-                浅色
-              </button>
-            </div>
+            <SegmentedControl
+              :model-value="appSettings.appearance.themeMode"
+              :options="themeModeOptions"
+              ariaLabel="主题"
+              @update:model-value="emit('updateThemeMode', $event)" />
           </div>
 
           <div class="settings-field">
@@ -618,21 +623,11 @@ function removeAiConfig(configId: string): void {
               <h3>工作模式</h3>
               <p>普通模式以终端为主，不启用 AI；AI 模式以 AI 对话为主视图，SSH 在后台连接，可通过 AI 助手标题栏的「打开 SSH」查看终端。</p>
             </div>
-            <!-- 工作模式直接映射 ai.enabled：普通模式关闭 AI，AI 模式开启 AI 并切换为对话主视图。 -->
-            <div class="theme-mode-control" aria-label="工作模式">
-              <button
-                type="button"
-                :class="['theme-mode-option', { active: !appSettings.ai.enabled }]"
-                @click="emit('updateAiSetting', 'enabled', false)">
-                普通模式
-              </button>
-              <button
-                type="button"
-                :class="['theme-mode-option', { active: appSettings.ai.enabled }]"
-                @click="emit('updateAiSetting', 'enabled', true)">
-                AI 模式
-              </button>
-            </div>
+            <SegmentedControl
+              :model-value="appSettings.ai.enabled"
+              :options="workModeOptions"
+              ariaLabel="工作模式"
+              @update:model-value="emit('updateAiSetting', 'enabled', $event)" />
           </div>
 
           <div class="settings-field">
@@ -640,18 +635,10 @@ function removeAiConfig(configId: string): void {
               <h3>是否允许跨服务器执行操作</h3>
               <p>开启后，AI 可以请求操作其他已保存服务器；每次跨服务器命令仍需单独确认。</p>
             </div>
-            <label class="settings-toggle">
-              <input
-                type="checkbox"
-                :checked="appSettings.ai.allowCrossServerOperations"
-                @change="
-                  emit(
-                    'updateAiSetting',
-                    'allowCrossServerOperations',
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                " />
-            </label>
+            <AppSwitch
+              :model-value="appSettings.ai.allowCrossServerOperations"
+              ariaLabel="是否允许跨服务器执行操作"
+              @update:model-value="emit('updateAiSetting', 'allowCrossServerOperations', $event)" />
           </div>
 
           <div class="settings-field">
@@ -659,18 +646,10 @@ function removeAiConfig(configId: string): void {
               <h3>允许第三方 AI 通过 MCP 使用 SSH</h3>
               <p>默认关闭。开启后，本机第三方 AI 可使用已保存连接自由执行远程命令，不经过 OrbitSSH 的命令策略和逐条审批，但不会获得密码或私钥。</p>
             </div>
-            <label class="settings-toggle">
-              <input
-                type="checkbox"
-                :checked="appSettings.ai.allowMcpAccess"
-                @change="
-                  emit(
-                    'updateAiSetting',
-                    'allowMcpAccess',
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                " />
-            </label>
+            <AppSwitch
+              :model-value="appSettings.ai.allowMcpAccess"
+              ariaLabel="允许第三方 AI 通过 MCP 使用 SSH"
+              @update:model-value="emit('updateAiSetting', 'allowMcpAccess', $event)" />
           </div>
 
           <div class="settings-field">
@@ -678,18 +657,10 @@ function removeAiConfig(configId: string): void {
               <h3>允许第三方 AI 通过 MCP 使用 SFTP</h3>
               <p>默认关闭。开启后，调用方可使用已保存连接在指定的本地路径和远程路径之间上传或下载单文件，完成后会覆盖同名目标文件。</p>
             </div>
-            <label class="settings-toggle">
-              <input
-                type="checkbox"
-                :checked="appSettings.ai.allowMcpSftpAccess"
-                @change="
-                  emit(
-                    'updateAiSetting',
-                    'allowMcpSftpAccess',
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                " />
-            </label>
+            <AppSwitch
+              :model-value="appSettings.ai.allowMcpSftpAccess"
+              ariaLabel="允许第三方 AI 通过 MCP 使用 SFTP"
+              @update:model-value="emit('updateAiSetting', 'allowMcpSftpAccess', $event)" />
           </div>
 
           <div
@@ -731,18 +702,10 @@ function removeAiConfig(configId: string): void {
               <h3>发送最近终端输出</h3>
               <p>发送前自动脱敏。</p>
             </div>
-            <label class="settings-toggle">
-              <input
-                type="checkbox"
-                :checked="appSettings.ai.shareTerminalContext"
-                @change="
-                  emit(
-                    'updateAiSetting',
-                    'shareTerminalContext',
-                    ($event.target as HTMLInputElement).checked,
-                  )
-                " />
-            </label>
+            <AppSwitch
+              :model-value="appSettings.ai.shareTerminalContext"
+              ariaLabel="发送最近终端输出"
+              @update:model-value="emit('updateAiSetting', 'shareTerminalContext', $event)" />
           </div>
 
           <div class="settings-field ai-preset-prompt-field">
@@ -773,22 +736,12 @@ function removeAiConfig(configId: string): void {
               <h3>默认模式</h3>
               <p>{{ aiModeDescriptions[appSettings.ai.defaultMode] }}</p>
             </div>
-            <div class="theme-mode-control ai-mode-setting">
-              <button
-                v-for="item in aiModeOptions"
-                :key="item"
-                type="button"
-                :class="[
-                  'theme-mode-option',
-                  {
-                    active: appSettings.ai.defaultMode === item,
-                    'is-full-access': item === 'full_access',
-                  },
-                ]"
-                @click="emit('updateAiSetting', 'defaultMode', item)">
-                {{ aiModeLabels[item] }}
-              </button>
-            </div>
+            <SegmentedControl
+              class="ai-mode-setting"
+              :model-value="appSettings.ai.defaultMode"
+              :options="aiModeSegmentedOptions"
+              ariaLabel="默认模式"
+              @update:model-value="emit('updateAiSetting', 'defaultMode', $event)" />
           </div>
         </section>
 
@@ -898,7 +851,7 @@ function removeAiConfig(configId: string): void {
           </thead>
           <tbody>
             <tr v-if="aiConfigDraft.length === 0">
-              <td colspan="6" class="ai-config-empty">
+              <td colspan="6" class="empty-state ai-config-empty">
                 暂无模型配置，点击「新增」开始配置
               </td>
             </tr>

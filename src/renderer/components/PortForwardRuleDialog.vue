@@ -41,10 +41,10 @@ const directionHint = computed(() => props.form.direction === 'local'
     @close="emit('close')">
     <form class="port-forward-form" @submit.prevent="emit('submit')">
       <label><span>规则名称</span><input v-model="form.name" maxlength="100" placeholder="例如：本地访问数据库" /></label>
-      <label><span>服务器</span><AppSelect v-model="form.serverId" :options="serverOptions" aria-label="服务器" placeholder="请选择服务器" /></label>
+      <label><span>服务器</span><AppSelect v-model="form.serverId" :options="serverOptions" ariaLabel="服务器" placeholder="请选择服务器" /></label>
       <div class="form-row">
-        <label><span>转发方向</span><AppSelect v-model="form.direction" :options="directionOptions" aria-label="转发方向" /></label>
-        <label><span>监听范围</span><AppSelect v-model="form.listenScope" :options="listenScopeOptions" aria-label="监听范围" /></label>
+        <label><span>转发方向</span><AppSelect v-model="form.direction" :options="directionOptions" ariaLabel="转发方向" /></label>
+        <label><span>监听范围</span><AppSelect v-model="form.listenScope" :options="listenScopeOptions" ariaLabel="监听范围" /></label>
       </div>
       <div class="form-row">
         <label><span>{{ form.direction === 'local' ? '本机监听端口' : '远端监听端口' }}</span><input v-model.number="form.listenPort" type="number" min="1" max="65535" /></label>

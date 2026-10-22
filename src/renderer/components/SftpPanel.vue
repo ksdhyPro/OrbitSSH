@@ -3,7 +3,6 @@ import { computed } from "vue";
 import copyIcon from "../assets/icons/copy.svg";
 import refreshIcon from "../assets/icons/refresh.svg";
 import syncPathIcon from "../assets/icons/sync-path.svg";
-import chevronRightIcon from "../assets/icons/chevron-right.svg";
 import sortArrowIcon from "../assets/icons/sort-arrow.svg";
 import type { RemoteFileNode } from "../../shared/sftp";
 import type { TerminalTab } from "../types/terminal";
@@ -19,6 +18,7 @@ import { isPreviewImageFile } from "../utils/file-kind";
 import FileContextMenu from "./FileContextMenu.vue";
 import BlankContextMenu from "./BlankContextMenu.vue";
 import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
+import SidebarPanel from "./ui/SidebarPanel.vue";
 
 const props = defineProps<{
   activeTab: TerminalTab | undefined;
@@ -105,35 +105,28 @@ const remoteFileEmptyText = computed(() => {
 </script>
 
 <template>
-  <section :class="['panel', 'file-panel', { collapsed }]">
-    <div class="panel-header" draggable="true">
+  <SidebarPanel
+    class="file-panel"
+    title="远程文件"
+    content-id="file-panel-content"
+    :collapsed="collapsed"
+    @toggle-collapsed="emit('toggleCollapsed')">
+    <template #title-extra>
+      <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
+        已断开
+      </span>
+    </template>
+    <template #actions>
       <button
         type="button"
-        class="panel-toggle"
-        :aria-expanded="!collapsed"
-        aria-controls="file-panel-content"
-        @click="emit('toggleCollapsed')">
-        <img :class="{ expanded: !collapsed }" :src="chevronRightIcon" alt="" />
-        <h2>
-          远程文件
-          <span v-if="isSftpDisconnected" class="sftp-disconnected-badge">
-            已断开
-          </span>
-        </h2>
-      </button>
-      <button
-        v-if="!collapsed"
-        type="button"
-        class="icon-button"
+        class="icon-btn"
         aria-label="刷新目录"
         :disabled="!activeTab || isSftpDisconnected"
         @click.stop="emit('refresh')">
         <img :src="refreshIcon" alt="" />
       </button>
-    </div>
+    </template>
 
-    <Transition name="panel-slide">
-    <div v-show="!collapsed" id="file-panel-content" class="file-panel-content">
     <div class="file-path-row">
       <input
         :value="filePathInput"
@@ -150,7 +143,7 @@ const remoteFileEmptyText = computed(() => {
         @keydown.enter.prevent="emit('submitPath')" />
       <button
         type="button"
-        class="path-action-button"
+        class="icon-btn"
         :disabled="!activeSftpTree?.homePath || isSftpDisconnected"
         title="复制当前路径"
         aria-label="复制当前路径"
@@ -159,7 +152,7 @@ const remoteFileEmptyText = computed(() => {
       </button>
       <button
         type="button"
-        class="path-action-button"
+        class="icon-btn"
         :disabled="!activeTab?.currentPath || isSftpDisconnected"
         title="同步到当前终端路径"
         aria-label="同步到当前终端路径"
@@ -240,7 +233,5 @@ const remoteFileEmptyText = computed(() => {
       :menu="blankContextMenu"
       @create="emit('createBlankNode', $event)"
       @close="emit('closeBlankContextMenu')" />
-    </div>
-    </Transition>
-  </section>
+  </SidebarPanel>
 </template>

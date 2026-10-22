@@ -380,7 +380,7 @@ function handleRenameInputKeydown(event: KeyboardEvent): void {
 <template>
   <div
     v-if="nodes.length === 0"
-    class="remote-file-empty"
+    class="empty-state remote-file-empty"
     @click="emit('clearSelection')"
     @contextmenu="emit('openBlankContextMenu', $event)">
     {{ emptyText }}

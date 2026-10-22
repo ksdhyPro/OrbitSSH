@@ -96,3 +96,74 @@
 .btn-danger-soft:hover:not(:disabled) {
   filter: brightness(1.12);
 }
+
+/* ===== 通用图标按钮 =====
+ * 结构：.icon-btn（32px）+ 可选尺寸（.icon-btn-md 30px / .icon-btn-sm 28px）。
+ * 可切换的工具按钮（如“区分大小写”）添加 .active 表示开启状态。
+ */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--icon-button-size-lg);
+  height: var(--icon-button-size-lg);
+  padding: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  line-height: 0;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    color 120ms ease,
+    transform 100ms ease;
+}
+
+.icon-btn img {
+  display: block;
+  width: var(--icon-size-regular);
+  height: var(--icon-size-regular);
+  /* 兼容以 img 引入且内嵌固定浅色填充的 SVG 图标。 */
+  filter: var(--icon-filter);
+  opacity: 0.82;
+  transition: opacity 120ms ease;
+}
+
+.icon-btn-md {
+  width: var(--icon-button-size-md);
+  height: var(--icon-button-size-md);
+}
+
+.icon-btn-md img {
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+}
+
+.icon-btn-sm {
+  width: var(--icon-button-size-sm);
+  height: var(--icon-button-size-sm);
+}
+
+.icon-btn-sm img {
+  width: var(--icon-size-micro);
+  height: var(--icon-size-micro);
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--text-primary);
+}
+
+.icon-btn:hover:not(:disabled) img,
+.icon-btn.active img {
+  opacity: 1;
+}
+
+.icon-btn.active {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.icon-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}

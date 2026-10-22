@@ -375,108 +375,6 @@
   height: var(--icon-size-compact);
 }
 
-.terminal-search {
-  position: absolute;
-  top: 54px;
-  right: 12px;
-  z-index: 20;
-  display: grid;
-  grid-template-columns: minmax(180px, 260px) minmax(48px, auto) repeat(4, 30px);
-  gap: 6px;
-  align-items: center;
-  padding: 6px;
-  border: 1px solid var(--border-float);
-  border-radius: var(--radius-xl);
-  background: var(--surface-floating);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: var(--shadow-popover);
-  animation: terminal-search-enter 140ms ease-out;
-  transition:
-    border-color 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.terminal-search:focus-within {
-  border-color: var(--selected-ring);
-  box-shadow:
-    0 0 0 3px var(--focus-ring-soft),
-    var(--shadow-popover);
-}
-
-@keyframes terminal-search-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.99);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.terminal-search input {
-  width: 100%;
-  height: 30px;
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
-  padding: 0 10px;
-  outline: none;
-  background: var(--bg-input);
-  color: var(--text-primary);
-}
-
-.terminal-search input:focus {
-  border-color: var(--accent);
-  box-shadow: none;
-}
-
-.terminal-search-count {
-  min-width: 48px;
-  color: var(--text-tertiary);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-size-sm);
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-}
-
-.terminal-search-tool {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: transparent;
-  transition:
-    background-color 100ms ease,
-    box-shadow 100ms ease,
-    transform 80ms ease;
-}
-
-.terminal-search-tool:hover,
-.terminal-search-tool.active {
-  background: var(--accent-soft);
-}
-
-.terminal-search-tool.active {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.terminal-search-tool:active {
-  transform: scale(0.9);
-}
-
-.terminal-search-tool img {
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  opacity: 0.78;
-}
-
-.terminal-search-tool:hover img,
-.terminal-search-tool.active img {
-  opacity: 1;
-}
-
 .terminal-empty {
   display: grid;
   place-items: center;
@@ -607,6 +505,14 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   background: var(--terminal-surface);
+}
+
+/* 终端搜索栏悬浮在终端画布右上角。 */
+.terminal-search {
+  position: absolute;
+  top: 54px;
+  right: 12px;
+  z-index: 20;
 }
 
 .terminal-stage > .terminal-search {

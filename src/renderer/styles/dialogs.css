@@ -103,21 +103,8 @@
   font-size: var(--font-size-sm);
 }
 
-.app-dialog-header .icon-button {
-  display: grid;
-  place-items: center;
+.app-dialog-header .icon-btn {
   align-self: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  line-height: 0;
-  flex: 0 0 auto;
-}
-
-.app-dialog-header .icon-button img {
-  width: 16px;
-  height: 16px;
-  margin: 0;
 }
 
 .dialog-fade-enter-active,
@@ -556,37 +543,6 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
-}
-
-.theme-mode-control {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 82px));
-  justify-content: end;
-  gap: 8px;
-}
-
-.theme-mode-option {
-  height: 34px;
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
-  background: var(--bg-input);
-  color: var(--text-dim);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-  white-space: nowrap;
-}
-
-.theme-mode-option:hover {
-  border-color: var(--border-hover-strong);
-  background: var(--bg-hover-cool);
-  color: var(--text-primary);
-}
-
-.theme-mode-option.active {
-  border-color: var(--accent);
-  background: var(--accent-fill);
-  color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 
 .stepper-control {

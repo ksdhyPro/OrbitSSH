@@ -37,34 +37,6 @@
   opacity: 0.72;
 }
 
-.path-action-button {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  background: transparent;
-  transition:
-    background-color 120ms ease,
-    transform 100ms ease;
-}
-
-.path-action-button:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.path-action-button:active:not(:disabled) {
-  transform: scale(0.92);
-}
-
-.path-action-button img {
-  display: block;
-  width: var(--icon-size-regular);
-  height: var(--icon-size-regular);
-  filter: var(--icon-filter);
-  opacity: 0.78;
-}
-
 .file-debug-hint {
   flex: 0 0 auto;
   padding: 0 14px 8px;
@@ -178,8 +150,6 @@
 
 .remote-file-empty {
   padding: 34px 14px;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
   text-align: center;
 }
 

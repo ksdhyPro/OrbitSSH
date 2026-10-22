@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
-import arrowDownIcon from "../assets/icons/arrow-down.svg";
-import arrowUpIcon from "../assets/icons/arrow-up.svg";
-import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
 import closeIcon from "../assets/icons/close.svg";
 import reconnectIcon from "../assets/icons/reconnect.svg";
 import type { ServerAutomationTask } from "../../shared/server";
@@ -19,6 +16,7 @@ import AutomationTaskDialog from "./AutomationTaskDialog.vue";
 import AppDialog from "./AppDialog.vue";
 import ContextMenu from "./ContextMenu.vue";
 import StatusBar from "./StatusBar.vue";
+import SearchBar from "./ui/SearchBar.vue";
 
 const props = defineProps<{
   tabs: TerminalTab[];
@@ -54,7 +52,7 @@ const terminalsStore = useTerminalsStore();
 const core = useCoreStore();
 const serversStore = useServersStore();
 
-const searchInput = ref<HTMLInputElement | null>(null);
+const searchBar = ref<InstanceType<typeof SearchBar> | null>(null);
 const sessionTabsElement = ref<HTMLElement | null>(null);
 const terminalStageSlot = ref<HTMLElement | null>(null);
 const terminalStage = ref<HTMLElement | null>(null);
@@ -354,16 +352,6 @@ async function selectTerminalContextMenuItem(
   }
 }
 
-// 搜索框内用 Shift+Tab 跳到上一个结果，同时阻止默认回退焦点。
-function searchPreviousByBackwardTab(event: KeyboardEvent): void {
-  if (!event.shiftKey) {
-    return;
-  }
-
-  event.preventDefault();
-  emit("search", "previous");
-}
-
 // 终端节点只创建一次：弹窗打开时把整个终端区域移入弹窗，关闭后移回原位，
 // 保持 xterm 实例、会话和交互不变。终端区域独占占位容器，手动移动不会打乱 Vue 的兄弟节点锚点。
 watch(
@@ -414,8 +402,7 @@ watch(
     }
 
     await nextTick();
-    searchInput.value?.focus();
-    searchInput.value?.select();
+    searchBar.value?.focus();
   },
 );
 </script>
@@ -473,63 +460,19 @@ watch(
         :class="['terminal-stage-slot', { 'is-background': aiWorkspace }]"
         :aria-hidden="aiWorkspace && !isTerminalDialogVisible">
         <div ref="terminalStage" class="terminal-stage">
-          <div v-if="isTerminalSearchOpen" class="terminal-search">
-            <input
-              ref="searchInput"
-              :value="terminalSearchKeyword"
-              type="search"
-              placeholder="搜索终端内容"
-              @input="
-                emit(
-                  'update:terminalSearchKeyword',
-                  ($event.target as HTMLInputElement).value,
-                );
-                emit('search');
-              "
-              @keydown.enter.prevent="
-                emit('search', $event.shiftKey ? 'previous' : 'next')
-              "
-              @keydown.tab="searchPreviousByBackwardTab"
-              @keydown.esc.prevent="emit('closeSearch')" />
-            <span class="terminal-search-count">
-              {{ terminalSearchResult.index }}/{{ terminalSearchResult.total }}
-            </span>
-            <button
-              type="button"
-              :class="[
-                'terminal-search-tool',
-                { active: isTerminalSearchCaseSensitive },
-              ]"
-              aria-label="区分大小写"
-              title="区分大小写"
-              @click="emit('toggleCaseSensitive')">
-              <img :src="caseSensitiveIcon" alt="" />
-            </button>
-            <button
-              type="button"
-              class="terminal-search-tool"
-              aria-label="上一个"
-              title="上一个"
-              @click="emit('search', 'previous')">
-              <img :src="arrowUpIcon" alt="" />
-            </button>
-            <button
-              type="button"
-              class="terminal-search-tool"
-              aria-label="下一个"
-              title="下一个"
-              @click="emit('search', 'next')">
-              <img :src="arrowDownIcon" alt="" />
-            </button>
-            <button
-              type="button"
-              class="terminal-search-tool"
-              aria-label="关闭搜索"
-              title="关闭搜索"
-              @click="emit('closeSearch')">
-              <img :src="closeIcon" alt="" />
-            </button>
-          </div>
+          <SearchBar
+            v-if="isTerminalSearchOpen"
+            ref="searchBar"
+            class="terminal-search"
+            :keyword="terminalSearchKeyword"
+            :case-sensitive="isTerminalSearchCaseSensitive"
+            :index="terminalSearchResult.index"
+            :total="terminalSearchResult.total"
+            placeholder="搜索终端内容"
+            @update:keyword="emit('update:terminalSearchKeyword', $event)"
+            @search="emit('search', $event)"
+            @toggle-case-sensitive="emit('toggleCaseSensitive')"
+            @close="emit('closeSearch')" />
 
           <div v-if="tabs.length === 0" class="terminal-empty">
             <p class="eyebrow">READY</p>

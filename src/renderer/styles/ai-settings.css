@@ -39,74 +39,24 @@
   flex: 1;
 }
 
-.settings-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-}
-
 /* AI 设置的启用态使用暖橙色，完全访问选项持续保留风险提示。 */
 .ai-settings-content {
   --ai-active-color: var(--warning);
-  --ai-active-hover: var(--warning);
 }
 
-.settings-toggle input {
-  position: relative;
-  flex: 0 0 auto;
-  width: 38px;
-  height: 22px;
-  appearance: none;
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-full);
-  padding: 0;
-  background: var(--bg-elevated-3);
-  box-shadow: none;
-  transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
+.ai-settings-content .app-switch {
+  --switch-on-color: var(--ai-active-color);
 }
 
-.settings-toggle input::after {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--text-secondary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
-  content: "";
-  transition:
-    background-color 140ms ease,
-    transform 140ms ease;
-}
-
-.ai-settings-content .settings-toggle input:checked {
-  border-color: var(--ai-active-color);
-  background: var(--ai-active-color);
-}
-
-.ai-settings-content .settings-toggle input:checked::after {
-  background: #fff;
-  transform: translateX(16px);
-}
-
-.ai-settings-content .settings-toggle:has(input:checked) span {
-  color: var(--ai-active-hover);
-}
-
-.settings-toggle input:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--focus-ring-soft);
+.ai-settings-content .segmented {
+  --segmented-active-border: var(--ai-active-color);
+  --segmented-active-bg: var(--ai-active-color);
+  --segmented-active-color: #fff;
+  --segmented-active-shadow: none;
 }
 
 .ai-mode-setting {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--segmented-count), minmax(0, 1fr));
   width: 330px;
   max-width: 100%;
 }
@@ -154,13 +104,6 @@
   color: var(--text-tertiary);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
-}
-
-.ai-settings-content .theme-mode-option.active:not(.is-full-access) {
-  border-color: var(--ai-active-color);
-  background: var(--ai-active-color);
-  color: #fff;
-  box-shadow: none;
 }
 
 .settings-field-link {

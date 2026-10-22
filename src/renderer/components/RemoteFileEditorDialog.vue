@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import arrowDownIcon from "../assets/icons/arrow-down.svg";
-import arrowUpIcon from "../assets/icons/arrow-up.svg";
-import caseSensitiveIcon from "../assets/icons/case-sensitive.svg";
-import closeIcon from "../assets/icons/close.svg";
 import AppDialog from "./AppDialog.vue";
+import SearchBar from "./ui/SearchBar.vue";
 
-defineProps<{
+const props = defineProps<{
   isOpen: boolean;
   isCloseConfirmOpen: boolean;
   title: string;
@@ -47,14 +44,11 @@ const emit = defineEmits<{
   saveAndClose: [];
 }>();
 
-// 搜索工具栏内用 Shift+Tab 跳到上一个结果，同时阻止默认回退焦点。
-function searchPreviousByBackwardTab(event: KeyboardEvent): void {
-  if (!event.shiftKey) {
-    return;
-  }
-
-  event.preventDefault();
-  emit("search", "previous");
+/** 将搜索栏内部输入框交给文件编辑器 store，用于打开搜索时聚焦。 */
+function bindSearchBar(instance: unknown): void {
+  const bar = instance as InstanceType<typeof SearchBar> | null;
+  props.setSearchInput(bar?.searchInput ?? null);
+  props.setReplaceInput(bar?.replaceInput ?? null);
 }
 </script>
 
@@ -67,87 +61,24 @@ function searchPreviousByBackwardTab(event: KeyboardEvent): void {
     @close="emit('requestClose')">
     <section class="file-editor-shell">
       <div v-if="isSearchOpen" class="file-editor-toolbar">
-        <div class="file-editor-search">
-          <input
-            :ref="setSearchInput"
-            :value="searchKeyword"
-            type="search"
-            placeholder="搜索内容"
-            @input="
-              emit(
-                'updateSearchKeyword',
-                ($event.target as HTMLInputElement).value,
-              );
-              emit('search');
-            "
-            @keydown.enter.prevent="
-              emit('search', $event.shiftKey ? 'previous' : 'next')
-            "
-            @keydown.tab="searchPreviousByBackwardTab"
-            @keydown.esc.prevent="emit('closeSearch')" />
-          <input
-            :ref="setReplaceInput"
-            :value="replaceText"
-            type="text"
-            placeholder="替换为"
-            @input="
-              emit('updateReplaceText', ($event.target as HTMLInputElement).value);
-              emit('applySearchQuery');
-            "
-            @keydown.enter.prevent="emit('replaceCurrent')"
-            @keydown.tab="searchPreviousByBackwardTab"
-            @keydown.esc.prevent="emit('closeSearch')" />
-          <span>{{ editor.searchIndex }}/{{ editor.searchTotal }}</span>
-          <button
-            type="button"
-            :class="[
-              'file-editor-search-tool',
-              { active: isSearchCaseSensitive },
-            ]"
-            aria-label="区分大小写"
-            title="区分大小写"
-            @click="emit('toggleCaseSensitive')">
-            <img :src="caseSensitiveIcon" alt="" />
-          </button>
-          <button
-            type="button"
-            class="file-editor-search-tool"
-            aria-label="上一个"
-            title="上一个"
-            @click="emit('search', 'previous')">
-            <img :src="arrowUpIcon" alt="" />
-          </button>
-          <button
-            type="button"
-            class="file-editor-search-tool"
-            aria-label="下一个"
-            title="下一个"
-            @click="emit('search', 'next')">
-            <img :src="arrowDownIcon" alt="" />
-          </button>
-          <button
-            type="button"
-            class="file-editor-replace-button"
-            :disabled="!searchKeyword || editor.searchTotal === 0"
-            @click="emit('replaceCurrent')">
-            替换
-          </button>
-          <button
-            type="button"
-            class="file-editor-replace-button"
-            :disabled="!searchKeyword || editor.searchTotal === 0"
-            @click="emit('replaceAll')">
-            全部
-          </button>
-          <button
-            type="button"
-            class="file-editor-search-tool"
-            aria-label="关闭搜索"
-            title="关闭搜索"
-            @click="emit('closeSearch')">
-            <img :src="closeIcon" alt="" />
-          </button>
-        </div>
+        <SearchBar
+          :ref="bindSearchBar"
+          :keyword="searchKeyword"
+          :case-sensitive="isSearchCaseSensitive"
+          :index="editor.searchIndex"
+          :total="editor.searchTotal"
+          replaceable
+          :replace-text="replaceText"
+          @update:keyword="emit('updateSearchKeyword', $event)"
+          @update:replace-text="
+            emit('updateReplaceText', $event);
+            emit('applySearchQuery');
+          "
+          @search="emit('search', $event)"
+          @toggle-case-sensitive="emit('toggleCaseSensitive')"
+          @replace-current="emit('replaceCurrent')"
+          @replace-all="emit('replaceAll')"
+          @close="emit('closeSearch')" />
       </div>
 
       <div v-if="editor.loading" class="file-editor-loading">

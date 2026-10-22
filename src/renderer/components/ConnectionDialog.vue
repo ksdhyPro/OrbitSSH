@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AppDialog from "./AppDialog.vue";
 import NumberStepper from "./NumberStepper.vue";
+import SegmentedControl, { type SegmentedOption } from "./ui/SegmentedControl.vue";
 import type { ServerAuthType } from "../../shared/server";
 
 const props = defineProps<{
@@ -26,9 +27,10 @@ const emit = defineEmits<{
   selectPrivateKey: [];
 }>();
 
-function setAuthType(authType: ServerAuthType): void {
-  props.connectionForm.authType = authType;
-}
+const authTypeOptions: SegmentedOption<ServerAuthType>[] = [
+  { value: "password", label: "密码" },
+  { value: "privateKey", label: "密钥文件" },
+];
 </script>
 
 <template>
@@ -69,24 +71,11 @@ function setAuthType(authType: ServerAuthType): void {
           placeholder="root" />
         </label>
       </div>
-      <div class="auth-tabs" role="tablist" aria-label="认证方式">
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="connectionForm.authType === 'password'"
-          :class="{ active: connectionForm.authType === 'password' }"
-          @click="setAuthType('password')">
-          密码
-        </button>
-        <button
-          type="button"
-          role="tab"
-          :aria-selected="connectionForm.authType === 'privateKey'"
-          :class="{ active: connectionForm.authType === 'privateKey' }"
-          @click="setAuthType('privateKey')">
-          密钥文件
-        </button>
-      </div>
+      <SegmentedControl
+        v-model="connectionForm.authType"
+        :options="authTypeOptions"
+        variant="tabs"
+        ariaLabel="认证方式" />
 
       <template v-if="connectionForm.authType === 'password'">
         <label>

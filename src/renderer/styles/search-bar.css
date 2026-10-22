@@ -1,0 +1,71 @@
+/* ===== 浮动搜索栏（终端搜索、文件编辑器搜索替换共用） =====
+ * 定位由使用方决定（如 .terminal-search、.file-editor-toolbar），此处只负责外观与内部布局。
+ */
+.search-bar {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 260px) minmax(48px, auto)
+    repeat(3, var(--icon-button-size-md)) var(--icon-button-size-md);
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--border-float);
+  border-radius: var(--radius-xl);
+  background: var(--surface-floating-strong);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--shadow-popover);
+  animation: search-bar-enter 140ms ease-out;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.search-bar-replaceable {
+  grid-template-columns:
+    minmax(150px, 220px) minmax(150px, 220px) minmax(48px, auto)
+    repeat(3, var(--icon-button-size-md)) auto auto var(--icon-button-size-md);
+}
+
+.search-bar:focus-within {
+  border-color: var(--selected-ring);
+  box-shadow:
+    0 0 0 3px var(--focus-ring-soft),
+    var(--shadow-popover);
+}
+
+@keyframes search-bar-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.search-bar input {
+  width: 100%;
+  height: var(--icon-button-size-md);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.search-bar input:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+.search-bar-count {
+  min-width: 48px;
+  color: var(--text-tertiary);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}

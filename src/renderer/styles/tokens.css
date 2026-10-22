@@ -20,7 +20,6 @@
   --bg-badge: rgba(255, 255, 255, 0.08); /* 方向徽标底色 */
   --bg-tab: transparent; /* 会话标签默认底色 */
   --bg-tab-active: rgba(255, 255, 255, 0.075); /* 会话标签激活底色 */
-  --bg-replace: rgba(255, 255, 255, 0.06); /* 编辑器替换按钮底色 */
 
   /* ===== 边框层级 ===== */
   --border-subtle: rgba(255, 255, 255, 0.075); /* 面板内分割线 */
@@ -134,7 +133,9 @@
   --control-height-xs: 24px; /* 行内迷你操作 */
   --control-height-sm: 28px; /* 表格、工具条内的紧凑按钮 */
   --control-height-md: 34px; /* 按钮、输入框、下拉选择的默认高度 */
-  --icon-button-size: 30px; /* 工具条图标按钮 */
+  --icon-button-size-sm: 28px; /* 列表行内、弹窗标题栏的图标按钮 */
+  --icon-button-size-md: 30px; /* 浮动工具条（搜索栏）内的图标按钮 */
+  --icon-button-size-lg: 32px; /* 面板标题栏、路径栏的图标按钮 */
 
   color-scheme: dark;
   color: var(--text-primary);
@@ -178,7 +179,6 @@
   --bg-badge: rgba(42, 42, 38, 0.07);
   --bg-tab: transparent;
   --bg-tab-active: #e9e9e6;
-  --bg-replace: rgba(42, 42, 38, 0.055);
 
   --border-subtle: rgba(42, 42, 38, 0.08);
   --border-default: rgba(42, 42, 38, 0.11);

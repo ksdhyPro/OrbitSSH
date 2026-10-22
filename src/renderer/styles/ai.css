@@ -213,10 +213,7 @@
 }
 
 .ai-history-empty {
-  margin: 0;
   padding: 12px;
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
 }
 
 .ai-history-list ul {
