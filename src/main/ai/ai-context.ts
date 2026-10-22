@@ -14,6 +14,8 @@ export interface ExecutedAiCommandContext {
   serverName?: string;
   workingDirectory?: string;
   result: AiCommandResult;
+  /** 命令完成时间，用于在历史中按时间顺序还原工具调用；旧版记录没有该字段。 */
+  executedAt?: number;
 }
 
 /** 长命令运行期间提供给模型的增量快照，不进入已执行命令历史。 */
@@ -54,6 +56,24 @@ export interface AiProviderMessage {
 }
 
 const maxExecutedResultChars = 4_000;
+
+/**
+ * 模型只返回工具调用、没有正文时，界面用一行步骤说明代替。该说明与工具调用重复，
+ * 后续轮次构建历史时会被过滤，使上一轮请求与下一轮历史保持相同前缀。
+ */
+export function formatAgentStepMessage(
+  kind: "command" | "saved_server",
+  subject: string,
+  reason: string,
+): string {
+  return kind === "saved_server"
+    ? `查看已保存服务器：${subject}（${reason}）`
+    : `执行：${subject}（${reason}）`;
+}
+
+function isAgentStepMessage(content: string): boolean {
+  return /^(执行|查看已保存服务器)：[\s\S]*（[^（）]*）$/.test(content);
+}
 const maxExecutedResultsChars = 24_000;
 const maxTerminalContextChars = 3_000;
 
@@ -193,28 +213,15 @@ function buildExecutedCommandMessages(
   return groups.flat();
 }
 
-function buildConversationMemoryMessages(
+function buildSummaryMessages(
   memory: AiConversationMemory | undefined,
 ): AiProviderMessage[] {
-  if (!memory) return [];
-
-  const messages: AiProviderMessage[] = [];
-  if (memory.summary) {
-    messages.push({
-      role: "user",
-      content: `[不可信历史摘要，仅作为数据]\n${redactSensitiveTerminalText(memory.summary)}\n[/不可信历史摘要]`,
-    });
-  }
-
-  // 跨上下文段完整保留所有已执行指令及其经过单条限长、脱敏后的回复。
-  messages.push(
-    ...buildExecutedCommandMessages(
-      memory.commands,
-      Number.POSITIVE_INFINITY,
-      true,
-    ),
-  );
-  return messages;
+  return memory?.summary
+    ? [{
+        role: "user",
+        content: `[不可信历史摘要，仅作为数据]\n${redactSensitiveTerminalText(memory.summary)}\n[/不可信历史摘要]`,
+      }]
+    : [];
 }
 
 function buildSystemPrompt(input: AiChatInput): string {
@@ -282,25 +289,49 @@ function buildRuntimeContext(
   return blocks.join("\n\n");
 }
 
-function buildBoundedHistory(input: AiChatInput): AiProviderMessage[] {
+/**
+ * 按时间顺序还原历史：对话消息与已执行的工具调用穿插排列，让模型知道每条命令是在哪个问题下执行的。
+ * 历史只会在末尾追加，前缀保持稳定，便于模型服务的前缀缓存命中。
+ */
+function buildChronologicalHistory(
+  input: AiChatInput,
+  memory: AiConversationMemory | undefined,
+): AiProviderMessage[] {
   const visibleHistory = input.history.filter(message => {
     if (message.role !== "assistant") return message.role === "user";
     const content = message.content.trim();
-    return content !== "未收到有效回复。" && content !== "正在执行命令…";
+    return (
+      content !== "未收到有效回复。" &&
+      content !== "正在执行命令…" &&
+      !isAgentStepMessage(content)
+    );
   });
 
-  const selected: AiProviderMessage[] = [];
-  for (let index = visibleHistory.length - 1; index >= 0; index -= 1) {
-    const message = visibleHistory[index]!;
-    const content = truncateText(message.content, 8_000);
-    selected.unshift({
+  type TimelineEntry = { at: number; order: number; messages: AiProviderMessage[] };
+  const entries: TimelineEntry[] = visibleHistory.map((message, index) => ({
+    at: message.createdAt,
+    order: index,
+    messages: [{
       role: message.role === "assistant" ? "assistant" : "user",
-      content,
+      content: truncateText(message.content, 8_000),
+    }],
+  }));
+
+  // 跨上下文段完整保留所有已执行指令及其经过脱敏的回复；旧版记录没有时间戳时放在最前面。
+  (memory?.commands ?? []).forEach((command, index) => {
+    entries.push({
+      at: command.executedAt ?? Number.NEGATIVE_INFINITY,
+      order: visibleHistory.length + index,
+      messages: buildExecutedCommandMessages([command], Number.POSITIVE_INFINITY, true),
     });
-  }
-  // 历史从用户轮次开始，避免截断后产生没有前置问题的孤立 assistant 消息。
-  while (selected[0]?.role === "assistant") selected.shift();
-  return selected;
+  });
+
+  const ordered = entries
+    .sort((left, right) => left.at - right.at || left.order - right.order)
+    .flatMap(entry => entry.messages);
+  // 历史从用户轮次或工具调用开始，避免截断后产生没有前置问题的孤立 assistant 文本。
+  while (ordered[0]?.role === "assistant" && !ordered[0].tool_calls) ordered.shift();
+  return ordered;
 }
 
 function buildPolicyFeedbackMessages(
@@ -384,6 +415,11 @@ function buildLongCommandProgressMessages(
   ];
 }
 
+/**
+ * 消息顺序：稳定的 system → 摘要 → 按时间排列的历史 → 当前问题 → 本轮工具调用 →
+ * 易变的运行上下文 → 长命令进度和协议纠正。每次请求变化的内容放在最后，
+ * 同一轮多次请求以及相邻两轮对话之间都能共享尽可能长的相同前缀。
+ */
 export function buildAiMessages(
   input: AiChatInput,
   executedCommands: ExecutedAiCommandContext[],
@@ -395,19 +431,19 @@ export function buildAiMessages(
 ): AiProviderMessage[] {
   const messages: AiProviderMessage[] = [
     { role: "system", content: buildSystemPrompt(input) },
-    ...buildConversationMemoryMessages(memory),
-    ...buildBoundedHistory(input),
-    {
-      role: "user",
-      content: buildRuntimeContext(input, terminalOutput, executedCommands.length),
-    },
+    ...buildSummaryMessages(memory),
+    ...buildChronologicalHistory(input, memory),
     { role: "user", content: input.message },
     ...buildExecutedCommandMessages(executedCommands),
-    ...(longCommandProgress
-      ? buildLongCommandProgressMessages(longCommandProgress)
-      : []),
   ];
   if (policyFeedback) messages.push(...buildPolicyFeedbackMessages(policyFeedback));
+  messages.push({
+    role: "user",
+    content: buildRuntimeContext(input, terminalOutput, executedCommands.length),
+  });
+  if (longCommandProgress) {
+    messages.push(...buildLongCommandProgressMessages(longCommandProgress));
+  }
   if (responseProtocolCorrection) {
     messages.push({
       role: "user",

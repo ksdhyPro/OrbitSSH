@@ -12,6 +12,8 @@ import type {
 export interface AgentEmitter {
   sendMessageStart(messageId: string, createdAt: number): void;
   sendChunk(messageId: string, text: string): void;
+  /** 整体替换已发送消息的内容，用于原地更新的进度消息。 */
+  replaceMessage(messageId: string, text: string): void;
   sendCommandCard(card: AiCommandCard): void;
 }
 
@@ -41,6 +43,17 @@ export function createAgentEmitter(
         conversationId: input.conversationId,
         messageId,
         chunk: text,
+      } satisfies AiStreamChunkEvent);
+    },
+    replaceMessage: (messageId, text) => {
+      if (webContents.isDestroyed()) return;
+      webContents.send("ai:stream-chunk", {
+        tabId: input.tabId,
+        requestId: input.requestId,
+        conversationId: input.conversationId,
+        messageId,
+        chunk: text,
+        replace: true,
       } satisfies AiStreamChunkEvent);
     },
     sendCommandCard: card => {

@@ -53,23 +53,23 @@ function requireEnum<T extends string>(
   return value as T;
 }
 
+const truncatedHistoryMarker = "\n…[历史消息过长，已截断]";
+
+function truncateHistoryContent(content: string): string {
+  return content.length > maxMessageChars
+    ? `${content.slice(0, maxMessageChars - truncatedHistoryMarker.length)}${truncatedHistoryMarker}`
+    : content;
+}
+
+/**
+ * 历史消息是已经发生的对话，长度超限时截断或丢弃最早的消息，不能让单条长回复
+ * （例如完整的排查报告）导致该对话之后的所有请求都被拒绝。结构非法的消息仍然拒绝。
+ */
 function normalizeHistory(value: unknown): AiMessage[] {
   if (!Array.isArray(value)) throw new Error("AI 对话历史必须是数组");
-  if (value.length > maxHistoryCount) {
-    throw new Error(`AI 对话历史不能超过 ${maxHistoryCount} 条`);
-  }
-  let totalChars = 0;
-  return value.map((item, index) => {
+
+  const messages = value.map((item, index): AiMessage | null => {
     const record = requireRecord(item, `AI 对话历史第 ${index + 1} 条`);
-    const content = requireBoundedString(
-      record.content,
-      `AI 对话历史第 ${index + 1} 条内容`,
-      maxMessageChars,
-    );
-    totalChars += content.length;
-    if (totalChars > maxHistoryChars) {
-      throw new Error(`AI 对话历史总长度不能超过 ${maxHistoryChars} 个字符`);
-    }
     const createdAt = Number(record.createdAt);
     const completedAt =
       record.completedAt === undefined ? undefined : Number(record.completedAt);
@@ -77,14 +77,28 @@ function normalizeHistory(value: unknown): AiMessage[] {
     if (completedAt !== undefined && !Number.isFinite(completedAt)) {
       throw new Error("AI 消息完成时间无效");
     }
-    return {
-      id: requireBoundedString(record.id, "AI 消息 ID", 128),
-      role: requireEnum(record.role, "AI 消息角色", ["user", "assistant"] as const),
-      content,
-      createdAt,
-      completedAt,
-    } satisfies AiMessage;
+    const id = requireBoundedString(record.id, "AI 消息 ID", 128);
+    const role = requireEnum(record.role, "AI 消息角色", ["user", "assistant"] as const);
+    if (typeof record.content !== "string") {
+      throw new Error(`AI 对话历史第 ${index + 1} 条内容必须是字符串`);
+    }
+    const content = record.content.trim();
+    // 流式占位等空消息对模型没有意义，直接跳过。
+    if (!content) return null;
+    return { id, role, content: truncateHistoryContent(content), createdAt, completedAt };
   });
+
+  // 从最新消息往前保留，超出条数或总长度时丢弃最早的消息。
+  const kept: AiMessage[] = [];
+  let totalChars = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (kept.length >= maxHistoryCount || totalChars + message.content.length > maxHistoryChars) break;
+    totalChars += message.content.length;
+    kept.unshift(message);
+  }
+  return kept;
 }
 
 export function normalizeAiChatInput(input: unknown): AiChatInput {

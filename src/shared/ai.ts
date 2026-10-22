@@ -149,6 +149,8 @@ export interface AiStreamChunkEvent {
   // 标识当前 chunk 属于哪条流式消息，前端据此把文本累加到对应占位消息。
   messageId: string;
   chunk: string;
+  /** 为 true 时用 chunk 整体替换消息内容，用于长命令进度这类原地更新的消息。 */
+  replace?: boolean;
 }
 
 // 每轮 AI 回复开始时推送一次：前端立即插入一条空占位 assistant 消息，

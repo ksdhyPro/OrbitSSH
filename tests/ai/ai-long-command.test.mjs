@@ -98,3 +98,21 @@ test("本地长命令可以流式读取 stdout 和 stderr", async () => {
   assert.ok(chunks.some(item => item.stream === "stdout" && item.text.includes("out")));
   assert.ok(chunks.some(item => item.stream === "stderr" && item.text.includes("err")));
 });
+
+test("长命令汇报间隔逐步拉长，避免长时间运行时频繁请求模型", async () => {
+  const reportedAt = [];
+  const startedAt = Date.now();
+  await runLongCommandMonitor(createOptions({
+    reportIntervalMs: undefined,
+    reportIntervalsMs: [20, 40, 80],
+    execute: () => new Promise(resolve => setTimeout(() => resolve(completedResult), 230)),
+    onProgress: async () => {
+      reportedAt.push(Date.now() - startedAt);
+    },
+  }));
+
+  // 20、60、140、220 毫秒左右各汇报一次：间隔依次为 20、40、80，之后保持最后一个间隔。
+  assert.equal(reportedAt.length, 4);
+  const gaps = reportedAt.map((time, index) => time - (reportedAt[index - 1] ?? 0));
+  assert.ok(gaps[1] >= 35 && gaps[2] >= 70 && gaps[3] >= 70, `间隔：${gaps.join(", ")}`);
+});

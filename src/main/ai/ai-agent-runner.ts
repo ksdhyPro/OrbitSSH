@@ -18,12 +18,13 @@ import type {
   AiConversationMemory,
   AiTokenUsage,
 } from "./ai-context-budget.js";
-import type {
-  AiLongCommandProgressContext,
-  ExecutedAiCommandContext,
-  LocalPolicyRejectionFeedback,
+import {
+  formatAgentStepMessage,
+  type ExecutedAiCommandContext,
+  type LocalPolicyRejectionFeedback,
 } from "./ai-context.js";
 import { getAiExecutionStopReason } from "./ai-execution-budget.js";
+import { createLongCommandProgressReporter } from "./ai-long-command-progress.js";
 import { requestAiTurn } from "./ai-provider.js";
 
 const maxLocalPolicyRetries = 3;
@@ -56,11 +57,10 @@ export class AiContextWindowExceededError extends Error {
   }
 }
 
-export interface ReportLongCommandProgressOptions {
+export interface LongCommandProgressOptions {
+  /** 应传入当前上下文段的输入，压缩后的历史不能再整体发送。 */
   input: AiChatInput;
   settings: AppSettings;
-  signal: AbortSignal;
-  progress: AiLongCommandProgressContext;
   messages: AiMessage[];
   executedCommands: ExecutedAiCommandContext[];
   emit?: AgentEmitter;
@@ -68,32 +68,27 @@ export interface ReportLongCommandProgressOptions {
   onTokenUsage?: (usage: AiTokenUsage) => void;
 }
 
-/** 请求模型把长命令增量输出转换成简短进度，并立即推送到当前对话。 */
-export async function reportLongCommandProgress(
-  options: ReportLongCommandProgressOptions,
-): Promise<void> {
-  const parsed = await requestAiTurn(
-    options.input,
-    options.settings,
-    options.executedCommands,
-    options.signal,
-    undefined,
-    undefined,
-    options.memory,
-    options.progress,
-  );
-  if (options.signal.aborted) return;
-  if (parsed.usage) options.onTokenUsage?.(parsed.usage);
-
-  const content = parsed.progressReports?.[0]?.message || (
-    options.progress.outputChanged
-      ? "长命令仍在执行，已收到新的运行输出。"
-      : "长命令仍在执行中。"
-  );
-  const message = createAssistantMessage(content);
-  options.messages.push(message);
-  options.emit?.sendMessageStart(message.id, message.createdAt);
-  options.emit?.sendChunk(message.id, message.content);
+/** 创建单条长命令的进度汇报器：有新输出才请求模型概括，并原地更新同一条消息。 */
+export function createLongCommandProgressHandler(options: LongCommandProgressOptions) {
+  return createLongCommandProgressReporter({
+    messages: options.messages,
+    emit: options.emit,
+    createMessage: createAssistantMessage,
+    requestProgressMessage: async (progress, signal) => {
+      const parsed = await requestAiTurn(
+        options.input,
+        options.settings,
+        options.executedCommands,
+        signal,
+        undefined,
+        undefined,
+        options.memory,
+        progress,
+      );
+      if (parsed.usage) options.onTokenUsage?.(parsed.usage);
+      return parsed.progressReports?.[0]?.message;
+    },
+  });
 }
 
 /** 运行单个 AI 请求的模型—动作循环，直到完成、审批暂停或预算耗尽。 */
@@ -152,8 +147,8 @@ export async function runAgentLoop(
     const action = getNextAgentAction(parsed);
     const defaultMessage = action
       ? action.type === "saved_server"
-        ? `查看已保存服务器：${action.serverName}（${action.reason}）`
-        : `执行：${action.command}（${action.reason}）`
+        ? formatAgentStepMessage("saved_server", action.serverName, action.reason)
+        : formatAgentStepMessage("command", action.command, action.reason)
       : "未收到有效回复。";
 
     // 保持原有语义：当前服务器的格式拒绝会反馈给模型并允许修正。
@@ -210,18 +205,15 @@ export async function runAgentLoop(
       messages,
       storeApproval,
       onCommandExecuted: options.onCommandExecuted,
-      onLongCommandProgress: (progress, progressSignal) =>
-        reportLongCommandProgress({
-          input,
-          settings,
-          signal: progressSignal,
-          progress,
-          messages,
-          executedCommands,
-          emit,
-          memory: preparedContext?.memory ?? options.memory,
-          onTokenUsage: options.onTokenUsage,
-        }),
+      onLongCommandProgress: createLongCommandProgressHandler({
+        input: preparedContext?.input ?? input,
+        settings,
+        messages,
+        executedCommands,
+        emit,
+        memory: preparedContext?.memory ?? options.memory,
+        onTokenUsage: options.onTokenUsage,
+      }),
     });
     if (action.type === "long_shell") {
       // 长命令等待不占用普通 Agent 的十分钟推理预算。

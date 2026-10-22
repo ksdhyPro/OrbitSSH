@@ -90,3 +90,33 @@ test("AI 输入接受三档权限模式", () => {
     /AI 模式/,
   );
 });
+
+test("历史中的超长回复会被截断而不是让后续请求全部失败", () => {
+  const longReply = "排查报告".repeat(3_000);
+  const normalized = normalizeAiChatInput({
+    ...validInput,
+    history: [
+      { id: "1", role: "user", content: "写一份完整报告", createdAt: 1 },
+      { id: "2", role: "assistant", content: longReply, createdAt: 2 },
+      { id: "3", role: "assistant", content: "   ", createdAt: 3 },
+    ],
+  });
+
+  assert.equal(normalized.history.length, 2);
+  assert.equal(normalized.history[1].content.length, 8_000);
+  assert.match(normalized.history[1].content, /历史消息过长，已截断/);
+});
+
+test("历史超出条数或总长度时保留最新的消息", () => {
+  const history = Array.from({ length: 600 }, (_, index) => ({
+    id: `m${index}`,
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: "x".repeat(7_000),
+    createdAt: index,
+  }));
+  const normalized = normalizeAiChatInput({ ...validInput, history });
+
+  assert.ok(normalized.history.length <= 500);
+  assert.ok(normalized.history.reduce((total, item) => total + item.content.length, 0) <= 1_000_000);
+  assert.equal(normalized.history.at(-1).id, "m599");
+});

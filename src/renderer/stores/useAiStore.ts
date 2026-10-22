@@ -478,12 +478,13 @@ export const useAiStore = defineStore("ai", () => {
     conversationId: string,
     messageId: string,
     chunk: string,
+    replace = false,
   ): void {
     updateConversation(tabId, conversation => ({
       ...conversation,
       messages: conversation.messages.map(message =>
         message.id === messageId
-          ? { ...message, content: message.content + chunk }
+          ? { ...message, content: replace ? chunk : message.content + chunk }
           : message,
       ),
       updatedAt: Date.now(),
@@ -760,6 +761,7 @@ export const useAiStore = defineStore("ai", () => {
       event.conversationId,
       event.messageId,
       event.chunk,
+      event.replace,
     );
   });
   const removeCommandCardListener = ai?.onCommandCard(event => {

@@ -23,7 +23,7 @@ import {
 } from "./ai-agent-events.js";
 import {
   AiContextWindowExceededError,
-  reportLongCommandProgress,
+  createLongCommandProgressHandler,
   runAgentLoop,
 } from "./ai-agent-runner.js";
 import { ExpiringApprovalStore } from "./ai-approval-store.js";
@@ -407,27 +407,23 @@ export async function runApprovedAiCommand(
         conversationContexts.recordCommand(resumedInput, command);
         persistAiConversationContext(resumedInput, conversationContexts);
       },
-      onLongCommandProgress: (progress, progressSignal) =>
-        reportLongCommandProgress({
-          input: resumedInput,
-          settings,
-          signal: progressSignal,
-          progress,
-          messages,
-          executedCommands: approval.executedCommands,
-          emit,
-          memory: conversationContexts.getMemory(resumedInput),
-          onTokenUsage: usage => {
-            const config = getActiveContextConfig(settings);
-            if (config) {
-              conversationContexts.recordUsage(
-                resumedInput,
-                usage,
-                config.id,
-              );
-            }
-          },
-        }),
+      onLongCommandProgress: createLongCommandProgressHandler({
+        input: {
+          ...resumedInput,
+          history: conversationContexts.getSegmentHistory(resumedInput),
+        },
+        settings,
+        messages,
+        executedCommands: approval.executedCommands,
+        emit,
+        memory: conversationContexts.getMemory(resumedInput),
+        onTokenUsage: usage => {
+          const config = getActiveContextConfig(settings);
+          if (config) {
+            conversationContexts.recordUsage(resumedInput, usage, config.id);
+          }
+        },
+      }),
       approval: {
         id: input.approvalId,
         cardId: approval.cardId,

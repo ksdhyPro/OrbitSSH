@@ -406,6 +406,7 @@ async function executeShellAction(
       risk: action.risk,
       workingDirectory: getWorkingDirectory(input),
       result,
+      executedAt: Date.now(),
     };
     request.onCommandExecuted?.(executedCommand);
     return {
@@ -440,6 +441,7 @@ async function executeShellAction(
         timedOut: false,
         durationMs: 0,
       },
+      executedAt: Date.now(),
     });
     const card = createCard(input, action, cancelled ? "cancelled" : "failed", {
       id: cardId,
@@ -507,6 +509,7 @@ async function executeSavedServerAction(
       reason: action.reason,
       risk: action.risk,
       result: remote.result,
+      executedAt: Date.now(),
     };
     request.onCommandExecuted?.(executedCommand);
     return {
@@ -533,6 +536,7 @@ async function executeSavedServerAction(
         timedOut: false,
         durationMs: 0,
       },
+      executedAt: Date.now(),
     });
     const card = createCard(input, action, "failed", {
       id: cardId,

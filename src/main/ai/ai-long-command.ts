@@ -1,7 +1,8 @@
 import type { AiCommandResult } from "../../shared/ai.js";
 import type { AiLongCommandProgressContext } from "./ai-context.js";
 
-export const LONG_COMMAND_REPORT_INTERVAL_MS = 30_000;
+// 汇报间隔逐步拉长：前几分钟及时反馈，之后每 5 分钟一次，避免一小时的命令触发上百次模型请求。
+export const LONG_COMMAND_REPORT_INTERVALS_MS = [30_000, 60_000, 120_000, 300_000];
 export const LONG_COMMAND_TIMEOUT_MS = 60 * 60 * 1000;
 
 interface RunLongCommandMonitorOptions {
@@ -10,7 +11,9 @@ interface RunLongCommandMonitorOptions {
   reason: string;
   risk: "low" | "medium" | "high";
   signal: AbortSignal;
+  /** 固定汇报间隔，主要供测试使用；未设置时按 reportIntervalsMs 逐步退避。 */
   reportIntervalMs?: number;
+  reportIntervalsMs?: number[];
   execute: (
     onOutput: (stream: "stdout" | "stderr", text: string) => void,
   ) => Promise<AiCommandResult>;
@@ -41,7 +44,10 @@ export async function runLongCommandMonitor(
   if (options.signal.aborted) throw createAbortError();
 
   const startedAt = Date.now();
-  const intervalMs = options.reportIntervalMs ?? LONG_COMMAND_REPORT_INTERVAL_MS;
+  const intervals = options.reportIntervalMs !== undefined
+    ? [options.reportIntervalMs]
+    : options.reportIntervalsMs ?? LONG_COMMAND_REPORT_INTERVALS_MS;
+  let reportCount = 0;
   let stdoutDelta = "";
   let stderrDelta = "";
 
@@ -57,6 +63,8 @@ export async function runLongCommandMonitor(
   );
 
   while (true) {
+    const intervalMs = intervals[Math.min(reportCount, intervals.length - 1)]!;
+    reportCount += 1;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const interval = new Promise<{ type: "interval" }>(resolve => {
       timer = setTimeout(() => resolve({ type: "interval" }), intervalMs);

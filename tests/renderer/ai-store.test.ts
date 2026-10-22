@@ -90,6 +90,20 @@ describe("useAiStore", () => {
     expect(store.messages.at(-1)?.content).toBe("磁盘正常");
   });
 
+  it("进度消息支持整体替换内容，长命令进度不会越积越长", async () => {
+    const store = useAiStore();
+    const { deferred, sending, input } = await startPendingChat(store);
+    const route = { tabId: input.tabId, requestId: input.requestId, conversationId: input.conversationId };
+
+    mock.emitStreamMessageStart({ ...route, messageId: "progress-1", createdAt: Date.now() + 1 });
+    mock.emitStreamChunk({ ...route, messageId: "progress-1", chunk: "下载到 30%\n\n已运行 30 秒" });
+    mock.emitStreamChunk({ ...route, messageId: "progress-1", chunk: "下载到 80%\n\n已运行 2 分 0 秒", replace: true });
+
+    expect(store.messages.find(message => message.id === "progress-1")?.content).toBe("下载到 80%\n\n已运行 2 分 0 秒");
+    deferred.resolve({ messages: [], commandCards: [] });
+    await sending;
+  });
+
   it("命令卡事件只合并到身份一致的对话", async () => {
     const store = useAiStore();
     const { deferred, sending, input } = await startPendingChat(store);
