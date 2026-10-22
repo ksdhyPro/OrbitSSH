@@ -33,6 +33,7 @@ The repository provides a Windows installer and macOS packaging script. Developm
 - Remote SSH and local terminals with parallel, multi-tab sessions.
 - xterm.js rendering with automatic resizing, terminal search, selection-to-copy, and right-click paste.
 - Reconnect support plus configurable SSH/SFTP keepalive and idle-disconnect intervals.
+- Server host keys are verified: the fingerprint is confirmed and remembered on first connection, and a later key change is flagged so the user decides whether to continue.
 - Terminal paths are synchronized to the file panel and AI context; when unknown, AI commands run in the login default directory.
 
 ### SFTP and transfers
@@ -58,16 +59,18 @@ The repository provides a Windows installer and macOS packaging script. Developm
 - Permission modes:
   - `ask`: every command needs confirmation.
   - `auto`: identified high-risk operations and sensitive reads need confirmation; low- and medium-risk commands can run automatically.
-  - `full_access`: syntactically valid commands run without approval.
+  - `full_access`: syntactically valid commands in the current terminal run without approval; cross-server commands still need approval each time.
 - The main process checks syntax, compound commands, sensitive data sources, and high-risk operations. User approval cannot override a syntax-level denial.
 - Terminal output, tool results, and common credential patterns are redacted and length-bounded. Sharing recent terminal output with an online model is disabled by default.
 - Each turn is bounded by command count, elapsed time, repeated-command checks, and no-progress detection. Requests and running commands can be cancelled.
+- Model requests have separate first-byte, idle, and total time limits. Rate limits and busy servers are retried with `Retry-After` or backoff, and failures explain the cause, such as an invalid API key, a wrong Base URL, or exhausted quota.
 
 ### Appearance and app behavior
 
 - Dark/light themes plus terminal font size, line height, and selection color settings.
 - Server, automation, and remote-file panels support ordering, collapsing, and resizing.
 - System tray, single-instance startup, Windows startup diagnostics, and `electron-updater` update checks with download progress.
+- The app never opens new windows or navigates away in-app: http/https links open in the system browser and other protocols are blocked.
 
 ## Architecture
 
@@ -112,10 +115,16 @@ npm run dev:electron
 # Vue type check, renderer build, Electron main-process compilation, and Preload sync
 npm run build
 
-# AI, SFTP, and renderer tests
+# Full pre-commit check: formatting, ESLint, type checks, and all tests
+npm run check
+
+# Per-module tests
 npm run test:ai
 npm run test:sftp
 npm run test:renderer
+
+# Format the code
+npm run format
 
 # Windows installer / macOS package
 npm run dist
@@ -133,9 +142,9 @@ npm run dist-mac
 
 ### AI
 
-1. In **Settings → AI**, enable AI and add an OpenAI-compatible model configuration.
+1. In **Settings → AI**, switch the work mode to **AI mode** and add an OpenAI-compatible model under **Model configuration**.
 2. Choose a permission mode suited to the server's risk level; `ask` is recommended for production servers.
-3. Open the AI panel next to a connected terminal and describe the symptom or goal.
+3. Select a server on the left to connect in the background, then describe the symptom or goal in the AI conversation. Use **Open SSH** in the AI assistant title bar to view the terminal.
 4. When approval is required, review the target server, working directory, command, and risk explanation before approving.
 5. To share recent terminal output with the model, enable the option in Settings. Output is redacted and truncated first.
 
@@ -155,7 +164,7 @@ orbitssh/
 │   ├── renderer/      Vue components, Pinia stores, styles, interaction logic
 │   ├── shared/        shared main-process/renderer types
 │   └── types/         global Preload type declarations
-├── tests/             AI, SSH/SFTP, renderer, startup, installer tests
+├── tests/             AI, MCP, SSH/SFTP, main-process, renderer, installer tests
 ├── docs/              architecture notes, changelogs, screenshots
 ├── scripts/           development, packaging, asset, version-sync scripts
 ├── packaging/         Windows installer assets and scripts
@@ -165,7 +174,7 @@ orbitssh/
 
 ## Contributing
 
-Issues and pull requests are welcome. Run the tests relevant to your change before submitting. If an update changes a Renderer-to-main-process interface, update both the Preload implementation and its type declarations.
+Issues and pull requests are welcome. Run `npm run check` (formatting, ESLint, type checks, and all tests) before submitting. If an update changes a Renderer-to-main-process interface, update both the Preload implementation and its type declarations.
 
 ## License
 

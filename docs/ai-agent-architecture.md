@@ -23,17 +23,33 @@ Agent 支持三种模式：
 | `ai-agent-events.ts` | 将 Agent 消息、流式片段和命令卡适配为 Electron IPC 事件 |
 | `ai-conversation-state.ts` | 由主进程统一合并对话、命令卡和上下文快照并持久化，Renderer 只负责展示 |
 | `ai-permission-policy.ts` | 合并三档授权、模型风险标记和命令策略，输出执行、审批或拒绝决策 |
-| `command-policy.ts` | Shell 命令规范化、只读白名单、高风险规则与复合命令审查 |
+| `command-policy.ts` | 命令策略入口：强制审批原因、命令评估和复合命令逐段审查 |
+| `shell-syntax.ts` | Shell 词法与结构解析：规范化、分词、拆分复合命令、重定向识别和长度限制 |
+| `command-policy-rules.ts` | 高风险命令表、强制审批模式、间接执行与远程 Shell 跳转规则 |
+| `command-readonly.ts` | 可直接执行的只读查询白名单 |
+| `command-write-risk.ts` | 清空文件、写入系统配置和敏感路径等写入风险 |
 | `ai-data-policy.ts` | 独立审查凭据源、敏感文件和可能泄露秘密的查询 |
-| `ai-provider.ts` | OpenAI 兼容模型请求、超时、重试和工具调用数量约束 |
-| `ai-response-parser.ts` | SSE/JSON 响应解析和工具参数校验 |
-| `ai-context.ts` | 稳定系统指令、不可信上下文隔离、工具消息重建、脱敏及上下文预算 |
+| `ai-provider.ts` | 单轮模型请求、流式事件转发、失败分类后的自动重试与退避 |
+| `ai-protocol.ts` | 选择 Responses 或 Chat Completions，并记住探测结果和不支持的兼容参数 |
+| `ai-provider-compatibility.ts` | 识别并移除服务端不支持的 `tool_choice`、`stream_options` 参数后重试 |
+| `ai-responses-adapter.ts` | Responses 请求体构造、响应解析和“不支持 Responses”的判定 |
+| `ai-request-deadline.ts` | 首字节、空闲和总时长三个计时器组成的请求截止控制 |
+| `ai-request-errors.ts` | 把 HTTP 状态、网络异常和超时转换为中文说明，并决定是否可重试 |
+| `ai-response-parser.ts` | SSE/JSON 响应解析、工具参数校验和 `finish_response` 流式预览 |
+| `ai-tools.ts` | 模型可调用的工具定义 |
+| `ai-context.ts` | 稳定系统指令、不可信上下文隔离、按时间顺序重建历史与工具消息、脱敏 |
+| `ai-context-budget.ts` | Token 估算、80% 压缩阈值、摘要额度和最近使用对话状态的内存上限 |
 | `ai-execution-budget.ts` | 命令数量、总耗时和重复无进展检测 |
-| `ai-saved-server-command.ts` | 通过已保存连接执行受控的跨服务器命令，并在连接前复核权限 |
+| `ai-long-command.ts` / `ai-long-command-progress.ts` | 长命令监督、逐步拉长的汇报间隔和进度文案 |
+| `ai-saved-server-target.ts` | 按名称或主机解析用户点名的已保存服务器 |
+| `ai-saved-server-command.ts` | 在展示审批卡前确定目标服务器，并通过已保存连接执行受控的跨服务器命令 |
+| `ai-command-result.ts` | 把各命令适配器的结果统一映射为命令卡终态 |
+| `ai-model-config.ts` | 读取当前生效的模型配置；AI 关闭或未配置时给出明确提示而不发起请求 |
+| `ai-limits.ts` | 命令数量、单轮时长和模型请求超时等全局限制 |
 | `ai-approval-store.ts` | 一次性审批、五分钟 TTL 和按标签页清理 |
 | `ai-input.ts` | IPC 输入结构、请求身份、标签页一致性和长度限制 |
 
-共享类型位于 `src/shared/ai.ts` 和 `src/shared/settings.ts`，主进程 IPC 入口位于 `src/main/ipc/ai-ipc.ts`。
+共享类型位于 `src/shared/ai.ts` 和 `src/shared/settings.ts`，主进程 IPC 入口位于 `src/main/ipc/ai-ipc.ts`。协议探测结果保存在 `src/main/storage/ai-protocol-store.ts`，对话记录保存在 `src/main/storage/ai-conversation-repository.ts`。
 
 ## 3. 请求与执行流程
 
@@ -41,7 +57,8 @@ Agent 支持三种模式：
 2. 主进程验证完整输入，并确认 `input.tabId` 与 `context.tabId` 一致。同一标签页的新请求会终止旧请求；取消操作必须匹配当前 `requestId`。
 3. Agent 构建模型请求：
    - System 消息只包含稳定、可信的行为和安全规则。
-   - 服务器名称、当前路径、连接状态和执行预算位于单独的“不可信运行上下文”用户消息中。
+   - 历史对话与已执行的工具调用按发生时间穿插排列，只在末尾追加，前缀保持稳定以便模型服务命中前缀缓存。
+   - 服务器名称、当前路径、连接状态和执行预算位于单独的“不可信运行上下文”用户消息中，放在本轮工具调用之后；每次请求都会变化的内容集中在末尾。
    - 最近终端输出默认不发送；用户开启后先脱敏再截断。
    - 已执行动作使用标准 `assistant.tool_calls` 与 `tool` 结果消息重建，保留同一个工具调用 ID。
 4. 模型每轮必须产生一个明确动作：
@@ -72,6 +89,7 @@ Agent 支持三种模式：
 
 - 模型不能通过当前服务器执行 `ssh`、`scp` 或 `sftp` 跳转。
 - `run_saved_server_command` 只能使用本地已保存连接，并且要求用户明确提及目标服务器。
+- 目标服务器在展示审批卡之前就已解析，命令卡显示的就是实际执行的服务器；审批恢复后按解析出的服务器 ID 执行，不会重新匹配名称。
 - 全局“AI → 是否允许跨服务器执行操作”默认关闭；关闭时本地策略会直接拒绝请求，任何权限模式和历史审批都不能绕过。
 - 跨服务器命令不受三档权限的免审批能力影响，任何模式都必须展示命令卡并由用户逐次批准；执行适配器在建立连接前再次读取总开关，并复核命令策略和审批状态。
 - 服务器名称有多个匹配时拒绝执行，要求使用完整名称。
@@ -91,7 +109,9 @@ Agent 支持三种模式：
 - 动态上下文和工具结果都明确标记为不可信数据，不能覆盖 System 规则。
 - 工具结果和终端上下文使用同一套凭据脱敏规则，覆盖常见 Token、密码、Authorization、Cookie、URL 凭据和 PEM 私钥。
 - 最近终端输出最多 3000 字符；单条工具结果最多 4000 字符；工具结果合计最多 24000 字符。
-- 模型历史最多使用最近 8 条，合计最多 16000 字符。
+- 单条用户输入最多 8000 字符；历史中的单条消息超过 8000 字符时截断后再发送，不会因为历史过长而拒绝请求。
+- 历史总量由模型配置的上下文上限控制：达到 80% 时自动压缩为摘要，已执行命令及结果单独保存，不写入摘要。
+- 主进程内存只保留最近使用的 100 个对话状态，淘汰后按需从持久化的运行上下文恢复。
 - 应用日志只记录长度、状态、模型和工具名，不记录原始模型响应、完整命令或终端上下文。
 
 ### 审批、并发与取消
@@ -106,16 +126,25 @@ Agent 支持三种模式：
 
 ## 6. 模型适配
 
-- OpenAI 兼容接口使用标准工具调用消息；单轮返回多个工具动作、无效工具参数或纯文本无动作时会拒绝并重试一次。
-- 在线请求设置 60 秒超时，只对连接异常、408、429 和 5xx 等可恢复问题自动重试一次。
-- 在线模型统一使用 OpenAI 兼容的 Chat Completions 与工具调用格式。
+- 使用 OpenAI 兼容的工具调用格式；单轮返回多个工具动作、无效工具参数或纯文本无动作时会拒绝并带协议纠正提示立即重试一次。
+- 接口协议：`provider` 为 DeepSeek 或 GLM 时直接使用 Chat Completions；其他服务（包括在设置界面新增的模型）先尝试 Responses，服务端明确表现为不支持时回退 Chat Completions。探测结果按 Base URL + 模型名跨重启保存，不支持 `tool_choice` 的结论同样会被记住。
+- 请求超时由三个计时器组成：流式请求等待响应头最多 60 秒，两次数据之间最多间隔 60 秒，单次请求最长 10 分钟；非流式请求等待完整响应最多 180 秒。持续输出的长回答不会被打断。
+- 自动重试：408、429 和 5xx 视为服务端繁忙，最多尝试 3 次，优先按 `Retry-After`（最多 30 秒）等待，否则按 1 秒、2 秒退避；网络异常和超时最多尝试 2 次，间隔 1 秒；401、403、404 和其他 4xx 参数错误不重试。上下文超限进入压缩流程，不按普通错误重试。
+- 失败时展示具体原因，例如 API Key 无效、Base URL 或模型名错误、额度不足、服务长时间无响应，并附带脱敏截断后的服务端说明。
+- `finish_response` 的最终答复在模型生成过程中就流式显示，不必等整个工具调用结束。
 
 ## 7. 验证
 
-AI 专项测试包含命令策略、数据暴露、提示词注入、脱敏、工具协议、工作目录、执行预算和输入身份校验：
+AI 专项测试包含命令策略、数据暴露、提示词注入、脱敏、工具协议、协议探测、超时与重试、工作目录、执行预算、Agent 主循环、审批恢复、上下文压缩和输入身份校验：
 
 ```powershell
 npm run test:ai
+```
+
+提交前的完整检查依次运行格式检查、ESLint、类型检查和全部测试：
+
+```powershell
+npm run check
 ```
 
 生产构建包含 Vue、Electron TypeScript 检查和 Preload 同步：

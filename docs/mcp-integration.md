@@ -9,11 +9,13 @@ OrbitSSH 通过本地 MCP STDIO 进程向 Codex 暴露已保存连接。MCP 进�
 3. 按需开启“允许第三方 AI 通过 MCP 使用 SSH”或“允许第三方 AI 通过 MCP 使用 SFTP”。两个开关均默认关闭。
 4. 在 Codex 中注册名为 `orbitssh` 的 STDIO MCP Server，并安装 `orbitssh-mcp` Skill。安装包会把 Skill 放在应用 `resources/skills/orbitssh-mcp` 目录，可将该目录复制到 `~/.codex/skills/orbitssh-mcp`。
 
+也可以打开“设置 → AI → 如何安装到 Agent？”，复制按本机实际安装路径生成的提示词，交给支持本地 STDIO MCP 的 AI 客户端完成注册和 Skill 安装。提示词要求客户端保留已有配置，并且不得替用户开启 OrbitSSH 的 SSH/SFTP MCP 授权开关。
+
 开发环境可以执行：
 
 ```powershell
 npm run build
-codex mcp add orbitssh -- node I:\OrbitSSH\dist-electron\mcp\standalone.js
+codex mcp add orbitssh -- node <项目目录>/dist-electron/mcp/standalone.js
 ```
 
 安装版直接通过 OrbitSSH 主程序的 MCP 模式启动，不依赖系统 Node.js。Windows 配置示例：

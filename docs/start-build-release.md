@@ -72,10 +72,10 @@ npm run dev:electron
 npm run dev
 ```
 
-只预览前端构建产物：
+只预览前端构建产物（需先执行 `npm run build`）：
 
 ```bash
-npm run preview
+npx vite preview
 ```
 
 ## 4. 构建流程
@@ -101,6 +101,34 @@ node scripts/generate-build-info.cjs
 - `dist-electron/`：Electron 主进程和 preload 产物
 
 如果这一步失败，先不要打包。需要先修复 TypeScript、Vite 或 Electron 主进程编译错误。
+
+### 4.1 代码检查与测试
+
+提交前运行完整检查，依次执行 Prettier 格式检查、ESLint、类型检查和全部测试：
+
+```bash
+npm run check
+```
+
+也可以单独运行其中一项：
+
+| 命令 | 作用 |
+| --- | --- |
+| `npm run format` | 用 Prettier 格式化全部文件（Markdown 不参与格式化） |
+| `npm run format:check` | 只检查格式，不修改文件 |
+| `npm run lint` | ESLint 检查主进程、Renderer、测试和脚本 |
+| `npm run typecheck` | Vue、Renderer 测试和 Electron 主进程的 TypeScript 检查 |
+| `npm test` | 编译主进程后运行 AI、MCP、SFTP、SSH、主进程、安装器测试，再运行 Renderer 测试 |
+| `npm run test:ai` / `test:mcp` / `test:sftp` | 只运行对应模块的 Node 测试 |
+| `npm run test:renderer` | 只运行 Vitest Renderer 测试 |
+
+主进程测试基于 `node --test`，针对 `dist-electron` 中的编译产物运行；AI 测试使用 `--experimental-test-module-mocks` 替换模型请求与命令执行。Renderer 测试基于 Vitest、`@vue/test-utils` 和 jsdom。
+
+全仓库格式化的提交记录在 `.git-blame-ignore-revs` 中，本地执行一次以下命令后 `git blame` 会跳过它：
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
 
 ## 5. Windows 打包流程
 
@@ -267,11 +295,13 @@ npx electron-builder --mac --universal
 
 ### 7.1 修改版本号
 
-在 `package.json` 中修改版本号：
+版本号以 `docs/update.md` 中最新的 `## v1.0.1` 标题为准。先在更新日志顶部添加新版本及更新内容，再同步到 `package.json` 和 `package-lock.json`：
 
-```json
-"version": "1.0.1"
+```bash
+npm run version:sync
 ```
+
+`npm run package` 会在打包前自动执行该同步；`npm run dist` 和 `npm run dist-mac` 不会自动同步，需要先手动执行。
 
 版本号必须比线上版本高，否则 electron-updater 不会认为有新版本。
 
@@ -479,6 +509,7 @@ npx electron-builder --mac --universal
 
 - [ ] 已更新 `package.json` 的 `version`
 - [ ] 已执行 `npm install`
+- [ ] `npm run check` 通过
 - [ ] `npm run build` 通过
 - [ ] Windows 包已生成 `.exe`、`.exe.blockmap`、`latest.yml`
 - [ ] macOS 包已生成 `.dmg`、`.dmg.blockmap`、`latest-mac.yml`
