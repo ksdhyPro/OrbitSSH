@@ -49,8 +49,12 @@ import ContextMenu from "./ContextMenu.vue";
 import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
+import {
+  compareByModifyTime,
+  toggleModifyTimeSortDirection,
+  type ModifyTimeSortDirection,
+} from "../utils/file-sort";
 type TransferPaneKey = "left" | "right";
-type ModifyTimeSortDirection = "asc" | "desc";
 const LOCAL_ENDPOINT_ID = "__local__";
 interface TransferPaneState {
   tabId: string;
@@ -485,22 +489,9 @@ function createParentNode(pane: TransferPaneState): RemoteFileListNode | null {
 
 function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
   const parentNode = createParentNode(pane);
-  const sortedNodes = [...pane.nodes].sort((left, right) => {
-    const leftTime = left.modifyTime;
-    const rightTime = right.modifyTime;
-
-    // 与主 SFTP 保持一致：无修改时间的项目固定置底，切换方向时不参与翻转。
-    if (typeof leftTime !== "number") {
-      return typeof rightTime === "number" ? 1 : 0;
-    }
-    if (typeof rightTime !== "number") {
-      return -1;
-    }
-
-    return pane.modifyTimeSortDirection === "asc"
-      ? leftTime - rightTime
-      : rightTime - leftTime;
-  });
+  const sortedNodes = [...pane.nodes].sort(
+    compareByModifyTime(pane.modifyTimeSortDirection),
+  );
 
   return parentNode ? [parentNode, ...sortedNodes] : sortedNodes;
 }
@@ -511,8 +502,9 @@ function normalizeComparisonPath(value: string): string {
 }
 
 function togglePaneModifyTimeSort(pane: TransferPaneState): void {
-  pane.modifyTimeSortDirection =
-    pane.modifyTimeSortDirection === "asc" ? "desc" : "asc";
+  pane.modifyTimeSortDirection = toggleModifyTimeSortDirection(
+    pane.modifyTimeSortDirection,
+  );
 
   // 排序后列表索引发生变化，重置 Shift 范围选择锚点。
   pane.lastClickedIndex = -1;

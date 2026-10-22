@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE,
   resolveAiCommandPermission,
   resolveSavedServerCommandPermission,
 } from "../../dist-electron/main/ai/ai-permission-policy.js";
@@ -76,4 +78,17 @@ test("关闭跨服务器开关后任何权限档位和历史审批都不能绕�
     assert.equal(permission.decision, "deny");
     assert.match(permission.reason, /全局 AI 设置/);
   }
+});
+
+test("跨服务器开关关闭时提示用户前往全局 AI 设置开启", async () => {
+  assert.match(CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE, /已阻止跨服务器操作/);
+  assert.match(CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE, /AI → 是否允许跨服务器执行操作/);
+  assert.match(CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE, /每次跨服务器命令仍需单独确认/);
+
+  // Agent 动作模块依赖 SSH 会话，无法在纯 Node 环境加载，这里确认它使用同一条提示。
+  const actionsSource = await readFile(
+    new URL("../../src/main/ai/ai-agent-actions.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(actionsSource, /CROSS_SERVER_OPERATIONS_DISABLED_MESSAGE/);
 });

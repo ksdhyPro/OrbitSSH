@@ -15,7 +15,12 @@ Thumbs.db
 .DS_Store
 .claude
 .agents.md
-*.md
-!docs/*.md
-!.agents/skills/orbitssh-mcp/SKILL.md
+# AI 代理说明与根目录临时笔记不入库，其余目录的 Markdown 正常跟踪
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+/*.md
+!/README.md
+!/README.en.md
+!/CHANGELOG.md
 .scratch

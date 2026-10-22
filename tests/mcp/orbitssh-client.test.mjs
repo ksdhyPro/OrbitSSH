@@ -27,9 +27,10 @@ test('客户端未运行时返回明确提示', async () => {
 test('桥接客户端通过本地 IPC 转发请求且携带会话令牌', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'orbitssh-mcp-online-'))
   const suffix = randomBytes(8).toString('hex')
+  // macOS 的 os.tmpdir() 较长，嵌套目录后会超过 Unix Socket 约 104 字节的路径上限。
   const endpoint = process.platform === 'win32'
     ? `\\\\.\\pipe\\orbitssh-test-${suffix}`
-    : path.join(directory, `orbitssh-${suffix}.sock`)
+    : path.join('/tmp', `orbitssh-test-${suffix}.sock`)
   const token = 'test-session-token'
   let receivedRequest
 
@@ -71,6 +72,7 @@ test('桥接客户端通过本地 IPC 转发请求且携带会话令牌', async 
     assert.equal(receivedRequest.method, 'get_status')
   } finally {
     await new Promise(resolve => server.close(resolve))
+    if (process.platform !== 'win32') await rm(endpoint, { force: true })
     await rm(directory, { recursive: true, force: true })
   }
 })

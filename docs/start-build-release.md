@@ -51,21 +51,20 @@ npm run dev:electron
 
 该命令内部流程：
 
-1. 编译 Electron 主进程 TypeScript：
+1. 编译 Electron 主进程 TypeScript（`src/preload/index.cts` 会直接编译为 `dist-electron/preload/index.cjs`）：
 
    ```bash
    tsc -p tsconfig.electron.json
    ```
 
-2. 拷贝 preload 脚本到 `dist-electron/preload/index.cjs`
-3. 启动 Vite 开发服务器：
+2. 启动 Vite 开发服务器：
 
    ```bash
    vite --host 127.0.0.1
    ```
 
-4. 等待 `127.0.0.1:5173` 可用后启动 Electron
-5. Electron 使用 `VITE_DEV_SERVER_URL=http://127.0.0.1:5173` 加载开发页面
+3. 等待 `127.0.0.1:5173` 可用后启动 Electron
+4. Electron 使用 `VITE_DEV_SERVER_URL=http://127.0.0.1:5173` 加载开发页面
 
 单独启动 Vite：
 
@@ -93,7 +92,7 @@ npm run build
 vue-tsc --noEmit
 vite build
 tsc -p tsconfig.electron.json
-node scripts/copy-preload.cjs
+node scripts/generate-build-info.cjs
 ```
 
 构建产物：

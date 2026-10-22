@@ -47,7 +47,6 @@ function waitForPort(port, host) {
 useUtf8Console()
 
 runStep(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.electron.json'])
-runStep(process.execPath, ['scripts/copy-preload.cjs'])
 
 const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1'], {
   stdio: 'inherit',

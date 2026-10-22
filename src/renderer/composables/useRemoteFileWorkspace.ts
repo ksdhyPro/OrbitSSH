@@ -8,6 +8,11 @@ import { useSftpStore } from "../stores/useSftpStore";
 import { useTerminalsStore } from "../stores/useTerminalsStore";
 import type { VisibleRemoteFileNode } from "../types/sftp";
 import { isPreviewImageFile } from "../utils/file-kind";
+import {
+  compareByModifyTime,
+  toggleModifyTimeSortDirection,
+  type ModifyTimeSortDirection,
+} from "../utils/file-sort";
 import { getRemoteParentPath } from "../utils/path";
 
 interface ConfirmRequest {
@@ -17,7 +22,7 @@ interface ConfirmRequest {
   danger: boolean;
 }
 
-export type ModifyTimeSortDirection = "asc" | "desc";
+export type { ModifyTimeSortDirection } from "../utils/file-sort";
 
 /**
  * 统一编排远程文件树、拖放、预览和编辑器交互，避免根组件承担文件域细节。
@@ -79,28 +84,14 @@ export function useRemoteFileWorkspace(
         ...node,
         level: 0,
       }))
-      .sort((left, right) => {
-        const leftTime = left.modifyTime;
-        const rightTime = right.modifyTime;
-
-        // 缺少修改时间的项目固定排在末尾，避免切换方向后干扰正常文件排序。
-        if (typeof leftTime !== "number") {
-          return typeof rightTime === "number" ? 1 : 0;
-        }
-        if (typeof rightTime !== "number") {
-          return -1;
-        }
-
-        return modifyTimeSortDirection.value === "asc"
-          ? leftTime - rightTime
-          : rightTime - leftTime;
-      });
+      .sort(compareByModifyTime(modifyTimeSortDirection.value));
     return parentNode ? [parentNode, ...currentLevelNodes] : currentLevelNodes;
   });
 
   function toggleModifyTimeSort(): void {
-    modifyTimeSortDirection.value =
-      modifyTimeSortDirection.value === "asc" ? "desc" : "asc";
+    modifyTimeSortDirection.value = toggleModifyTimeSortDirection(
+      modifyTimeSortDirection.value,
+    );
 
     // 排序后旧索引不再对应同一文件，重置 Shift 范围选择锚点。
     if (activeSftpTree.value) {

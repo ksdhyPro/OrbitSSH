@@ -31,3 +31,26 @@ test("主窗口和子进程异常会写入启动诊断", async () => {
   assert.match(source, /主窗口创建成功/);
   assert.match(source, /应用初始化失败/);
 });
+
+test("启动诊断日志目录在各平台都落在用户可写目录", async () => {
+  const { getStartupDiagnosticsDirectory } = await import(
+    "../../dist-electron/main/startup-diagnostics.js"
+  );
+
+  assert.equal(
+    getStartupDiagnosticsDirectory("win32", { LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local" }, "C:\\Users\\a"),
+    "C:\\Users\\a\\AppData\\Local\\OrbitSSH\\logs",
+  );
+  assert.equal(
+    getStartupDiagnosticsDirectory("darwin", {}, "/Users/a"),
+    "/Users/a/Library/Logs/OrbitSSH",
+  );
+  assert.equal(
+    getStartupDiagnosticsDirectory("linux", {}, "/home/a"),
+    "/home/a/.local/state/OrbitSSH/logs",
+  );
+  assert.equal(
+    getStartupDiagnosticsDirectory("linux", { XDG_STATE_HOME: "/state" }, "/home/a"),
+    "/state/OrbitSSH/logs",
+  );
+});
