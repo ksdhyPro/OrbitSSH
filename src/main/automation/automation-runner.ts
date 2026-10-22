@@ -4,6 +4,7 @@ import { Client, type ClientChannel } from 'ssh2'
 import type { AutomationTaskRunEvent, AutomationTaskRunResult } from '../../shared/automation.js'
 import { getServerAutomationTask, getServerAuthConfig } from '../storage/server-store.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
+import { describeHostKeyError } from '../ssh/host-key-verification.js'
 
 interface RunningAutomationTask {
   taskId: string
@@ -81,11 +82,24 @@ export function runAutomationTask(owner: WebContents, taskId: string): Automatio
       finishRun(runId, { type: 'cancelled' })
       return
     }
-    finishRun(runId, { type: 'failed', text: error.message })
+    finishRun(runId, { type: 'failed', text: describeHostKeyError(error) ?? error.message })
   })
 
   // 让 IPC 调用先返回 runId，确保 Renderer 已可按 runId 接收后续输出。
-  setImmediate(() => client.connect(createServerConnectOptions(server)))
+  // 首次连接需先确认主机密钥；确认期间任务被取消则不再连接。
+  setImmediate(() => {
+    void createServerConnectOptions(server)
+      .then(connectOptions => {
+        if (runningTask.finished) return
+        client.connect(connectOptions)
+      })
+      .catch((error: unknown) => {
+        finishRun(runId, {
+          type: 'failed',
+          text: describeHostKeyError(error) ?? (error instanceof Error ? error.message : String(error))
+        })
+      })
+  })
   return { runId }
 }
 

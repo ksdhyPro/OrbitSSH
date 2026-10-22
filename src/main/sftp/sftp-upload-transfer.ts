@@ -323,7 +323,7 @@ export async function uploadLocalPathsToRemoteDirectory(
 
   try {
     await uploadClient.connect({
-      ...createServerConnectOptions(server),
+      ...(await createServerConnectOptions(server)),
       readyTimeout: 15000,
       keepaliveInterval: getSshKeepaliveIntervalMs()
     })

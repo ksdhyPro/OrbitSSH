@@ -106,7 +106,7 @@ async function createConnection(serverId: string, label: string): Promise<Pooled
   const client = new SftpClient(`pool-${serverId}-${label}`)
 
   await client.connect({
-    ...createServerConnectOptions(server),
+    ...(await createServerConnectOptions(server)),
     readyTimeout: 15000,
     keepaliveInterval: getSshKeepaliveIntervalMs()
   })

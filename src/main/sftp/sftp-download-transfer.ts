@@ -350,7 +350,7 @@ export async function downloadRemoteFile(
     lastSpeedBytes = resumeOffset
 
     await downloadClient.connect({
-      ...createServerConnectOptions(server),
+      ...(await createServerConnectOptions(server)),
       readyTimeout: 15000,
       keepaliveInterval: getSshKeepaliveIntervalMs()
     })

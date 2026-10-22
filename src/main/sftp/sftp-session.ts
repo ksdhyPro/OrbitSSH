@@ -5,6 +5,7 @@ import { extname } from 'node:path'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
+import { describeHostKeyError } from '../ssh/host-key-verification.js'
 import { getIdleDisconnectMs, getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { appConfig } from '../../shared/config.js'
@@ -234,7 +235,7 @@ export async function openSftpSession(
 
   try {
     await client.connect({
-      ...createServerConnectOptions(server),
+      ...(await createServerConnectOptions(server)),
       readyTimeout: 15000,
       keepaliveInterval: getSshKeepaliveIntervalMs()
     })
@@ -249,7 +250,8 @@ export async function openSftpSession(
         error: error instanceof Error ? error.message : String(error)
       }
     })
-    throw error
+    const hostKeyError = describeHostKeyError(error)
+    throw hostKeyError ? new Error(hostKeyError) : error
   }
 
   const connectedAt = Date.now()

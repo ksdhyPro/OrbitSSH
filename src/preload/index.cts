@@ -27,6 +27,7 @@ import type {
   UpdateStatusInfo,
 } from "../shared/settings.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
+import type { HostKeyPrompt, HostKeyPromptResponse } from "../shared/host-key.js";
 import type { OrbitSshMcpInstallInfo } from "../shared/mcp.js";
 import type {
   RemoteFileNode,
@@ -398,6 +399,27 @@ const orbitSSHApi = {
       ipcRenderer.on("update:status-changed", listener);
       return () =>
         ipcRenderer.removeListener("update:status-changed", listener);
+    },
+  },
+  hostKeys: {
+    listPending: () =>
+      ipcRenderer.invoke("host-key:list-pending") as Promise<HostKeyPrompt[]>,
+    respond: (response: HostKeyPromptResponse) =>
+      ipcRenderer.invoke("host-key:respond", response) as Promise<boolean>,
+    onPrompt: (callback: (prompt: HostKeyPrompt) => void) => {
+      const listener = (
+        _event: Electron.IpcRendererEvent,
+        prompt: HostKeyPrompt,
+      ) => callback(prompt);
+      ipcRenderer.on("host-key:prompt", listener);
+      return () => ipcRenderer.removeListener("host-key:prompt", listener);
+    },
+    onPromptClosed: (callback: (requestId: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, requestId: string) =>
+        callback(requestId);
+      ipcRenderer.on("host-key:prompt-closed", listener);
+      return () =>
+        ipcRenderer.removeListener("host-key:prompt-closed", listener);
     },
   },
   windowControls: {

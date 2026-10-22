@@ -5,6 +5,7 @@ import type { WebContents } from 'electron'
 import type { PortForwardRule, PortForwardRuntime } from '../../shared/port-forward.js'
 import { getServerAuthConfig } from '../storage/server-store.js'
 import { createServerConnectOptions } from './auth-options.js'
+import { describeHostKeyError } from './host-key-verification.js'
 import { getSshKeepaliveIntervalMs } from './connection-options.js'
 import { writeAppLog } from '../logger.js'
 
@@ -26,6 +27,8 @@ function listenHost(rule: PortForwardRule): string {
 }
 
 function safeError(error: unknown): string {
+  const hostKeyError = describeHostKeyError(error)
+  if (hostKeyError) return hostKeyError
   return error instanceof Error && error.message ? error.message : '端口转发失败'
 }
 
@@ -143,11 +146,13 @@ export function startPortForward(owner: WebContents, rule: PortForwardRule): voi
       }
     })
 
-  try {
-    client.connect({ ...createServerConnectOptions(server), readyTimeout: 15_000, keepaliveInterval: getSshKeepaliveIntervalMs() })
-  } catch (error) {
-    fail(forward, error)
-  }
+  // 首次连接需先确认主机密钥；确认期间规则被停止则不再连接。
+  void createServerConnectOptions(server)
+    .then(connectOptions => {
+      if (forward.stopping) return
+      client.connect({ ...connectOptions, readyTimeout: 15_000, keepaliveInterval: getSshKeepaliveIntervalMs() })
+    })
+    .catch(error => fail(forward, error))
 }
 
 export function stopPortForward(ruleId: string): boolean {

@@ -41,3 +41,66 @@
   flex: 0 0 auto;
   min-width: 74px;
 }
+
+/* ===== 主机密钥确认 ===== */
+
+.host-key-dialog {
+  display: grid;
+  gap: 12px;
+}
+
+.host-key-message {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.host-key-dialog.changed .host-key-message {
+  color: var(--danger);
+}
+
+.host-key-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated-2);
+}
+
+.host-key-fields dt {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.host-key-fields dd {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.host-key-fields dd span {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.host-key-fields code,
+.host-key-hint code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.host-key-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.host-key-hint code {
+  font-size: inherit;
+}

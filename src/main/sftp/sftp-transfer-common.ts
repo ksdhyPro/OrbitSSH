@@ -5,6 +5,7 @@ import { open as openLocalFile, rename, rm, stat } from 'node:fs/promises'
 
 import { writeAppLog } from '../logger.js'
 import { createServerConnectOptions } from '../ssh/auth-options.js'
+import { describeHostKeyError } from '../ssh/host-key-verification.js'
 import { getSshKeepaliveIntervalMs } from '../ssh/connection-options.js'
 import { appConfig } from '../../shared/config.js'
 import type { ServerAuthConfig } from '../../shared/server.js'
@@ -293,27 +294,35 @@ export async function replaceRemoteFile(
   await client.rename(sourcePath, targetPath)
 }
 
-export function createSftpClient(name: string, server: ServerAuthConfig): Promise<SftpClient> {
+export async function createSftpClient(name: string, server: ServerAuthConfig): Promise<SftpClient> {
   const client = new SftpClient(name)
 
-  return client
-    .connect({
-      ...createServerConnectOptions(server),
+  try {
+    await client.connect({
+      ...(await createServerConnectOptions(server)),
       readyTimeout: 15000,
       keepaliveInterval: getSshKeepaliveIntervalMs()
     })
-    .then(() => client)
+    return client
+  } catch (error) {
+    const hostKeyError = describeHostKeyError(error)
+    throw hostKeyError ? new Error(hostKeyError) : error
+  }
 }
 
-export function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
+export async function createSshClient(server: ServerAuthConfig): Promise<SshClient> {
+  const connectOptions = await createServerConnectOptions(server)
   const client = new SshClient()
 
   return new Promise((resolve, reject) => {
     client
       .once('ready', () => resolve(client))
-      .once('error', reject)
+      .once('error', error => {
+        const hostKeyError = describeHostKeyError(error)
+        reject(hostKeyError ? new Error(hostKeyError) : error)
+      })
       .connect({
-        ...createServerConnectOptions(server),
+        ...connectOptions,
         readyTimeout: 15000,
         keepaliveInterval: getSshKeepaliveIntervalMs()
       })

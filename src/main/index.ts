@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage } from "electron";
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,6 +29,8 @@ import {
   hasManagedTransferTasks,
 } from "./sftp/sftp-managed-task-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
+import { registerHostKeyIpc } from "./ssh/host-key-service.js";
+import { isAppNavigation, isExternalHttpUrl } from "./window/navigation-policy.js";
 import { closeAllPortForwards } from "./ssh/port-forward-manager.js";
 import { startMcpIpcServer, stopMcpIpcServer } from "./mcp/mcp-ipc-server.js";
 import type { AppMenuAction } from "../shared/app-menu.js";
@@ -375,11 +377,39 @@ function registerBaseIpc(): void {
   registerSettingsIpc();
   registerSftpIpc();
   registerTerminalIpc();
+  registerHostKeyIpc();
   registerSystemIpc();
   registerWindowIpc();
   registerUpdateIpc();
   registerAiIpc();
 }
+
+function openExternalLink(url: string): void {
+  if (!isExternalHttpUrl(url)) {
+    writeAppLog({
+      scope: "main.window",
+      level: "warn",
+      message: "已阻止打开非 http/https 链接",
+      data: { protocol: url.split(":", 1)[0] },
+    });
+    return;
+  }
+  void shell.openExternal(url);
+}
+
+// AI 回复等内容中的链接不能在应用内新开窗口或替换主窗口页面，统一交给系统浏览器。
+app.on("web-contents-created", (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    openExternalLink(url);
+    return { action: "deny" };
+  });
+  contents.on("will-navigate", (event, url) => {
+    if (isAppNavigation(url, contents.getURL())) return;
+    event.preventDefault();
+    openExternalLink(url);
+  });
+  contents.on("will-attach-webview", event => event.preventDefault());
+});
 
 if (!hasSingleInstanceLock) {
   app.quit();

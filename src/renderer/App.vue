@@ -13,6 +13,7 @@ import "@xterm/xterm/css/xterm.css";
 import ConnectionDialog from "./components/ConnectionDialog.vue";
 import DataTransferDialog from "./components/DataTransferDialog.vue";
 import DeleteConfirmDialog from "./components/DeleteConfirmDialog.vue";
+import HostKeyPromptDialog from "./components/HostKeyPromptDialog.vue";
 import ImagePreviewDialog from "./components/ImagePreviewDialog.vue";
 import RemoteFileEditorDialog from "./components/RemoteFileEditorDialog.vue";
 import ServerSidebar from "./components/ServerSidebar.vue";
@@ -1261,5 +1262,7 @@ onUnmounted(() => {
       @check="checkForUpdates"
       @download="downloadUpdate"
       @install="installUpdate" />
+
+    <HostKeyPromptDialog />
   </main>
 </template>

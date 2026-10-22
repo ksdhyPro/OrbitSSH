@@ -12,6 +12,7 @@ import {
   getSshKeepaliveIntervalMs,
 } from "./connection-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
+import { describeHostKeyError } from "./host-key-verification.js";
 import type {
   TerminalSessionKind,
   TerminalOpenResult,
@@ -21,6 +22,7 @@ import type {
 } from "../../shared/terminal.js";
 import { LOCAL_TERMINAL_SERVER_ID } from "../../shared/terminal.js";
 import type { AiCommandResult } from "../../shared/ai.js";
+import type { ServerAuthConfig } from "../../shared/server.js";
 import {
   executeLocalTerminalCommand,
   executeSshTextCommand,
@@ -325,6 +327,9 @@ const terminalIdleDisconnectTimer = setInterval(
 terminalIdleDisconnectTimer.unref?.();
 
 function createSafeErrorMessage(error: unknown): string {
+  const hostKeyError = describeHostKeyError(error);
+  if (hostKeyError) return hostKeyError;
+
   if (error instanceof Error && error.message) {
     return error.message;
   }
@@ -585,6 +590,44 @@ export function openLocalTerminalSession(webContents: WebContents): TerminalOpen
   }
 }
 
+/**
+ * 首次连接时先等待用户确认主机密钥，再开始带超时的正式握手。
+ * 确认期间标签页被关闭或重连替换时放弃本次连接。
+ */
+async function connectTerminalSession(
+  session: SshTerminalSession,
+  server: ServerAuthConfig,
+  beforeConnect?: () => void,
+): Promise<void> {
+  try {
+    const connectOptions = await createServerConnectOptions(server);
+    if (!isCurrentTerminalSession(session)) {
+      session.sshClient.end();
+      return;
+    }
+    beforeConnect?.();
+    session.sshClient.connect({
+      ...connectOptions,
+      readyTimeout: 15000,
+      keepaliveInterval: getSshKeepaliveIntervalMs(),
+    });
+  } catch (error) {
+    if (!isCurrentTerminalSession(session)) return;
+    writeAppLog({
+      scope: "main.ssh",
+      level: "error",
+      message: "SSH 连接准备失败",
+      data: {
+        tabId: session.tabId,
+        serverId: session.serverId,
+        error: createSafeErrorMessage(error),
+      },
+    });
+    sendStatus(session, "error", createSafeErrorMessage(error));
+    closeTerminalSession(session.tabId);
+  }
+}
+
 // 创建 SSH shell session，输入输出统一通过 IPC 转发给对应 Renderer。
 export function openTerminalSession(
   webContents: WebContents,
@@ -706,21 +749,16 @@ export function openTerminalSession(
   });
 
   setImmediate(() => {
-    const connectStartedAt = Date.now();
-    writeAppLog({
-      scope: "main.ssh",
-      message: "开始执行 SSH connect",
-      data: {
-        tabId,
-        serverId,
-        delayAfterScheduleMs: connectStartedAt - startedAt,
-      },
-    });
-
-    sshClient.connect({
-      ...createServerConnectOptions(server),
-      readyTimeout: 15000,
-      keepaliveInterval: getSshKeepaliveIntervalMs(),
+    void connectTerminalSession(session, server, () => {
+      writeAppLog({
+        scope: "main.ssh",
+        message: "开始执行 SSH connect",
+        data: {
+          tabId,
+          serverId,
+          delayAfterScheduleMs: Date.now() - startedAt,
+        },
+      });
     });
   });
 
@@ -972,16 +1010,7 @@ export function reconnectTerminalSession(
     });
 
   setImmediate(() => {
-    try {
-      sshClient.connect({
-        ...createServerConnectOptions(server),
-        readyTimeout: 15000,
-        keepaliveInterval: getSshKeepaliveIntervalMs(),
-      });
-    } catch (error) {
-      sendStatus(session, "error", createSafeErrorMessage(error));
-      closeTerminalSession(tabId);
-    }
+    void connectTerminalSession(session, server);
   });
 
   return true;

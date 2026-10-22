@@ -2,6 +2,7 @@ export {};
 
 import type { SystemStats } from "../main/ipc/system-ipc";
 import type { AppMenuAction } from "../shared/app-menu";
+import type { HostKeyPrompt, HostKeyPromptResponse } from "../shared/host-key";
 import type { OrbitSshMcpInstallInfo } from "../shared/mcp";
 import type {
   LocalDirectoryInput,
@@ -242,6 +243,12 @@ declare global {
         onStatus: (
           callback: (event: TerminalStatusEvent) => void,
         ) => () => void;
+      };
+      hostKeys: {
+        listPending: () => Promise<HostKeyPrompt[]>;
+        respond: (response: HostKeyPromptResponse) => Promise<boolean>;
+        onPrompt: (callback: (prompt: HostKeyPrompt) => void) => () => void;
+        onPromptClosed: (callback: (requestId: string) => void) => () => void;
       };
       windowControls: {
         minimize: () => Promise<boolean>;
