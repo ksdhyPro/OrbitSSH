@@ -3,6 +3,7 @@ import Store from 'electron-store'
 import { readFileSync } from 'node:fs'
 
 import { deleteConversationsByServer } from './ai-conversation-store.js'
+import { CachedStore } from './cached-store.js'
 
 import type { AutomationTaskGroup, AutomationTaskGroupInput, AutomationTaskGroupUpdateInput, AutomationTaskOrganizationInput, ServerAppearanceInput, ServerAuthConfig, ServerAuthType, ServerAutomationTask, ServerAutomationTaskInput, ServerAutomationTaskUpdateInput, ServerConfig, ServerGroup, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 import type { PortForwardRule, PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
@@ -16,17 +17,20 @@ interface ServerStoreSchema {
   portForwardRules: Record<string, PortForwardRule[]>
 }
 
-const store = new Store<ServerStoreSchema>({
-  name: 'servers',
-  defaults: {
-    servers: [],
-    groups: [],
-    passwords: {},
-    automationTasks: {},
-    automationTaskGroups: {},
-    portForwardRules: {}
-  }
-})
+// 每次连接、AI 跨服务器命令和 MCP 请求都会读取服务器列表：读取走内存缓存，修改同步写盘。
+const store = new CachedStore<ServerStoreSchema>(
+  new Store<ServerStoreSchema>({
+    name: 'servers',
+    defaults: {
+      servers: [],
+      groups: [],
+      passwords: {},
+      automationTasks: {},
+      automationTaskGroups: {},
+      portForwardRules: {}
+    }
+  })
+)
 
 // 统一校验服务器表单输入，避免无效数据进入本地存储。
 function normalizeServerInput(input: ServerInput): ServerInput {
@@ -88,11 +92,11 @@ function readPrivateKeyFile(privateKeyPath: string): string {
 }
 
 function getServers(): ServerConfig[] {
-  return store.get('servers', [])
+  return (store.get('servers') ?? [])
 }
 
 function getPasswords(): Record<string, string> {
-  return store.get('passwords', {})
+  return (store.get('passwords') ?? {})
 }
 
 function saveServers(servers: ServerConfig[]): void {
@@ -104,7 +108,7 @@ function savePasswords(passwords: Record<string, string>): void {
 }
 
 function getGroups(): ServerGroup[] {
-  return store.get('groups', [])
+  return (store.get('groups') ?? [])
 }
 
 function saveGroups(groups: ServerGroup[]): void {
@@ -128,17 +132,17 @@ function normalizeGroupInput(input: ServerGroupInput): ServerGroupInput {
 }
 
 function getAutomationTasks(): Record<string, ServerAutomationTask[]> {
-  return store.get('automationTasks', {})
+  return (store.get('automationTasks') ?? {})
 }
 
 function saveAutomationTasks(tasks: Record<string, ServerAutomationTask[]>): void {
   store.set('automationTasks', tasks)
 }
-function getAutomationTaskGroups(): Record<string, AutomationTaskGroup[]> { return store.get('automationTaskGroups', {}) }
+function getAutomationTaskGroups(): Record<string, AutomationTaskGroup[]> { return (store.get('automationTaskGroups') ?? {}) }
 function saveAutomationTaskGroups(groups: Record<string, AutomationTaskGroup[]>): void { store.set('automationTaskGroups', groups) }
 
 function getPortForwardRules(): Record<string, PortForwardRule[]> {
-  return store.get('portForwardRules', {})
+  return (store.get('portForwardRules') ?? {})
 }
 
 function savePortForwardRules(rules: Record<string, PortForwardRule[]>): void {

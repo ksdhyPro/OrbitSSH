@@ -34,6 +34,7 @@ import {
 import type { ExecutedAiCommandContext } from "./ai-context.js";
 import { summarizeAiConversation } from "./ai-provider.js";
 import { resolveActiveAiConfig } from "./ai-model-config.js";
+import { getConversationRuntimeContext } from "../storage/ai-conversation-store.js";
 import {
   beginPersistedAiTurn,
   completePersistedAiTurn,
@@ -52,7 +53,10 @@ const approvalTtlMs = 5 * 60 * 1000;
 const pendingApprovals = new ExpiringApprovalStore<PendingApprovalState>();
 const activeRequests = new Map<string, ActiveAiRequest>();
 const activeConversationRequests = new Map<string, ActiveAiRequest>();
-const conversationContexts = new AiConversationContextManager();
+// 内存中只保留最近使用的对话状态，淘汰后按需从持久化的运行上下文恢复。
+const conversationContexts = new AiConversationContextManager({
+  loadSnapshot: getConversationRuntimeContext,
+});
 
 function getConversationRequestKey(
   input: Pick<AiChatInput, "conversationId" | "context">,
@@ -492,4 +496,9 @@ export function disposeAiConversationState(
   conversationId: string,
 ): void {
   conversationContexts.clearConversation(serverId, conversationId);
+}
+
+/** 删除服务器时清理其全部 AI 对话的内存状态。 */
+export function disposeAiServerState(serverId: string): void {
+  conversationContexts.clearServer(serverId);
 }

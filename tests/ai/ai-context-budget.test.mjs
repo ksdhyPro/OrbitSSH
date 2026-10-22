@@ -200,3 +200,50 @@ test("同一服务器会话可在其他标签页恢复运行上下文", () => {
     commands: [],
   });
 });
+
+test("内存只保留最近使用的对话状态，淘汰后从持久化上下文恢复且不丢失记忆", () => {
+  const persisted = new Map();
+  const loads = [];
+  const manager = new AiConversationContextManager({
+    maxStates: 2,
+    loadSnapshot: (serverId, conversationId) => {
+      loads.push(conversationId);
+      return persisted.get(`${serverId}/${conversationId}`) ?? null;
+    },
+  });
+  const conversation = id => ({ ...input, conversationId: id });
+  const command = {
+    toolCallId: "call-1",
+    toolName: "run_shell_command",
+    command: "df -h",
+    reason: "查看磁盘",
+    risk: "low",
+    result: { stdout: "ok", stderr: "", exitCode: 0, timedOut: false, durationMs: 1 },
+  };
+
+  manager.recordCommand(conversation("a"), command);
+  persisted.set("server-1/a", manager.snapshot(conversation("a")));
+  manager.getMemory(conversation("b"));
+  manager.getMemory(conversation("c"));
+  assert.equal(manager.size, 2);
+
+  // a 已被淘汰，再次访问时按需从持久化上下文恢复命令记忆。
+  assert.deepEqual(manager.getMemory(conversation("a")).commands.map(item => item.command), ["df -h"]);
+  assert.equal(loads.filter(id => id === "a").length, 2);
+  assert.equal(manager.size, 2);
+});
+
+test("删除服务器时清理该服务器全部对话状态", () => {
+  const manager = new AiConversationContextManager();
+  const onServer = (serverId, conversationId) => ({
+    ...input,
+    conversationId,
+    context: { ...input.context, serverId },
+  });
+  manager.getMemory(onServer("server-1", "a"));
+  manager.getMemory(onServer("server-1", "b"));
+  manager.getMemory(onServer("server-2", "c"));
+
+  manager.clearServer("server-1");
+  assert.equal(manager.size, 1);
+});

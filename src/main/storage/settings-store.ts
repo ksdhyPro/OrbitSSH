@@ -2,6 +2,7 @@ import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
 import { normalizeStoredAiMode } from '../../shared/ai.js'
+import { CachedStore } from './cached-store.js'
 
 import {
   AI_PRESET_PROMPT_MAX_CHARS,
@@ -22,13 +23,19 @@ interface SettingsStoreSchema {
   aiApiKeys: Record<string, string>
 }
 
-const store = new Store<SettingsStoreSchema>({
-  name: 'settings',
-  defaults: {
-    settings: defaultAppSettings,
-    aiApiKeys: {}
-  }
-})
+// 设置在连接、保活检查和每次 AI 请求中频繁读取：读取走内存缓存，修改同步写盘。
+const store = new CachedStore<SettingsStoreSchema>(
+  new Store<SettingsStoreSchema>({
+    name: 'settings',
+    defaults: {
+      settings: defaultAppSettings,
+      aiApiKeys: {}
+    }
+  })
+)
+
+// 解密后的完整设置只在保存时失效，避免每次读取都调用系统钥匙串解密 API Key。
+let hydratedSettingsCache: AppSettings | null = null
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -236,7 +243,7 @@ function normalizeSettings(settings: Partial<AppSettings> | undefined): AppSetti
 }
 
 function getAiApiKeys(): Record<string, string> {
-  return store.get('aiApiKeys', {})
+  return store.get('aiApiKeys') ?? {}
 }
 
 function cloneSettingsWithoutAiApiKeys(settings: AppSettings): AppSettings {
@@ -270,6 +277,7 @@ function persistSettingsWithEncryptedAiKeys(settings: AppSettings): void {
 
   store.set('aiApiKeys', nextApiKeys)
   store.set('settings', cloneSettingsWithoutAiApiKeys(settings))
+  hydratedSettingsCache = null
 }
 
 function hydrateAiApiKeys(settings: AppSettings): AppSettings {
@@ -299,15 +307,19 @@ function hasPlainTextAiApiKey(settings: AppSettings): boolean {
 }
 
 export function getSettings(): AppSettings {
-  const normalizedSettings = normalizeSettings(store.get('settings', defaultAppSettings))
-  const hydratedSettings = hydrateAiApiKeys(normalizedSettings)
+  if (!hydratedSettingsCache) {
+    const normalizedSettings = normalizeSettings(store.get('settings') ?? defaultAppSettings)
+    const hydratedSettings = hydrateAiApiKeys(normalizedSettings)
 
-  // 兼容旧版本：如果 settings 里还有明文 apiKey，读取后立即迁移到密文存储。
-  if (hasPlainTextAiApiKey(normalizedSettings)) {
-    persistSettingsWithEncryptedAiKeys(hydratedSettings)
+    // 兼容旧版本：如果 settings 里还有明文 apiKey，读取后立即迁移到密文存储。
+    if (hasPlainTextAiApiKey(normalizedSettings)) {
+      persistSettingsWithEncryptedAiKeys(hydratedSettings)
+    }
+    hydratedSettingsCache = hydratedSettings
   }
 
-  return hydratedSettings
+  // 返回副本，调用方修改结果不会污染缓存。
+  return structuredClone(hydratedSettingsCache)
 }
 
 export function saveSettings(settings: AppSettings): AppSettings {

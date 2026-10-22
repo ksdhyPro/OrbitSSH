@@ -5,6 +5,7 @@
 export {
   cancelAiRequest,
   disposeAiConversationState,
+  disposeAiServerState,
   disposeAiTabState,
   rejectAiCommandApproval,
   runAiChat,

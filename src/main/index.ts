@@ -30,6 +30,7 @@ import {
 } from "./sftp/sftp-managed-task-manager.js";
 import { closeAllTerminalSessions } from "./ssh/session-manager.js";
 import { registerHostKeyIpc } from "./ssh/host-key-service.js";
+import { flushAllCachedStores } from "./storage/cached-store.js";
 import { isAppNavigation, isExternalHttpUrl } from "./window/navigation-policy.js";
 import { closeAllPortForwards } from "./ssh/port-forward-manager.js";
 import { startMcpIpcServer, stopMcpIpcServer } from "./mcp/mcp-ipc-server.js";
@@ -476,6 +477,20 @@ app.on("before-quit", (event) => {
   void stopMcpIpcServer();
   cleanupConnections();
 });
+
+// 对话历史等存储采用延迟异步写入，退出前同步写入尚未落盘的修改。
+app.on("will-quit", () => {
+  flushAllCachedStores();
+});
+
+// Electron 收到终止信号时不会触发 will-quit 而是直接退出，先落盘再走正常退出流程。
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(signal, () => {
+    flushAllCachedStores();
+    isQuitting = true;
+    app.quit();
+  });
+}
 
 app.on("window-all-closed", () => {
   cleanupConnections();

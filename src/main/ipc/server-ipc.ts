@@ -4,6 +4,7 @@ import { createAutomationTaskGroup, createPortForwardRule, createServer, createS
 import type { AutomationTaskGroupInput, AutomationTaskGroupUpdateInput, AutomationTaskOrganizationInput, ServerAppearanceInput, ServerAutomationTaskInput, ServerAutomationTaskUpdateInput, ServerGroupInput, ServerGroupUpdateInput, ServerInput, ServerPinInput, ServerUpdateInput } from '../../shared/server.js'
 import type { PortForwardRuleInput, PortForwardRuleUpdateInput } from '../../shared/port-forward.js'
 import { getPortForwardRuntimes, isPortForwardRunning, startPortForward, stopPortForward } from '../ssh/port-forward-manager.js'
+import { disposeAiServerState } from '../ai/ai-agent.js'
 
 // 注册服务器管理 IPC，Renderer 只能通过这些方法访问本地存储。
 export function registerServerIpc(): void {
@@ -56,6 +57,8 @@ export function registerServerIpc(): void {
   ipcMain.handle('server:delete', (_event, serverId: string) => {
     for (const rule of listPortForwardRules(serverId)) stopPortForward(rule.id)
     deleteServer(serverId)
+    // 持久化的对话已随服务器删除，同步清理内存中的对话状态。
+    disposeAiServerState(serverId)
     return true
   })
 }

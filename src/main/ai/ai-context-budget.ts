@@ -106,11 +106,33 @@ function cloneRememberedCommand(command: ExecutedAiCommandContext): ExecutedAiCo
   };
 }
 
+export interface AiConversationContextManagerOptions {
+  /** 内存中最多保留的对话状态数，超出后淘汰最久未使用的状态。 */
+  maxStates?: number;
+  /** 状态不在内存中时从持久化存储恢复，使淘汰不会丢失摘要和命令记忆。 */
+  loadSnapshot?: (
+    serverId: string,
+    conversationId: string,
+  ) => AiPersistedConversationContext | null;
+}
+
+const DEFAULT_MAX_CONVERSATION_STATES = 100;
+
 export class AiConversationContextManager {
   private readonly states = new Map<string, AiConversationContextState>();
+  private readonly maxStates: number;
+
+  constructor(private readonly options: AiConversationContextManagerOptions = {}) {
+    this.maxStates = options.maxStates ?? DEFAULT_MAX_CONVERSATION_STATES;
+  }
 
   private getKey(input: Pick<AiChatInput, "conversationId" | "context">): string {
     return `${input.context.serverId}\u0000${input.conversationId}`;
+  }
+
+  /** 当前内存中的对话状态数量，用于观察缓存规模。 */
+  get size(): number {
+    return this.states.size;
   }
 
   restore(
@@ -244,20 +266,53 @@ export class AiConversationContextManager {
     this.states.delete(`${serverId}\u0000${conversationId}`);
   }
 
+  /** 删除服务器时清理其全部对话状态。 */
+  clearServer(serverId: string): void {
+    const prefix = `${serverId}\u0000`;
+    for (const key of this.states.keys()) {
+      if (key.startsWith(prefix)) this.states.delete(key);
+    }
+  }
+
   private getState(
     input: Pick<AiChatInput, "conversationId" | "context">,
   ): AiConversationContextState {
     const key = this.getKey(input);
     const existing = this.states.get(key);
-    if (existing) return existing;
+    if (existing) {
+      // 重新插入以维护最近使用顺序，Map 的迭代顺序即淘汰顺序。
+      this.states.delete(key);
+      this.states.set(key, existing);
+      return existing;
+    }
 
+    const snapshot = this.loadSnapshot(input);
     const state: AiConversationContextState = {
-      summary: "",
-      commands: [],
-      historyFloorCreatedAt: 0,
+      summary: snapshot?.summary ?? "",
+      commands: snapshot?.commands.map(command => cloneRememberedCommand(command)) ?? [],
+      historyFloorCreatedAt: snapshot?.historyFloorCreatedAt ?? 0,
       compressionFailed: false,
     };
     this.states.set(key, state);
+    this.evictLeastRecentlyUsed();
     return state;
+  }
+
+  private loadSnapshot(
+    input: Pick<AiChatInput, "conversationId" | "context">,
+  ): AiPersistedConversationContext | null {
+    try {
+      return this.options.loadSnapshot?.(input.context.serverId, input.conversationId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private evictLeastRecentlyUsed(): void {
+    while (this.states.size > this.maxStates) {
+      const oldestKey = this.states.keys().next().value;
+      if (oldestKey === undefined) return;
+      this.states.delete(oldestKey);
+    }
   }
 }

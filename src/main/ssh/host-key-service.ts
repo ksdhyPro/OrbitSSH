@@ -4,6 +4,7 @@ import Store from "electron-store";
 import type { HostKeyPrompt, HostKeyPromptResponse } from "../../shared/host-key.js";
 import type { ServerConfig } from "../../shared/server.js";
 import { writeAppLog } from "../logger.js";
+import { CachedStore } from "../storage/cached-store.js";
 import {
   createHostKeyVerification,
   type KnownHostRecord,
@@ -18,15 +19,18 @@ interface KnownHostsStoreSchema {
 // 用户长时间未处理时自动视为拒绝，避免挂起的确认永久占用同一主机的后续连接。
 const PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
 
-const store = new Store<KnownHostsStoreSchema>({
-  name: "known-hosts",
-  defaults: { hosts: {} },
-});
+// 每次 SSH 握手都会查询，读取走内存缓存，信任记录变更时同步写盘。
+const store = new CachedStore<KnownHostsStoreSchema>(
+  new Store<KnownHostsStoreSchema>({
+    name: "known-hosts",
+    defaults: { hosts: {} },
+  }),
+);
 
 const repository: KnownHostsRepository = {
-  get: hostId => store.get("hosts", {})[hostId],
+  get: hostId => store.read("hosts")[hostId],
   set: (hostId, record) => {
-    store.set("hosts", { ...store.get("hosts", {}), [hostId]: record });
+    store.write("hosts", { ...store.read("hosts"), [hostId]: { ...record } });
   },
 };
 
