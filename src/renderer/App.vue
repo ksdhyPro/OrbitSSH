@@ -71,7 +71,6 @@ let sidebarPanelResizeElement: HTMLElement | null = null;
 let sidebarPanelsResizeObserver: ResizeObserver | null = null;
 let stopAppMenuListener: (() => void) | null = null;
 
-const SIDEBAR_PANEL_HEADER_HEIGHT = 34;
 const SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28;
 const SIDEBAR_PANEL_MIN_HEIGHT = 160;
 const SIDEBAR_PANEL_RESIZER_HEIGHT = 10;

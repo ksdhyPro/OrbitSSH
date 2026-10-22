@@ -23,7 +23,7 @@ const HIGH_RISK_SENSITIVE_SOURCE_PATTERNS: Array<{
   },
   {
     pattern:
-      /(?:application_default_credentials\.json|\.docker\/config\.json|\.git-credentials|\.config\/gh\/hosts\.yml|(?:^|[\/\s'"=])\.netrc(?:$|[\s'";|&]))/i,
+      /(?:application_default_credentials\.json|\.docker\/config\.json|\.git-credentials|\.config\/gh\/hosts\.yml|(?:^|[/\s'"=])\.netrc(?:$|[\s'";|&]))/i,
     reason: "命令将读取认证凭据文件",
   },
   {
@@ -50,11 +50,11 @@ const HIGH_RISK_SENSITIVE_SOURCE_PATTERNS: Array<{
 
 const SENSITIVE_READ_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
   {
-    pattern: /(?:^|[\s'"=\/])\.env(?:\.[A-Za-z0-9_.-]+|[*?][^\s'";|&]*)?(?:$|[\s'";|&])/i,
+    pattern: /(?:^|[\s'"=/])\.env(?:\.[A-Za-z0-9_.-]+|[*?][^\s'";|&]*)?(?:$|[\s'";|&])/i,
     reason: "命令可能读取环境配置中的敏感信息",
   },
   {
-    pattern: /(?:^|[\s'"=\/])\.(?:npmrc|pypirc)(?:$|[\s'";|&])/i,
+    pattern: /(?:^|[\s'"=/])\.(?:npmrc|pypirc)(?:$|[\s'";|&])/i,
     reason: "命令可能读取包管理器凭据",
   },
   {

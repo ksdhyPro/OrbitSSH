@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, watch } from "vue";
 import { useTerminalsStore } from "../stores/useTerminalsStore";
+import { appendSparklineValue } from "../utils/status-sparkline";
 
 interface StatsEntry {
   cpuUsage: number;
@@ -19,13 +20,6 @@ interface StatsHistory {
 }
 
 type StatsHistoryKey = keyof StatsHistory;
-
-const MAX_SPARKLINE_POINTS = 24;
-const SPARKLINE_WIDTH = 38;
-const SPARKLINE_HEIGHT = 12;
-const SPARKLINE_PADDING = 1;
-// 折线表达近期趋势而非绝对刻度；最小显示区间避免稳定数据被夸大成剧烈波动。
-const MIN_SPARKLINE_RANGE = 12;
 
 const props = defineProps<{
   activeTabId: string;
@@ -56,11 +50,6 @@ const currentStats = computed<StatsEntry | null>(() => {
   return null;
 });
 
-const currentHistory = computed<StatsHistory | null>(() => {
-  const tabId = props.activeTabId;
-  return tabId ? (statsHistory[tabId] ?? null) : null;
-});
-
 function calculateDiskUsage(diskFree: number, diskTotal: number): number {
   if (diskTotal <= 0) return 0;
   return Math.round(((diskTotal - diskFree) / diskTotal) * 100);
@@ -88,50 +77,11 @@ function dotClass(pct: number): string {
   return "dot-danger";
 }
 
-function sparklineToneClass(pct: number): string {
-  if (pct <= 80) return "sparkline-safe";
-  if (pct <= 95) return "sparkline-warn";
-  return "sparkline-danger";
-}
-
+// 迷你折线模板暂时隐藏，但仍持续记录采样。恢复时加入 currentHistory 计算属性，
+// 并从 utils/status-sparkline 引入 sparklinePoints 与 sparklineToneClass。
 function appendHistory(tabId: string, key: StatsHistoryKey, value: number): void {
   const history = statsHistory[tabId] ?? (statsHistory[tabId] = { cpu: [], memory: [], disk: [] });
-  const values = history[key];
-
-  values.push(Math.min(100, Math.max(0, value)));
-  if (values.length > MAX_SPARKLINE_POINTS) {
-    values.splice(0, values.length - MAX_SPARKLINE_POINTS);
-  }
-}
-
-function sparklinePoints(values: number[] | undefined): string {
-  if (!values?.length) return "";
-
-  const drawableWidth = SPARKLINE_WIDTH - SPARKLINE_PADDING * 2;
-  const drawableHeight = SPARKLINE_HEIGHT - SPARKLINE_PADDING * 2;
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
-  const midpoint = (minimum + maximum) / 2;
-  const visibleRange = Math.max(maximum - minimum, MIN_SPARKLINE_RANGE);
-  const upperBound = midpoint + visibleRange / 2;
-  const toY = (value: number): number =>
-    SPARKLINE_PADDING + ((upperBound - value) / visibleRange) * drawableHeight;
-
-  // 首次或稳定采样显示在中线，避免高占用率让折线长期贴住顶部。
-  if (values.length === 1) {
-    const y = toY(values[0]);
-    return `${SPARKLINE_PADDING},${y.toFixed(1)} ${SPARKLINE_WIDTH - SPARKLINE_PADDING},${y.toFixed(1)}`;
-  }
-
-  const intervalCount = Math.max(values.length - 1, 1);
-
-  return values
-    .map((value, index) => {
-      const x = SPARKLINE_PADDING + (index / intervalCount) * drawableWidth;
-      const y = toY(value);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+  appendSparklineValue(history[key], value);
 }
 
 async function fetchCpuMemory(): Promise<void> {

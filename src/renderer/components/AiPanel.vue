@@ -25,9 +25,7 @@ import { copyTextByFallback } from "../utils/clipboard";
 import AiContextUsageRing from "./AiContextUsageRing.vue";
 import ContextMenu from "./ContextMenu.vue";
 import {
-  formatDuration,
   formatTargetServer,
-  getCommandAuditText,
   getProcessDurationText,
   getProcessItemTitle,
   getProcessSummary,
@@ -763,6 +761,8 @@ onBeforeUnmount(() => {
                 <img v-else :src="copyIcon" alt="" />
               </button>
             </header>
+            <!-- renderMarkdown 已用 DOMPurify 净化并禁用图片与脚本 -->
+            <!-- eslint-disable vue/no-v-html -->
             <div
               v-if="item.message.role === 'assistant'"
               class="ai-markdown"
@@ -770,6 +770,7 @@ onBeforeUnmount(() => {
               v-html="renderMarkdown(item.message.content)"
             ></div>
             <p v-else>{{ item.message.content }}</p>
+            <!-- eslint-enable vue/no-v-html -->
           </article>
 
           <details v-else-if="item.type === 'process'" class="ai-process-line">

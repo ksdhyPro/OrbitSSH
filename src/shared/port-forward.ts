@@ -37,4 +37,4 @@ export interface PortForwardRuntime {
   message?: string;
 }
 
-export interface PortForwardStatusEvent extends PortForwardRuntime {}
+export type PortForwardStatusEvent = PortForwardRuntime;

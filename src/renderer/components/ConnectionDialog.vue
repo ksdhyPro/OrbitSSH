@@ -4,7 +4,7 @@ import NumberStepper from "./NumberStepper.vue";
 import SegmentedControl, { type SegmentedOption } from "./ui/SegmentedControl.vue";
 import type { ServerAuthType } from "../../shared/server";
 
-const props = defineProps<{
+defineProps<{
   open: boolean;
   editingServerId: string | null;
   connectionForm: {

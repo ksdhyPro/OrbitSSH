@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { chmod, rm, writeFile } from "node:fs/promises";
 import net, { type Server, type Socket } from "node:net";
 import os from "node:os";

@@ -85,6 +85,7 @@ export function truncateText(text: string, limit = 5_000): string {
  * 这些内容对模型没有意义，只会浪费 Token 并干扰输出解析。
  */
 export function stripTerminalControlSequences(text: string): string {
+  /* eslint-disable no-control-regex -- 这里正是要匹配并移除终端控制字符 */
   return (
     text
       .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
@@ -95,6 +96,7 @@ export function stripTerminalControlSequences(text: string): string {
       .replace(/\r\n?/g, "\n")
       .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "")
   );
+  /* eslint-enable no-control-regex */
 }
 
 // 在线模型上下文必须先移除常见凭据，避免终端回显中的秘密被直接发送。

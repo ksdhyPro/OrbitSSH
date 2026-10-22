@@ -192,23 +192,14 @@ describe("终端", () => {
 });
 
 describe("状态栏迷你折线", () => {
-  it("保留 CPU、内存和磁盘的折线实现，模板暂时隐藏", () => {
+  it("模板暂时隐藏但持续记录 CPU、内存和磁盘采样", () => {
+    // 绘制逻辑的行为由 status-sparkline.test.ts 验证。
     const source = readSource("src/renderer/components/StatusBar.vue");
-    expect(source).toMatch(/const MAX_SPARKLINE_POINTS = 24/);
-    expect(source).toMatch(/const MIN_SPARKLINE_RANGE = 12/);
     expect(source).toMatch(/appendHistory\(tabId, "cpu", result\.cpuUsage\)/);
     expect(source).toMatch(/appendHistory\(tabId, "memory", result\.memoryUsage\)/);
-    expect(source).toMatch(/sparklinePoints\(currentHistory\?\.disk\)/);
+    expect(source).toMatch(/appendSparklineValue\(history\[key\], value\)/);
     expect(source.match(/'status-sparkline'/g)).toHaveLength(3);
     expect(source.match(/暂时隐藏迷你折线，保留实现便于后续直接恢复。/g)).toHaveLength(3);
-  });
-
-  it("按近期数据范围缩放并让稳定数据居中", () => {
-    const source = readSource("src/renderer/components/StatusBar.vue");
-    expect(source).toMatch(/Math\.min\(\.\.\.values\)/);
-    expect(source).toMatch(/Math\.max\(\.\.\.values\)/);
-    expect(source).toMatch(/Math\.max\(maximum - minimum, MIN_SPARKLINE_RANGE\)/);
-    expect(source).toMatch(/const midpoint = \(minimum \+ maximum\) \/ 2/);
   });
 });
 

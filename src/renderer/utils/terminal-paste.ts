@@ -61,6 +61,7 @@ export function createTerminalPasteController(options: TerminalPasteControllerOp
     pendingTerminalPaste.value = {
       tabId,
       text,
+      // eslint-disable-next-line no-control-regex -- 去掉括号粘贴模式的起止控制序列
       previewText: text.replace(/^\x1b\[200~/, "").replace(/\x1b\[201~$/, ""),
       lineCount: text.split(/\r\n|\r|\n/).length,
     };

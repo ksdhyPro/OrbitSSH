@@ -8,7 +8,7 @@ import { writeAppLog } from "../logger.js";
 import type { UpdateStatusInfo, UpdateStatus } from "../../shared/settings.js";
 
 let currentStatus: UpdateStatus = "idle";
-let currentVersion = app.getVersion();
+const currentVersion = app.getVersion();
 let newVersion: string | undefined;
 let releaseDate: string | undefined;
 let releaseNotes: string | undefined;

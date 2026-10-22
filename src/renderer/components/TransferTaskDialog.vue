@@ -90,7 +90,8 @@ function showMore(taskId: string, parentId?: string): void {
 
 function toggleExpanded(id: string): void {
   const next = new Set(expandedIds.value);
-  next.has(id) ? next.delete(id) : next.add(id);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
   expandedIds.value = next;
 }
 

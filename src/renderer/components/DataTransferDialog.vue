@@ -720,7 +720,7 @@ function dragOverTransferNode(
   }
 
   if (!updateTransferDragTarget(paneKey, node)) {
-    event.dataTransfer && (event.dataTransfer.dropEffect = "none");
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
     return;
   }
 
@@ -1294,20 +1294,6 @@ function getServerLabel(serverId: string): string {
   }
 
   return `${server.name} · ${server.username}@${server.host}`;
-}
-
-async function resetPaneSelection(pane: TransferPaneState): Promise<void> {
-  await closePaneSession(pane);
-  pane.serverId = "";
-  pane.currentPath = "";
-  pane.parentPath = "";
-  pane.pathInput = "";
-  pane.nodes = [];
-  pane.selectedPaths = new Set<string>();
-  pane.deletingPaths = new Set<string>();
-  pane.lastClickedIndex = -1;
-  pane.loading = false;
-  pane.error = "";
 }
 
 let rightInitialPath = "";

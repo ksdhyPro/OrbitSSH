@@ -509,10 +509,10 @@ watch(
           <div v-else class="terminal-hosts">
             <div
               v-for="tab in tabs"
+              v-show="tab.id === activeTabId"
               :key="tab.id"
               :ref="element => setTerminalHost(tab.id, element)"
               class="terminal-host"
-              v-show="tab.id === activeTabId"
               @contextmenu="void openTerminalContextMenu($event)"
             ></div>
           </div>

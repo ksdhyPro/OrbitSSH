@@ -238,7 +238,7 @@ function deleteNode(batch: ManagedBatchState, node: ManagedNodeState): void {
   }
 
   for (const item of subtree.reverse()) {
-    item.control && (item.control.canceled = true);
+    if (item.control) item.control.canceled = true;
     void cleanupNodeArtifacts(batch, item);
     if (item.deleted) continue;
     item.deleted = true;
