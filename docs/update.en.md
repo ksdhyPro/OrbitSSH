@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.10.14
+
+1. Added SSH host key verification. On the first connection to a server, the host fingerprint is shown and credentials are sent only after confirmation. If the key later changes, the old and new fingerprints are shown and the connection is closed by default; the new key is trusted only on explicit choice. This applies to terminals, SFTP, file transfers, port forwarding, custom commands, AI cross-server commands, and MCP connections.
+2. The app no longer opens new windows or navigates to external pages in-app. http/https links open in the system browser and other protocols are blocked.
+3. Strengthened AI command review. Pipes, `||`, background jobs, subshells, input redirection, and wrapper commands are reviewed segment by segment or require approval. Destructive rules now cover disks, cloud resources, clusters, Git, and firewalls, and truncating files or writing to sensitive paths such as `/etc`, `~/.ssh`, and shell startup scripts always requires approval, while routine troubleshooting and ordinary file writes can still run automatically. Malformed tool arguments now trigger a new request instead of guessing commands from partial text, and an unconfigured model now points directly to Settings.
+4. Cross-server approval cards show the resolved target (name and user@host:port), and approved commands run on exactly the confirmed server.
+5. Final AI replies now stream as they are generated. Long-command progress reports back off from 30 seconds to 1 minute, 2 minutes, and then every 5 minutes, and progress for the same command is merged into a single message updated in place.
+6. Fixed a conversation failing on every later request after a very long reply. Context is now ordered chronologically, improving prefix-cache hits on model services.
+7. Improved AI request reliability. Timeouts are tracked separately for the first byte, gaps between output, and total duration, so long replies that keep streaming are no longer cut off. Rate limits and busy servers are retried with `Retry-After` or backoff, Responses API detection results persist across restarts, and DeepSeek and GLM models added in Settings are recognized by Base URL and use Chat Completions directly.
+8. Failed AI requests now explain the cause, such as an invalid API key, a wrong Base URL or model name, exhausted quota, DNS or certificate errors, or an unresponsive service, along with the redacted server message.
+9. Terminal context and command output are stripped of color and other control sequences, and multi-byte characters split across data chunks are no longer garbled. Markdown rendering is cached by content, so streaming re-renders only the message that is changing.
+10. Conversation history now uses an in-memory cache with asynchronous atomic writes, so running AI commands no longer stalls the interface with long histories. Evicted conversations also release their context, and pending data is fully written when the app exits.
+11. Unified the styling of buttons, switches, segmented controls, search bars, and empty states, simplified the theme palette, and fixed several undefined color variables.
+12. Fixed startup diagnostic logs being written to the current working directory on macOS and Linux; they now go to the user log directory.
+
 ## v1.10.13
 
 1. Replaced the "Enable AI" switch in Settings → AI with a "Normal mode / AI mode" choice. Normal mode keeps the terminal-focused interface with AI disabled; AI mode enables AI and switches to a conversation-focused workspace.
