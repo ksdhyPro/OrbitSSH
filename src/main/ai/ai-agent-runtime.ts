@@ -33,6 +33,7 @@ import {
 } from "./ai-context-budget.js";
 import type { ExecutedAiCommandContext } from "./ai-context.js";
 import { summarizeAiConversation } from "./ai-provider.js";
+import { resolveActiveAiConfig } from "./ai-model-config.js";
 import {
   beginPersistedAiTurn,
   completePersistedAiTurn,
@@ -62,17 +63,10 @@ function getConversationRequestKey(
 function getActiveContextConfig(
   settings: AppSettings,
 ): { id: string; contextTokenLimitK: number } | null {
-  if (!settings.ai.enabled) return null;
-  const config =
-    settings.ai.configs.find(item => item.id === settings.ai.activeConfigId) ??
-    settings.ai.configs[0];
-  if (!config?.baseUrl.trim() || !config.apiKey.trim() || !config.model.trim()) {
-    return null;
-  }
-  return {
-    id: config.id,
-    contextTokenLimitK: config.contextTokenLimitK,
-  };
+  const config = resolveActiveAiConfig(settings);
+  return config
+    ? { id: config.id, contextTokenLimitK: config.contextTokenLimitK }
+    : null;
 }
 
 async function compressConversation(

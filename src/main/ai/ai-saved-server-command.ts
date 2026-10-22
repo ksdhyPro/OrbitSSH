@@ -8,35 +8,20 @@ import {
   CROSS_SERVER_OPERATIONS_DISABLED_REASON,
   resolveSavedServerCommandPermission
 } from './ai-permission-policy.js'
+import {
+  assertSavedServerTargetUnchanged,
+  resolveSavedServerTarget,
+  type SavedServerTarget
+} from './ai-saved-server-target.js'
 import { evaluateAiCommand } from './command-policy.js'
 
-function normalizeServerReference(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, '').replace(/服务器|server/g, '')
-}
-
-function resolveSavedServerId(serverReference: string): string {
-  const normalizedReference = normalizeServerReference(serverReference)
-  if (!normalizedReference) {
-    throw new Error('服务器名称不能为空')
-  }
-  const matches = listServers().filter(server => {
-    const name = normalizeServerReference(server.name)
-    const host = normalizeServerReference(server.host)
-    return name === normalizedReference || host === normalizedReference || name.includes(normalizedReference)
-  })
-
-  if (matches.length === 0) {
-    throw new Error(`未找到已保存的服务器“${serverReference}”`)
-  }
-  if (matches.length > 1) {
-    throw new Error(`服务器“${serverReference}”匹配多个连接：${matches.map(server => server.name).join('、')}，请使用完整名称`)
-  }
-
-  return matches[0]!.id
+/** 在展示审批卡之前解析模型提到的服务器，让用户确认的就是实际执行的目标。 */
+export function resolveSavedServerTargetFromStore(serverReference: string): SavedServerTarget {
+  return resolveSavedServerTarget(serverReference, listServers())
 }
 
 interface ExecuteSavedServerCommandInput {
-  serverReference: string
+  target: SavedServerTarget
   command: string
   mode: AiMode
   risk: 'low' | 'medium' | 'high'
@@ -67,8 +52,9 @@ export async function executeSavedServerCommand(
     throw new Error(`跨服务器命令未获得执行权限：${permission.reason}`)
   }
 
-  const serverId = resolveSavedServerId(input.serverReference)
-  const server = getServerAuthConfig(serverId)
+  // 按审批时确定的服务器 ID 连接，不再按名称重新匹配。
+  const server = getServerAuthConfig(input.target.id)
+  assertSavedServerTargetUnchanged(input.target, server)
   const client = await createSshClient(server)
 
   try {

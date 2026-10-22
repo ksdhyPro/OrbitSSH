@@ -820,6 +820,12 @@
   white-space: pre-wrap;
 }
 
+/* 跨服务器命令的实际目标需要醒目，避免用户批准到非预期的服务器。 */
+.ai-approval-popover .ai-approval-target {
+  color: var(--warning);
+  font-weight: var(--font-weight-medium);
+}
+
 .ai-loading-dots {
   display: inline-flex;
   align-items: center;

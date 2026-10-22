@@ -43,6 +43,7 @@ import {
   type AiCompatibilityFallbackParameter,
 } from "./ai-provider-compatibility.js";
 import { MAX_AI_PROVIDER_REQUEST_MS } from "./ai-limits.js";
+import { getAiUnavailableMessage, resolveActiveAiConfig } from "./ai-model-config.js";
 
 export type {
   ParsedAiCommand,
@@ -210,26 +211,6 @@ function createAiRequestErrorResponse(error: unknown): AiTurnAttemptResult {
   };
 }
 
-function getActiveAiConfig(settings: AppSettings): AiModelConfig | null {
-  const activeConfig =
-    settings.ai.configs.find(config => config.id === settings.ai.activeConfigId) ??
-    settings.ai.configs[0];
-  if (!settings.ai.enabled || !activeConfig) {
-    return null;
-  }
-  if (
-    !activeConfig.baseUrl.trim() ||
-    !activeConfig.apiKey.trim() ||
-    !activeConfig.model.trim()
-  ) return null;
-  return {
-    ...activeConfig,
-    baseUrl: activeConfig.baseUrl.trim().replace(/\/+$/, ""),
-    apiKey: activeConfig.apiKey.trim(),
-    model: activeConfig.model.trim(),
-  };
-}
-
 function createAiRequestTimeoutResponse(): AiTurnAttemptResult {
   return {
     reply: "AI 服务响应超时，已停止本次等待。请检查网络或稍后重试。",
@@ -364,42 +345,6 @@ function createAiStatusErrorResponse(
   };
 }
 
-function createLocalFallback(
-  input: AiChatInput,
-  executedCommands: ExecutedAiCommandContext[],
-): ParsedAssistantResponse {
-  if (executedCommands.length > 0) {
-    return {
-      reply: `已完成 ${executedCommands.length} 条命令检查，请根据上方命令输出判断当前状态。`,
-      commands: [],
-    };
-  }
-  const lower = input.message.toLowerCase();
-  if (lower.includes("disk") || input.message.includes("磁盘")) {
-    return {
-      reply: "可以先查看磁盘使用率。我建议执行 df -h。",
-      commands: [{
-        toolCallId: `local-${crypto.randomUUID()}`,
-        command: "df -h",
-        reason: "查看文件系统使用率",
-        risk: "low",
-      }],
-    };
-  }
-  if (lower.includes("nginx")) {
-    return {
-      reply: "可以先查看 nginx 的服务状态。",
-      commands: [{
-        toolCallId: `local-${crypto.randomUUID()}`,
-        command: "systemctl status nginx",
-        reason: "查看 nginx 服务状态",
-        risk: "low",
-      }],
-    };
-  }
-  return { reply: "我可以根据当前服务器上下文给出建议；如果需要诊断，请描述现象或指定服务名。", commands: [] };
-}
-
 async function requestAiTurnOnce(
   input: AiChatInput,
   settings: AppSettings,
@@ -414,8 +359,8 @@ async function requestAiTurnOnce(
   const terminalOutput = settings.ai.shareTerminalContext
     ? (getTerminalContextSnapshot(input.tabId)?.recentOutput ?? "")
     : "";
-  const activeConfig = getActiveAiConfig(settings);
-  if (!activeConfig) return createLocalFallback(input, executedCommands);
+  const activeConfig = resolveActiveAiConfig(settings);
+  if (!activeConfig) return { reply: getAiUnavailableMessage(settings), commands: [] };
   const timeoutSignal = AbortSignal.timeout(MAX_AI_PROVIDER_REQUEST_MS);
   const requestSignal = signal
     ? AbortSignal.any([signal, timeoutSignal])
@@ -741,8 +686,8 @@ export async function summarizeAiConversation(
   summaryMaxTokens: number | undefined,
   signal?: AbortSignal,
 ): Promise<string> {
-  const activeConfig = getActiveAiConfig(settings);
-  if (!activeConfig) throw new Error("当前模型配置不可用，无法压缩上下文");
+  const activeConfig = resolveActiveAiConfig(settings);
+  if (!activeConfig) throw new Error(getAiUnavailableMessage(settings));
 
   const timeoutSignal = AbortSignal.timeout(MAX_AI_PROVIDER_REQUEST_MS);
   const requestSignal = signal

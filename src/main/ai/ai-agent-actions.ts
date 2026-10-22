@@ -24,7 +24,11 @@ import type {
   ParsedAiCommand,
   ParsedAssistantResponse,
 } from "./ai-provider.js";
-import { executeSavedServerCommand } from "./ai-saved-server-command.js";
+import {
+  executeSavedServerCommand,
+  resolveSavedServerTargetFromStore,
+} from "./ai-saved-server-command.js";
+import type { SavedServerTarget } from "./ai-saved-server-target.js";
 import {
   containsRemoteShellCommand,
   evaluateAiCommand,
@@ -45,7 +49,12 @@ interface EvaluatedCommand extends ParsedAiCommand {
 export type EvaluatedAiAction =
   | ({ type: "shell" } & EvaluatedCommand)
   | ({ type: "long_shell" } & EvaluatedCommand)
-  | ({ type: "saved_server"; serverName: string } & EvaluatedCommand);
+  | ({
+      type: "saved_server";
+      serverName: string;
+      /** 审批前解析出的实际目标，审批恢复后按它的 ID 执行。 */
+      target?: SavedServerTarget;
+    } & EvaluatedCommand);
 
 export interface PendingApprovalState {
   tabId: string;
@@ -115,7 +124,7 @@ function getWorkingDirectory(input: AiChatInput): string | undefined {
 
 function getDisplayCommand(action: EvaluatedAiAction): string {
   return action.type === "saved_server"
-    ? `[${action.serverName}] ${action.command}`
+    ? `[${action.target?.name ?? action.serverName}] ${action.command}`
     : action.command;
 }
 
@@ -140,6 +149,15 @@ function createCard(
     reason: options.reason ?? action.reason,
     workingDirectory:
       action.type === "saved_server" ? undefined : getWorkingDirectory(input),
+    targetServer:
+      action.type === "saved_server" && action.target
+        ? {
+            name: action.target.name,
+            host: action.target.host,
+            port: action.target.port,
+            username: action.target.username,
+          }
+        : undefined,
     risk: action.risk,
     status,
     createdAt: options.createdAt ?? Date.now(),
@@ -461,8 +479,11 @@ async function executeSavedServerAction(
   let nextCards = mergeCards(request.commandCards, runningCard);
 
   try {
+    if (!action.target) {
+      throw new Error("跨服务器命令缺少已确认的目标服务器");
+    }
     const remote = await executeSavedServerCommand({
-      serverReference: action.serverName,
+      target: action.target,
       command: action.command,
       mode: input.mode,
       risk: action.risk,
@@ -502,7 +523,7 @@ async function executeSavedServerAction(
       toolCallId: action.toolCallId,
       toolName: "run_saved_server_command",
       command: action.command,
-      serverName: action.serverName,
+      serverName: action.target?.name ?? action.serverName,
       reason: action.reason,
       risk: action.risk,
       result: {
@@ -530,10 +551,44 @@ async function executeSavedServerAction(
   }
 }
 
+/** 跨服务器动作在审批前解析目标；无法唯一确定时直接拒绝，不弹出审批。 */
+function resolveSavedServerAction(
+  request: ExecuteAgentActionInput,
+): ExecuteAgentActionInput | AgentActionResult {
+  const action = request.action;
+  if (action.type !== "saved_server" || action.target || !request.allowCrossServerOperations) {
+    return request;
+  }
+
+  try {
+    return {
+      ...request,
+      action: { ...action, target: resolveSavedServerTargetFromStore(action.serverName) },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    const card = createCard(request.input, action, "rejected", { error: reason });
+    request.emit?.sendCommandCard(card);
+    request.messages.push(
+      createAssistantMessage(`无法确定跨服务器命令的目标服务器：${reason}`),
+    );
+    return {
+      status: "return",
+      result: {
+        messages: request.messages,
+        commandCards: mergeCards(request.commandCards, card),
+      },
+    };
+  }
+}
+
 /** 统一执行当前终端和已保存服务器动作，并封装审批与命令卡状态。 */
 export async function executeAgentAction(
-  request: ExecuteAgentActionInput,
+  rawRequest: ExecuteAgentActionInput,
 ): Promise<AgentActionResult> {
+  const resolved = resolveSavedServerAction(rawRequest);
+  if ("status" in resolved) return resolved;
+  const request = resolved;
   const cardId = request.approval?.cardId ?? createId();
   const cardCreatedAt = request.approval?.cardCreatedAt ?? Date.now();
 

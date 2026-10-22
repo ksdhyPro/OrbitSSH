@@ -1,4 +1,8 @@
-import type { AiCommandCard, AiCommandStatus } from "../../shared/ai";
+import type {
+  AiCommandCard,
+  AiCommandStatus,
+  AiCommandTargetServer,
+} from "../../shared/ai";
 
 export type AiPanelMessage = {
   id: string;
@@ -83,4 +87,9 @@ export function formatDuration(durationMs: number): string {
   return minutes > 0
     ? `${hours}小时${minutes}分钟${seconds}秒`
     : `${hours}小时${seconds}秒`;
+}
+
+/** 跨服务器命令的目标展示为“名称（用户@主机:端口）”，与主进程审批前解析的结果一致。 */
+export function formatTargetServer(target: AiCommandTargetServer): string {
+  return `${target.name}（${target.username}@${target.host}:${target.port}）`;
 }

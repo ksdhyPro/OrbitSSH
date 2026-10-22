@@ -92,10 +92,7 @@ export function evaluateAssistantTurnProtocol(
     toolCall.type === "function" &&
     toolCall.function?.name === "finish_response"
   ) {
-    const args = parseToolArguments(toolCall.function.arguments);
-    const message = args && typeof args === "object"
-      ? (args as Record<string, unknown>).message
-      : undefined;
+    const message = parseToolArguments(toolCall.function.arguments)?.message;
     if (typeof message === "string" && message.trim()) {
       return {
         outcome: "finish",
@@ -143,27 +140,25 @@ function normalizeAiCommandRisk(value: unknown): ParsedAiCommand["risk"] {
     : "medium";
 }
 
-function extractCommandFromLooseJson(text: string): string {
-  const match = text.match(
-    /["'](?:command|cmd|shell|script|commandLine|command_line)["']\s*:\s*["']([^"']+)["']/,
-  );
-  return match?.[1]?.trim() ?? "";
-}
-
-function parseToolArguments(rawArgs: unknown): unknown {
-  if (rawArgs && typeof rawArgs === "object") return rawArgs;
-  if (typeof rawArgs !== "string") return {};
+/**
+ * 解析工具参数；兼容参数被二次 JSON 编码的接口。
+ * 参数不是合法 JSON 时返回 null 交由协议重试，绝不从残缺文本中猜测命令，
+ * 避免截断的命令（例如引号处被截掉的删除命令）被执行。
+ */
+function parseToolArguments(rawArgs: unknown): Record<string, unknown> | null {
   let parsed: unknown = rawArgs;
   for (let depth = 0; depth < 2 && typeof parsed === "string"; depth += 1) {
     const text = parsed.trim();
-    if (!text) return {};
+    if (!text) return null;
     try {
       parsed = JSON.parse(text);
     } catch {
-      return { command: extractCommandFromLooseJson(text) };
+      return null;
     }
   }
-  return parsed;
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
 }
 
 function createCommandFromRecord(
@@ -192,14 +187,15 @@ function buildCommandsFromToolArguments(
   rawArgs: unknown,
   toolCallId: string,
 ): ParsedAiCommand[] {
-  const args = parseToolArguments(rawArgs);
-  if (!args || typeof args !== "object") return [];
-  const record = args as Record<string, unknown>;
+  const record = parseToolArguments(rawArgs);
+  if (!record) return [];
   const fallbackReason =
     typeof record.reason === "string" && record.reason.trim()
       ? record.reason.trim()
       : "执行命令";
   if (Array.isArray(record.commands)) {
+    // 每次工具调用只能执行一条命令；一次给出多条时整体视为无效，不静默丢弃其余命令。
+    if (record.commands.length !== 1) return [];
     return record.commands
       .map(item =>
         typeof item === "string"
@@ -216,8 +212,7 @@ function buildCommandsFromToolArguments(
               )
             : null,
       )
-      .filter((item): item is ParsedAiCommand => item !== null)
-      .slice(0, 1);
+      .filter((item): item is ParsedAiCommand => item !== null);
   }
   const command = createCommandFromRecord(record, fallbackReason, toolCallId);
   return command ? [command] : [];
@@ -258,9 +253,7 @@ export function parseLongCommandProgressToolCalls(
     ) {
       return [];
     }
-    const args = parseToolArguments(toolCall.function.arguments);
-    if (!args || typeof args !== "object") return [];
-    const message = (args as Record<string, unknown>).message;
+    const message = parseToolArguments(toolCall.function.arguments)?.message;
     return typeof message === "string" && message.trim()
       ? [{ message: message.trim() }]
       : [];
@@ -270,9 +263,8 @@ export function parseLongCommandProgressToolCalls(
 export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAiSavedServerCommand[] {
   return rawToolCalls.flatMap(toolCall => {
     if (toolCall.type !== 'function' || toolCall.function?.name !== 'run_saved_server_command') return []
-    const args = parseToolArguments(toolCall.function.arguments)
-    if (!args || typeof args !== 'object') return []
-    const record = args as Record<string, unknown>
+    const record = parseToolArguments(toolCall.function.arguments)
+    if (!record) return []
     const command = createCommandFromRecord(
       record,
       '在已保存服务器执行命令',

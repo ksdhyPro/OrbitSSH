@@ -26,6 +26,7 @@ import AiContextUsageRing from "./AiContextUsageRing.vue";
 import ContextMenu from "./ContextMenu.vue";
 import {
   formatDuration,
+  formatTargetServer,
   getCommandAuditText,
   getProcessDurationText,
   getProcessItemTitle,
@@ -841,6 +842,9 @@ onBeforeUnmount(() => {
                   <span>{{ getProcessItemTitle(processItem) }}</span>
                 </header>
                 <code>{{ processItem.card.command }}</code>
+                <p v-if="processItem.card.targetServer">
+                  目标服务器：{{ formatTargetServer(processItem.card.targetServer) }}
+                </p>
                 <p v-if="processItem.card.workingDirectory">
                   工作目录：{{ processItem.card.workingDirectory }}
                 </p>
@@ -896,6 +900,9 @@ onBeforeUnmount(() => {
             <strong>{{ statusLabels[pendingApprovalCard.status] }}</strong>
           </header>
           <code>{{ pendingApprovalCard.command }}</code>
+          <p v-if="pendingApprovalCard.targetServer" class="ai-approval-target">
+            目标服务器：{{ formatTargetServer(pendingApprovalCard.targetServer) }}
+          </p>
           <p v-if="pendingApprovalCard.workingDirectory">
             工作目录：{{ pendingApprovalCard.workingDirectory }}
           </p>

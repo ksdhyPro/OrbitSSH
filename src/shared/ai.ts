@@ -38,6 +38,14 @@ export interface AiMessage {
   completedAt?: number;
 }
 
+/** 跨服务器命令在审批前解析出的实际目标，展示给用户确认。 */
+export interface AiCommandTargetServer {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+}
+
 export interface AiCommandCard {
   id: string;
   tabId: string;
@@ -46,6 +54,8 @@ export interface AiCommandCard {
   reason: string;
   /** 命令实际绑定的执行目录；跨服务器查询未指定目录时为空。 */
   workingDirectory?: string;
+  /** 跨服务器命令的实际目标服务器；当前终端命令为空。 */
+  targetServer?: AiCommandTargetServer;
   risk: "low" | "medium" | "high";
   status: AiCommandStatus;
   createdAt: number;
