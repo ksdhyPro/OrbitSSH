@@ -13,6 +13,8 @@ export interface ExecutedAiCommandContext {
   result: AiCommandResult;
   /** 命令完成时间，用于在历史中按时间顺序还原工具调用；旧版记录没有该字段。 */
   executedAt?: number;
+  /** 上下文压缩时已降级为只保留末尾输出，降级后不再变化，保持后续请求的前缀稳定。 */
+  compacted?: boolean;
 }
 
 /** 长命令运行期间提供给模型的增量快照，不进入已执行命令历史。 */
@@ -155,35 +157,72 @@ function buildToolArguments(item: ExecutedAiCommandContext): string {
   );
 }
 
-function buildToolResult(item: ExecutedAiCommandContext, preserveFullReply = false): string {
-  const stdout = redactSensitiveTerminalText(stripTerminalControlSequences(item.result.stdout));
-  const stderr = redactSensitiveTerminalText(stripTerminalControlSequences(item.result.stderr));
+function sanitizeCommandOutput(text: string): string {
+  return redactSensitiveTerminalText(stripTerminalControlSequences(text));
+}
+
+function buildToolResult(item: ExecutedAiCommandContext): string {
   return JSON.stringify({
     ok: item.result.exitCode === 0 && !item.result.timedOut,
     workingDirectory: item.workingDirectory ?? null,
-    stdout: preserveFullReply
-      ? stdout
-      : truncateText(stdout, Math.floor(maxExecutedResultChars * 0.7)),
-    stderr: preserveFullReply
-      ? stderr
-      : truncateText(stderr, Math.floor(maxExecutedResultChars * 0.3)),
+    stdout: truncateText(
+      sanitizeCommandOutput(item.result.stdout),
+      Math.floor(maxExecutedResultChars * 0.7),
+    ),
+    stderr: truncateText(
+      sanitizeCommandOutput(item.result.stderr),
+      Math.floor(maxExecutedResultChars * 0.3),
+    ),
     exitCode: item.result.exitCode,
     timedOut: item.result.timedOut,
     durationMs: item.result.durationMs,
   });
 }
 
+/** 命令进入提示词后的工具参数与工具结果，用于按实际发送内容估算 Token。 */
+export function formatExecutedCommandForPrompt(item: ExecutedAiCommandContext): {
+  toolArguments: string;
+  toolResult: string;
+} {
+  return { toolArguments: buildToolArguments(item), toolResult: buildToolResult(item) };
+}
+
+const compactedStdoutChars = 240;
+const compactedStderrChars = 160;
+
+function keepTail(text: string, limit: number): string {
+  const trimmed = text.trim();
+  return trimmed.length > limit
+    ? `[较早的命令结果已压缩，仅保留末尾 ${limit} 个字符]\n${trimmed.slice(-limit)}`
+    : trimmed;
+}
+
+/**
+ * 把较早的命令降级为只保留末尾输出：报错和结论通常在输出末尾。
+ * 先脱敏再截取，避免截断破坏私钥等多行凭据的匹配边界。
+ */
+export function compactExecutedCommand(item: ExecutedAiCommandContext): ExecutedAiCommandContext {
+  if (item.compacted) return item;
+  return {
+    ...item,
+    compacted: true,
+    result: {
+      ...item.result,
+      stdout: keepTail(sanitizeCommandOutput(item.result.stdout), compactedStdoutChars),
+      stderr: keepTail(sanitizeCommandOutput(item.result.stderr), compactedStderrChars),
+    },
+  };
+}
+
 function buildExecutedCommandMessages(
   executedCommands: ExecutedAiCommandContext[],
   totalCharsLimit = maxExecutedResultsChars,
-  preserveFullReplies = false,
 ): AiProviderMessage[] {
   const groups: AiProviderMessage[][] = [];
   let usedChars = 0;
   for (let index = executedCommands.length - 1; index >= 0; index -= 1) {
     const item = executedCommands[index]!;
-    const toolArguments = buildToolArguments(item);
-    const toolResult = buildToolResult(item, preserveFullReplies);
+    const { toolArguments, toolResult } = formatExecutedCommandForPrompt(item);
     if (usedChars + toolArguments.length + toolResult.length > totalCharsLimit) {
       break;
     }
@@ -315,12 +354,13 @@ function buildChronologicalHistory(
     ],
   }));
 
-  // 跨上下文段完整保留所有已执行指令及其经过脱敏的回复；旧版记录没有时间戳时放在最前面。
+  // 命令记忆跨上下文段保留，单条截断规则与本轮相同，使本轮请求与下一轮历史的工具结果一致；
+  // 总量由压缩时的命令降级控制。旧版记录没有时间戳时放在最前面。
   (memory?.commands ?? []).forEach((command, index) => {
     entries.push({
       at: command.executedAt ?? Number.NEGATIVE_INFINITY,
       order: visibleHistory.length + index,
-      messages: buildExecutedCommandMessages([command], Number.POSITIVE_INFINITY, true),
+      messages: buildExecutedCommandMessages([command], Number.POSITIVE_INFINITY),
     });
   });
 

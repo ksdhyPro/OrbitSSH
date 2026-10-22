@@ -1,5 +1,9 @@
 import type { AiChatInput, AiContextUsage, AiMessage } from "../../shared/ai.js";
-import type { ExecutedAiCommandContext } from "./ai-context.js";
+import {
+  compactExecutedCommand,
+  formatExecutedCommandForPrompt,
+  type ExecutedAiCommandContext,
+} from "./ai-context.js";
 import type { AiPersistedConversationContext } from "../storage/ai-conversation-store.js";
 
 export interface AiTokenUsage {
@@ -27,11 +31,55 @@ const summaryHistoryRatio = 0.2;
 export const MIN_AI_SUMMARY_TOKENS = 512;
 const estimatedFixedRequestTokens = 2_000;
 const estimatedSummaryPromptTokens = 300;
+// 工具调用 ID、名称和消息结构等每条命令固定开销。
+const estimatedPerCommandTokens = 20;
+// 命令记忆占模型窗口的比例：最近命令保留单条截断后的结果，更早的命令只保留末尾输出。
+const commandMemoryFullRatio = 0.3;
+const commandMemoryCompactedRatio = 0.1;
+// 未配置上下文上限时，按常见的 32K 窗口估算命令记忆预算，仅在模型报告超限后使用。
+const fallbackContextWindowTokens = 32_000;
 
-/** 使用固定中间值粗算 Token：两个字符约等于一个 Token。 */
+// 主流分词器中，中日韩字符约 0.6～1 个 Token，英文、数字和代码约 3～4 个字符一个 Token，
+// 制表符号、Emoji 等其他非 ASCII 字符通常单独占一个或更多 Token。取偏保守的中间值，
+// 以十分之一 Token 为单位整数累加，避免浮点误差让整十字符多算一个 Token。
+const asciiTenthTokensPerChar = 3;
+const cjkTenthTokensPerChar = 7;
+const otherTenthTokensPerChar = 10;
+
+function isCjkCodeUnit(code: number): boolean {
+  return (
+    // 部首、全角标点、假名、注音和中日韩统一表意文字。
+    (code >= 0x2e80 && code <= 0x9fff) ||
+    // 韩文音节。
+    (code >= 0xac00 && code <= 0xd7af) ||
+    // 兼容表意文字。
+    (code >= 0xf900 && code <= 0xfaff) ||
+    // 全角与半角形式。
+    (code >= 0xff00 && code <= 0xffef)
+  );
+}
+
+/**
+ * 按字符类别粗算 Token，区分中文与英文：命令输出多为英文，统一按两个字符一个 Token
+ * 会把它高估一倍左右，导致上下文远未用满就触发压缩。
+ */
 export function estimateTokenCount(value: unknown): number {
   const text = typeof value === "string" ? value : JSON.stringify(value ?? "");
-  return Math.ceil(text.length / 2);
+  let asciiChars = 0;
+  let cjkChars = 0;
+  let otherChars = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) asciiChars += 1;
+    else if (isCjkCodeUnit(code)) cjkChars += 1;
+    else otherChars += 1;
+  }
+  return Math.ceil(
+    (asciiChars * asciiTenthTokensPerChar +
+      cjkChars * cjkTenthTokensPerChar +
+      otherChars * otherTenthTokensPerChar) /
+      10,
+  );
 }
 
 export function getContextThresholdTokens(contextTokenLimitK: number): number {
@@ -49,6 +97,82 @@ export function isContextBudgetReached(
 
   const threshold = getContextThresholdTokens(contextTokenLimitK);
   return estimatedRequestTokens >= threshold || (lastUsage?.totalTokens ?? 0) >= threshold;
+}
+
+/** 按实际发送给模型的截断后内容估算命令记忆，而不是按保存的原始输出。 */
+export function estimateCommandMemoryTokens(commands: ExecutedAiCommandContext[]): number {
+  return commands.reduce((total, command) => {
+    const { toolArguments, toolResult } = formatExecutedCommandForPrompt(command);
+    return (
+      total +
+      estimatedPerCommandTokens +
+      estimateTokenCount(toolArguments) +
+      estimateTokenCount(toolResult)
+    );
+  }, 0);
+}
+
+export interface AiCommandMemoryBudget {
+  /** 保留单条截断后结果的最近命令可用 Token。 */
+  fullTokens: number;
+  /** 降级为末尾输出的较早命令可用 Token，超出后移除最早的命令。 */
+  compactedTokens: number;
+}
+
+/**
+ * 命令记忆预算按模型窗口比例计算。模型已经报告超限时说明窗口配置或估算有偏差，
+ * aggressive 按一半预算降级，确保续接重试有足够空间。
+ */
+export function getCommandMemoryBudget(
+  contextTokenLimitK: number,
+  aggressive = false,
+): AiCommandMemoryBudget {
+  const windowTokens =
+    Number.isSafeInteger(contextTokenLimitK) && contextTokenLimitK > 0
+      ? contextTokenLimitK * 1_000
+      : fallbackContextWindowTokens;
+  const scale = aggressive ? 0.5 : 1;
+  return {
+    fullTokens: Math.floor(windowTokens * commandMemoryFullRatio * scale),
+    compactedTokens: Math.floor(windowTokens * commandMemoryCompactedRatio * scale),
+  };
+}
+
+/**
+ * 从最新命令往前分配预算：先保留单条截断后的结果，用完后把更早的命令降级为末尾输出，
+ * 再用完则移除更早的全部命令。已降级的命令不会恢复，压缩之间的请求前缀保持稳定。
+ */
+export function compactCommandMemory(
+  commands: ExecutedAiCommandContext[],
+  budget: AiCommandMemoryBudget,
+): ExecutedAiCommandContext[] {
+  const kept: ExecutedAiCommandContext[] = [];
+  let phase: "full" | "compacted" = "full";
+  let fullTokens = 0;
+  let compactedTokens = 0;
+  for (let index = commands.length - 1; index >= 0; index -= 1) {
+    let command = commands[index]!;
+    if (phase === "full" && !command.compacted) {
+      const tokens = estimateCommandMemoryTokens([command]);
+      if (fullTokens + tokens <= budget.fullTokens) {
+        fullTokens += tokens;
+        kept.push(command);
+        continue;
+      }
+    }
+    phase = "compacted";
+    command = compactExecutedCommand(command);
+    const tokens = estimateCommandMemoryTokens([command]);
+    if (compactedTokens + tokens > budget.compactedTokens) break;
+    compactedTokens += tokens;
+    kept.push(command);
+  }
+  return kept.reverse();
+}
+
+/** 历史太短时摘要额度达不到最小值，压缩也腾不出空间，应跳过摘要请求。 */
+export function isHistoryTooShortToSummarize(history: AiMessage[]): boolean {
+  return estimateTokenCount(history) * summaryHistoryRatio < MIN_AI_SUMMARY_TOKENS;
 }
 
 export function isContextWindowExceededError(status: number, responseText: string): boolean {
@@ -76,8 +200,8 @@ export function calculateSummaryMaxTokens(
     estimatedSummaryPromptTokens + estimateTokenCount(memory.summary) + normalHistoryTokens;
   const newContextFixedTokens =
     estimatedFixedRequestTokens +
+    estimateCommandMemoryTokens(memory.commands) +
     estimateTokenCount({
-      commands: memory.commands,
       message: input.message,
       context: input.context,
       presetPrompt: input.presetPrompt ?? "",
@@ -96,7 +220,7 @@ export function calculateSummaryMaxTokens(
 function cloneRememberedCommand(command: ExecutedAiCommandContext): ExecutedAiCommandContext {
   return {
     ...command,
-    // SSH 执行层已经限制单次输出大小；这里完整保留指令回复供后续上下文段使用。
+    // 保存执行层已限制大小的原始输出：发送时按单条上限截断，压缩时按预算降级。
     result: { ...command.result },
   };
 }
@@ -176,9 +300,9 @@ export class AiConversationContextManager {
     const state = this.getState(input);
     const estimatedRequestTokens =
       estimatedFixedRequestTokens +
+      estimateCommandMemoryTokens(state.commands) +
       estimateTokenCount({
         summary: state.summary,
-        commands: state.commands,
         history: this.getSegmentHistory(input),
         message: input.message,
         context: input.context,
@@ -231,6 +355,26 @@ export class AiConversationContextManager {
     const state = this.getState(input);
     if (state.commands.some(item => item.toolCallId === command.toolCallId)) return;
     state.commands.push(cloneRememberedCommand(command));
+  }
+
+  /**
+   * 按预算降级命令记忆，返回是否发生变化。命令发生变化后上一次接口用量不再代表下一次请求，
+   * 需要清除，避免旧用量继续触发压缩。
+   */
+  compactCommands(
+    input: Pick<AiChatInput, "conversationId" | "context">,
+    budget: AiCommandMemoryBudget,
+  ): boolean {
+    const state = this.getState(input);
+    const commands = compactCommandMemory(state.commands, budget);
+    const changed =
+      commands.length !== state.commands.length ||
+      commands.some((command, index) => command !== state.commands[index]);
+    if (!changed) return false;
+    state.commands = commands;
+    state.lastUsage = undefined;
+    state.lastUsageConfigId = undefined;
+    return true;
   }
 
   completeCompression(input: AiChatInput, summary: string): void {

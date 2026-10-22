@@ -4,10 +4,14 @@ import test from "node:test";
 import {
   AiConversationContextManager,
   calculateSummaryMaxTokens,
+  compactCommandMemory,
+  estimateCommandMemoryTokens,
   estimateTokenCount,
+  getCommandMemoryBudget,
   getContextThresholdTokens,
   isContextBudgetReached,
   isContextWindowExceededError,
+  isHistoryTooShortToSummarize,
 } from "../../dist-electron/main/ai/ai-context-budget.js";
 
 const input = {
@@ -28,9 +32,20 @@ const input = {
   ],
 };
 
-test("Token 使用固定两个字符约等于一个 Token 的粗算规则", () => {
-  assert.equal(estimateTokenCount("1234"), 2);
+test("Token 估算区分中文与英文：英文约 0.3、中文约 0.7、其他非 ASCII 字符按 1 计", () => {
+  assert.equal(estimateTokenCount("1234567890"), 3);
+  assert.equal(estimateTokenCount("检查磁盘使用率"), 5);
+  assert.equal(estimateTokenCount("ＡＢ。かなㄅ한"), 5);
+  assert.equal(estimateTokenCount("├──"), 3);
+  assert.equal(estimateTokenCount("df -h 磁盘"), 4);
+  assert.equal(estimateTokenCount(""), 0);
   assert.equal(getContextThresholdTokens(10), 8_000);
+});
+
+test("英文命令输出不再按两个字符一个 Token 高估", () => {
+  const log = "Oct 22 10:00:01 host nginx[123]: GET /api/v1/items 200 0.012s\n".repeat(100);
+  assert.ok(estimateTokenCount(log) <= Math.ceil(log.length * 0.3));
+  assert.ok(estimateTokenCount(log) < log.length / 2);
 });
 
 test("上下文预算优先使用接口 usage，并在 80% 时触发", () => {
@@ -126,32 +141,124 @@ test("摘要上限随历史规模动态增长，不再固定为 1500 Token", () 
   assert.ok(maxTokens <= estimateTokenCount(longHistoryInput.history) * 0.2);
 });
 
-test("命令及回复占满新上下文时不再提交摘要请求", () => {
-  const command = {
-    toolCallId: "large-call",
+function largeCommand(id, overrides = {}) {
+  return {
+    toolCallId: id,
     toolName: "run_shell_command",
-    command: "journalctl -u nginx",
+    command: `journalctl -u nginx #${id}`,
     reason: "检查日志",
     risk: "low",
     result: {
-      stdout: "x".repeat(20_000),
+      stdout: `${id} GET /api/items 200 upstream=127.0.0.1:8080\n`.repeat(400),
       stderr: "",
       exitCode: 0,
       timedOut: false,
       durationMs: 10,
     },
+    executedAt: 10,
+    ...overrides,
   };
+}
 
+test("命令及回复占满新上下文时不再提交摘要请求", () => {
+  const longHistoryInput = {
+    ...input,
+    history: [{ id: "long", role: "user", content: "x".repeat(40_000), createdAt: 1 }],
+  };
+  const commands = Array.from({ length: 30 }, (_, index) => largeCommand(`c${index}`));
+
+  assert.equal(calculateSummaryMaxTokens(longHistoryInput, { summary: "", commands }, 10), 0);
+});
+
+test("命令记忆按实际发送的截断后内容估算，不按保存的原始输出", () => {
+  const command = largeCommand("c1");
+  const rawTokens = estimateTokenCount(command.result.stdout);
+  const promptTokens = estimateCommandMemoryTokens([command]);
+
+  assert.ok(rawTokens > 4_000);
+  assert.ok(promptTokens < 1_500);
+});
+
+test("命令记忆从最新往前保留，超出后降级为末尾输出，再超出则移除最早的命令", () => {
+  const commands = Array.from({ length: 40 }, (_, index) => largeCommand(`c${index}`));
+  const budget = getCommandMemoryBudget(32);
+  const kept = compactCommandMemory(commands, budget);
+  const full = kept.filter(command => !command.compacted);
+  const compacted = kept.filter(command => command.compacted);
+
+  assert.ok(kept.length < commands.length);
+  assert.ok(full.length > 0 && compacted.length > 0);
+  // 保留的是最新的连续一段，顺序不变：较早的降级在前，最近的完整结果在后。
+  assert.deepEqual(
+    kept.map(command => command.toolCallId),
+    commands.slice(-kept.length).map(command => command.toolCallId),
+  );
+  assert.ok(kept.findIndex(command => !command.compacted) === compacted.length);
+  assert.ok(estimateCommandMemoryTokens(full) <= budget.fullTokens);
+  assert.ok(estimateCommandMemoryTokens(compacted) <= budget.compactedTokens);
+  // 降级只保留末尾输出并说明已压缩。
+  assert.match(compacted[0].result.stdout, /较早的命令结果已压缩/);
+  assert.ok(compacted[0].result.stdout.endsWith("upstream=127.0.0.1:8080"));
+  assert.ok(compacted[0].result.stdout.length < 400);
+});
+
+test("已降级的命令保持不变，再次降级时请求前缀稳定", () => {
+  const commands = Array.from({ length: 40 }, (_, index) => largeCommand(`c${index}`));
+  const budget = getCommandMemoryBudget(32);
+  const once = compactCommandMemory(commands, budget);
+  const twice = compactCommandMemory(once, budget);
+
+  assert.deepEqual(twice, once);
+  twice.forEach((command, index) => assert.equal(command, once[index]));
+});
+
+test("命令降级前先脱敏，截取末尾不会留下半截私钥", () => {
+  const privateKey = [
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "a".repeat(600),
+    "-----END OPENSSH PRIVATE KEY-----",
+  ].join("\n");
+  const [compacted] = compactCommandMemory(
+    [largeCommand("key", { result: { ...largeCommand("key").result, stdout: privateKey } })],
+    { fullTokens: 0, compactedTokens: 10_000 },
+  );
+
+  assert.equal(compacted.compacted, true);
+  assert.doesNotMatch(compacted.result.stdout, /aaaa|PRIVATE KEY-----/);
+  assert.match(compacted.result.stdout, /已脱敏：私钥/);
+});
+
+test("模型报告超限后按一半预算更激进地降级；未配置上限时按 32K 窗口计算", () => {
+  assert.deepEqual(getCommandMemoryBudget(32), { fullTokens: 9_600, compactedTokens: 3_200 });
+  assert.deepEqual(getCommandMemoryBudget(32, true), { fullTokens: 4_800, compactedTokens: 1_600 });
+  assert.deepEqual(getCommandMemoryBudget(0), getCommandMemoryBudget(32));
+});
+
+test("命令降级后清除旧的接口用量，避免旧用量继续触发压缩", () => {
+  const manager = new AiConversationContextManager();
+  for (let index = 0; index < 40; index += 1) {
+    manager.recordCommand(input, largeCommand(`c${index}`));
+  }
+  manager.recordUsage(
+    input,
+    { promptTokens: 30_000, completionTokens: 10, totalTokens: 30_010, source: "provider" },
+    "model-a",
+  );
+  assert.equal(manager.shouldCompress(input, 32, "model-a"), true);
+
+  assert.equal(manager.compactCommands(input, getCommandMemoryBudget(32)), true);
+  assert.equal(manager.shouldCompress(input, 32, "model-a"), false);
+  assert.equal(manager.compactCommands(input, getCommandMemoryBudget(32)), false);
+  assert.ok(manager.snapshot(input).commands.some(command => command.compacted));
+});
+
+test("历史太短时跳过摘要请求", () => {
+  assert.equal(isHistoryTooShortToSummarize(input.history), true);
   assert.equal(
-    calculateSummaryMaxTokens(
-      input,
-      {
-        summary: "",
-        commands: [command],
-      },
-      10,
-    ),
-    0,
+    isHistoryTooShortToSummarize([
+      { id: "long", role: "user", content: "内容".repeat(2_000), createdAt: 1 },
+    ]),
+    false,
   );
 });
 

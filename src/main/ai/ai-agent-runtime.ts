@@ -24,7 +24,12 @@ import {
   runAgentLoop,
 } from "./ai-agent-runner.js";
 import { ExpiringApprovalStore } from "./ai-approval-store.js";
-import { AiConversationContextManager, calculateSummaryMaxTokens } from "./ai-context-budget.js";
+import {
+  AiConversationContextManager,
+  calculateSummaryMaxTokens,
+  getCommandMemoryBudget,
+  isHistoryTooShortToSummarize,
+} from "./ai-context-budget.js";
 import type { ExecutedAiCommandContext } from "./ai-context.js";
 import { summarizeAiConversation } from "./ai-provider.js";
 import { resolveActiveAiConfig } from "./ai-model-config.js";
@@ -63,20 +68,67 @@ function getActiveContextConfig(
   return config ? { id: config.id, contextTokenLimitK: config.contextTokenLimitK } : null;
 }
 
+/** budget：本地估算达到压缩阈值；overflow：模型已报告上下文窗口超限。 */
+type CompressionTrigger = "budget" | "overflow";
+
+/**
+ * 先按预算降级命令记忆，仍超出预算时再把对话历史压缩为摘要。
+ * 大量命令输出单靠摘要无法腾出空间，历史太短时摘要也省不出空间，这两种情况都不再锁死对话。
+ */
 async function compressConversation(
   input: AiChatInput,
   settings: AppSettings,
   additionalMessages: AiMessage[],
   signal: AbortSignal,
+  trigger: CompressionTrigger,
 ): Promise<void> {
-  const memory = conversationContexts.getMemory(input);
+  const activeContextConfig = getActiveContextConfig(settings);
+  const contextTokenLimitK = activeContextConfig?.contextTokenLimitK ?? 0;
   const compressionInput: AiChatInput = {
     ...input,
     history: [...conversationContexts.getSegmentHistory(input), ...additionalMessages],
   };
 
+  const commandCountBefore = conversationContexts.getMemory(input).commands.length;
+  if (
+    conversationContexts.compactCommands(
+      input,
+      getCommandMemoryBudget(contextTokenLimitK, trigger === "overflow"),
+    )
+  ) {
+    persistAiConversationContext(input, conversationContexts);
+    writeAppLog({
+      scope: "main.ai",
+      message: "AI 命令记忆已按上下文预算降级",
+      data: {
+        tabId: input.tabId,
+        trigger,
+        commandCountBefore,
+        commandCountAfter: conversationContexts.getMemory(input).commands.length,
+      },
+    });
+  }
+  // 命令降级后已回到预算内，不需要再请求摘要。
+  if (
+    trigger === "budget" &&
+    !conversationContexts.shouldCompress(
+      compressionInput,
+      contextTokenLimitK,
+      activeContextConfig?.id ?? "",
+    )
+  ) {
+    return;
+  }
+  // 历史太短时摘要省不出空间，直接用降级后的命令记忆继续；仍超限时由模型报错后的续接重试兜底。
+  if (
+    compressionInput.history.length === 0 ||
+    (contextTokenLimitK > 0 && isHistoryTooShortToSummarize(compressionInput.history))
+  ) {
+    return;
+  }
+
+  const memory = conversationContexts.getMemory(input);
   try {
-    const contextTokenLimitK = getActiveContextConfig(settings)?.contextTokenLimitK ?? 0;
     const summaryMaxTokens =
       contextTokenLimitK > 0
         ? calculateSummaryMaxTokens(compressionInput, memory, contextTokenLimitK)
@@ -133,7 +185,7 @@ async function runLoopWithContext(options: RunLoopWithContextOptions): Promise<A
   let compressedDuringRun = false;
 
   if (conversationContexts.shouldCompress(input, contextTokenLimitK, configId)) {
-    await compressConversation(input, settings, leadingMessages, signal);
+    await compressConversation(input, settings, leadingMessages, signal, "budget");
     compressedDuringRun = true;
   }
 
@@ -156,7 +208,7 @@ async function runLoopWithContext(options: RunLoopWithContextOptions): Promise<A
             !compressedDuringRun &&
             conversationContexts.shouldCompress(budgetInput, contextTokenLimitK, configId)
           ) {
-            await compressConversation(input, settings, additionalMessages, signal);
+            await compressConversation(input, settings, additionalMessages, signal, "budget");
             compressedDuringRun = true;
           }
 
@@ -211,7 +263,7 @@ async function runLoopWithContext(options: RunLoopWithContextOptions): Promise<A
         };
       }
 
-      await compressConversation(input, settings, leadingMessages, signal);
+      await compressConversation(input, settings, leadingMessages, signal, "overflow");
       retriedAfterCompression = true;
       compressedDuringRun = true;
     }

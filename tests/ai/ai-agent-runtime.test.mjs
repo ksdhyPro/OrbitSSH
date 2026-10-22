@@ -303,7 +303,7 @@ test("达到上下文预算时先压缩历史，再只发送摘要和新上下�
   const history = Array.from({ length: 6 }, (_, index) => ({
     id: `h${index}`,
     role: index % 2 === 0 ? "user" : "assistant",
-    content: `第 ${index} 条历史 ${"内容".repeat(2_800)}`,
+    content: `第 ${index} 条历史 ${"内容".repeat(2_000)}`,
     createdAt: index + 1,
   }));
   model.responses.push(
@@ -352,6 +352,88 @@ test("模型报告上下文窗口超限时压缩后重试一次", async () => {
   assert.match(model.requests[1].messages[0].content, /压缩 OrbitSSH 对话上下文/);
   assert.ok(model.requests[2].messages.some(message => /之前讨论了磁盘问题/.test(message.content)));
   assert.equal(result.messages.at(-1).content, "已基于摘要继续回答。");
+});
+
+function largeRememberedCommand(index) {
+  return {
+    toolCallId: `remembered-${index}`,
+    toolName: "run_shell_command",
+    command: `journalctl -u app -n 200 #${index}`,
+    reason: "检查日志",
+    risk: "low",
+    result: {
+      stdout: `${index} GET /api/items 200 upstream=127.0.0.1:8080\n`.repeat(400),
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      durationMs: 10,
+    },
+    executedAt: index + 1,
+  };
+}
+
+test("命令输出占满上下文时先降级命令记忆，不请求摘要也不锁死对话", async () => {
+  reset();
+  const input = createInput({
+    history: [{ id: "h1", role: "user", content: "看下应用日志", createdAt: 1 }],
+    messageCreatedAt: 1_000,
+  });
+  repository.saveConversationRuntimeContext("server-1", input.conversationId, {
+    summary: "",
+    historyFloorCreatedAt: 0,
+    commands: Array.from({ length: 40 }, (_, index) => largeRememberedCommand(index)),
+  });
+  model.responses.push(finish("日志里没有新的错误。"));
+
+  const result = await runtime.runAiChat(input, createSettings({ contextTokenLimitK: 32 }));
+
+  assert.equal(model.requests.length, 1);
+  assert.notEqual(model.requests[0].tools, undefined);
+  assert.equal(result.messages.at(-1).content, "日志里没有新的错误。");
+  const context = repository.getConversationRuntimeContext("server-1", input.conversationId);
+  assert.ok(context.commands.length < 40);
+  assert.ok(context.commands.some(command => command.compacted));
+  assert.equal(context.commands.at(-1).toolCallId, "remembered-39");
+  assert.equal(context.commands.at(-1).compacted, undefined);
+  const toolMessages = model.requests[0].messages.filter(message => message.role === "tool");
+  assert.equal(toolMessages.length, context.commands.length);
+
+  // 同一对话继续提问仍可正常请求模型，降级后的命令记忆保持不变。
+  model.responses.push(finish("继续正常回答。"));
+  const next = await runtime.runAiChat(
+    createInput({
+      conversationId: input.conversationId,
+      history: [
+        ...input.history,
+        { id: "m1", role: "user", content: input.message, createdAt: 1_000 },
+        { id: "m2", role: "assistant", content: "日志里没有新的错误。", createdAt: 1_001 },
+      ],
+      messageCreatedAt: 2_000,
+    }),
+    createSettings({ contextTokenLimitK: 32 }),
+  );
+  assert.equal(next.messages.at(-1).content, "继续正常回答。");
+  assert.equal(model.requests.length, 2);
+  assert.deepEqual(
+    repository.getConversationRuntimeContext("server-1", input.conversationId).commands,
+    context.commands,
+  );
+});
+
+test("预算超限但历史太短时跳过摘要直接继续，不再锁死对话", async () => {
+  reset();
+  model.responses.push(finish("按预提示词回答。"));
+  const input = createInput({
+    presetPrompt: "回答规则".repeat(1_000),
+    history: [{ id: "h1", role: "user", content: "你好", createdAt: 1 }],
+    messageCreatedAt: 10,
+  });
+
+  const result = await runtime.runAiChat(input, createSettings({ contextTokenLimitK: 5 }));
+
+  assert.equal(model.requests.length, 1);
+  assert.notEqual(model.requests[0].tools, undefined);
+  assert.equal(result.messages.at(-1).content, "按预提示词回答。");
 });
 
 function streamFinish(message, pieceSize = 4) {

@@ -170,7 +170,7 @@ test("命令执行历史使用标准 assistant tool call 和 tool result", () =>
   assert.match(toolResult.content, /"timedOut":false/);
 });
 
-test("新上下文段保留历史命令及完整指令回复", () => {
+test("新上下文段保留历史命令，回复按与本轮相同的单条上限截断", () => {
   const stdout = "result-".repeat(1_000);
   const command = {
     toolCallId: "remembered-call",
@@ -193,7 +193,44 @@ test("新上下文段保留历史命令及完整指令回复", () => {
   const toolResult = messages.find(message => message.tool_call_id === "remembered-call");
 
   assert.match(messages[1].content, /用户正在排查 nginx/);
-  assert.equal(JSON.parse(toolResult.content).stdout, stdout);
+  const remembered = JSON.parse(toolResult.content).stdout;
+  assert.ok(remembered.startsWith("result-result-"));
+  assert.match(remembered, /已截断/);
+  assert.ok(remembered.length < stdout.length);
+
+  const inTurn = buildAiMessages(input, [command], "").find(
+    message => message.tool_call_id === "remembered-call",
+  );
+  assert.equal(toolResult.content, inTurn.content);
+});
+
+test("已降级的历史命令只发送末尾输出", () => {
+  const messages = buildAiMessages(input, [], "", undefined, {
+    summary: "",
+    commands: [
+      {
+        toolCallId: "compacted-call",
+        toolName: "run_shell_command",
+        command: "journalctl -u nginx",
+        reason: "检查日志",
+        risk: "low",
+        compacted: true,
+        result: {
+          stdout: "[较早的命令结果已压缩，仅保留末尾 240 个字符]\nnginx: ready",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 5,
+        },
+      },
+    ],
+  });
+  const toolResult = messages.find(message => message.tool_call_id === "compacted-call");
+
+  assert.equal(
+    JSON.parse(toolResult.content).stdout,
+    "[较早的命令结果已压缩，仅保留末尾 240 个字符]\nnginx: ready",
+  );
 });
 
 test("长命令进度只发送增量输出并标记为仍在运行", () => {
@@ -317,6 +354,29 @@ test("上一轮请求的前缀在下一轮历史中保持不变", () => {
         { id: "s1", role: "assistant", content: "执行：cmd-c1（原因-c1）", createdAt: 11 },
         { id: "a1", role: "assistant", content: "nginx 正常运行", createdAt: 30 },
       ],
+    },
+    [],
+    "",
+    undefined,
+    { summary: "", commands: [command] },
+  );
+
+  const sharedPrefix = turnOne.slice(0, -1);
+  assert.deepEqual(turnTwo.slice(0, sharedPrefix.length), sharedPrefix);
+});
+
+test("长输出命令在下一轮历史中与本轮请求的工具结果一致", () => {
+  const turnOneInput = { ...input, message: "看下日志", messageCreatedAt: 10 };
+  const command = rememberedCommand("c1", 20, {
+    result: { ...okResult, stdout: "GET /api 200\n".repeat(1_000), stderr: "warn\n".repeat(500) },
+  });
+  const turnOne = buildAiMessages(turnOneInput, [command], "");
+  const turnTwo = buildAiMessages(
+    {
+      ...input,
+      message: "继续",
+      messageCreatedAt: 40,
+      history: [{ id: "u1", role: "user", content: "看下日志", createdAt: 10 }],
     },
     [],
     "",
