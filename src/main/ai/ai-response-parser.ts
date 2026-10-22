@@ -114,6 +114,79 @@ export function evaluateAssistantTurnProtocol(
 
 const maxSseResponseChars = 2_000_000;
 
+export interface StreamCollectorOptions {
+  /** finish_response 的 message 参数在流式过程中逐步解码出的完整文本。 */
+  onFinishPreview?: (text: string) => void;
+  /** 每收到一块数据时调用，用于重置空闲超时。 */
+  onActivity?: () => void;
+}
+
+const jsonEscapes: Record<string, string> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  b: "\b",
+  f: "\f",
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+};
+
+/**
+ * 从尚未接收完整的 JSON 文本中解码某个字符串字段的当前内容。
+ * 遇到不完整的转义序列时停在其之前，避免界面短暂显示半个字符或转义符。
+ */
+export function extractPartialJsonStringField(json: string, field: string): string | undefined {
+  const match = new RegExp(`"${field}"\\s*:\\s*"`).exec(json);
+  if (!match) return undefined;
+
+  let result = "";
+  let index = match.index + match[0].length;
+  while (index < json.length) {
+    const char = json[index]!;
+    if (char === '"') return result;
+    if (char !== "\\") {
+      result += char;
+      index += 1;
+      continue;
+    }
+
+    const next = json[index + 1];
+    if (next === undefined) break;
+    if (next !== "u") {
+      result += jsonEscapes[next] ?? next;
+      index += 2;
+      continue;
+    }
+
+    const code = Number.parseInt(json.slice(index + 2, index + 6), 16);
+    if (json.length < index + 6 || Number.isNaN(code)) break;
+    if (code >= 0xd800 && code <= 0xdbff) {
+      // 代理对需要两个 \uXXXX 都到达后再一起解码。
+      const low = Number.parseInt(json.slice(index + 8, index + 12), 16);
+      if (json.length < index + 12 || json.slice(index + 6, index + 8) !== "\\u" || Number.isNaN(low)) break;
+      result += String.fromCharCode(code, low);
+      index += 12;
+      continue;
+    }
+    result += String.fromCharCode(code);
+    index += 6;
+  }
+  return result;
+}
+
+/** 为每个流式工具调用跟踪 finish_response 预览，仅在内容变化时回调。 */
+export function createFinishPreviewTracker(onFinishPreview?: (text: string) => void) {
+  let lastPreview = "";
+  return (name: string, args: string): void => {
+    if (!onFinishPreview || name !== "finish_response") return;
+    const preview = extractPartialJsonStringField(args, "message");
+    if (preview === undefined || preview === lastPreview) return;
+    lastPreview = preview;
+    onFinishPreview(preview);
+  };
+}
+
 export function parseAiTokenUsage(value: unknown): AiTokenUsage | undefined {
   if (!value || typeof value !== "object") return undefined;
   const usage = value as Record<string, unknown>;
@@ -278,11 +351,14 @@ export function parseSavedServerToolCalls(rawToolCalls: RawToolCall[]): ParsedAi
 export async function collectSseStream(
   body: ReadableStream<Uint8Array> | null,
   sendChunk?: (text: string) => void,
+  options: StreamCollectorOptions = {},
 ): Promise<{
   contentText: string;
   toolCalls: StreamedToolCall[];
   rawResponseText: string;
   usage?: AiTokenUsage;
+  /** 响应既不是 SSE 也不是 JSON（例如网关返回的 HTML 页面）。 */
+  unparsable?: boolean;
 }> {
   if (!body) return { contentText: "", toolCalls: [], rawResponseText: "" };
   const reader = body.getReader();
@@ -291,7 +367,9 @@ export async function collectSseStream(
   let rawText = "";
   let contentText = "";
   let usage: AiTokenUsage | undefined;
+  let validEvents = 0;
   const toolCallsByIndex = new Map<number, StreamedToolCall>();
+  const trackFinishPreview = createFinishPreviewTracker(options.onFinishPreview);
 
   const appendToolCallDelta = (
     index: number,
@@ -304,6 +382,7 @@ export async function collectSseStream(
     if (typeof name === "string" && name) existing.name = name;
     if (typeof args === "string" && args) existing.arguments += args;
     toolCallsByIndex.set(index, existing);
+    if (index === 0) trackFinishPreview(existing.name, existing.arguments);
   };
 
   const consumeSseLine = (line: string): void => {
@@ -313,6 +392,7 @@ export async function collectSseStream(
     if (!data || data === "[DONE]") return;
     try {
       const parsed = JSON.parse(data);
+      validEvents += 1;
       usage = parseAiTokenUsage(parsed?.usage) ?? usage;
       const packet = parsed?.choices?.[0]?.delta ?? parsed?.choices?.[0]?.message;
       if (!packet) return;
@@ -342,6 +422,7 @@ export async function collectSseStream(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      options.onActivity?.();
       const chunk = decoder.decode(value, { stream: true });
       rawText += chunk;
       if (rawText.length > maxSseResponseChars) {
@@ -370,11 +451,13 @@ export async function collectSseStream(
       toolCalls: streamedToolCalls,
       rawResponseText: rawText,
       usage,
+      unparsable: false,
     };
   }
 
   let fallbackContent = "";
   const fallbackToolCalls: StreamedToolCall[] = [];
+  let unparsable = false;
   try {
     const payload = JSON.parse(rawText) as Record<string, unknown>;
     usage = parseAiTokenUsage(payload.usage) ?? usage;
@@ -400,7 +483,8 @@ export async function collectSseStream(
       });
     }
   } catch {
-    // 回退解析失败时保持空结果，由上层生成可读提示。
+    // 回退解析失败时保持空结果；完全没有有效事件说明响应不是模型接口返回的。
+    unparsable = validEvents === 0 && Boolean(rawText.trim());
   }
   if (fallbackContent) sendChunk?.(fallbackContent);
   return {
@@ -408,5 +492,6 @@ export async function collectSseStream(
     toolCalls: fallbackToolCalls,
     rawResponseText: rawText,
     usage,
+    unparsable,
   };
 }

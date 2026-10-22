@@ -1,6 +1,11 @@
 import type { AiProviderMessage } from "./ai-context.js";
 import type { AiTokenUsage } from "./ai-context-budget.js";
-import type { RawToolCall, StreamedToolCall } from "./ai-response-parser.js";
+import {
+  createFinishPreviewTracker,
+  type RawToolCall,
+  type StreamCollectorOptions,
+  type StreamedToolCall,
+} from "./ai-response-parser.js";
 
 interface ParsedResponsesResult {
   contentText: string;
@@ -12,6 +17,8 @@ interface ParsedResponsesResult {
 interface StreamedResponsesResult extends ParsedResponsesResult {
   toolCalls: StreamedToolCall[];
   rawResponseText: string;
+  /** 响应既不是 SSE 也不是 JSON（例如网关返回的 HTML 页面）。 */
+  unparsable?: boolean;
 }
 
 const maxSseResponseChars = 2_000_000;
@@ -144,6 +151,7 @@ export function isResponsesApiUnsupported(status: number, responseText: string):
 export async function collectResponsesSseStream(
   body: ReadableStream<Uint8Array> | null,
   sendChunk?: (text: string) => void,
+  options: StreamCollectorOptions = {},
 ): Promise<StreamedResponsesResult> {
   if (!body) {
     return { contentText: "", toolCalls: [], rawResponseText: "" };
@@ -156,6 +164,10 @@ export async function collectResponsesSseStream(
   let contentText = "";
   let usage: AiTokenUsage | undefined;
   let responseError: string | undefined;
+  let validEvents = 0;
+  let unparsable = false;
+  const trackFinishPreview = createFinishPreviewTracker(options.onFinishPreview);
+  const firstToolIndex = (): number | undefined => Math.min(...toolCallsByIndex.keys());
 
   const consumeLine = (line: string): void => {
     const trimmed = line.trim();
@@ -164,6 +176,7 @@ export async function collectResponsesSseStream(
     if (!data || data === "[DONE]") return;
     try {
       const event = JSON.parse(data) as Record<string, unknown>;
+      validEvents += 1;
       const type = event.type;
       if (type === "response.output_text.delta" && typeof event.delta === "string") {
         contentText += event.delta;
@@ -186,6 +199,7 @@ export async function collectResponsesSseStream(
         };
         if (typeof event.delta === "string") toolCall.arguments += event.delta;
         toolCallsByIndex.set(index, toolCall);
+        if (index === firstToolIndex()) trackFinishPreview(toolCall.name, toolCall.arguments);
       } else if (type === "response.output_item.done") {
         const item = event.item as Record<string, unknown> | undefined;
         if (item?.type === "function_call") {
@@ -209,6 +223,7 @@ export async function collectResponsesSseStream(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      options.onActivity?.();
       const chunk = decoder.decode(value, { stream: true });
       rawResponseText += chunk;
       if (rawResponseText.length > maxSseResponseChars) {
@@ -246,7 +261,8 @@ export async function collectResponsesSseStream(
       });
       if (contentText) sendChunk?.(contentText);
     } catch {
-      // 非 JSON 内容保持空结果，由上层统一处理。
+      // 非 JSON 内容保持空结果；完全没有有效事件说明响应不是模型接口返回的。
+      unparsable = validEvents === 0;
     }
   }
 
@@ -258,5 +274,6 @@ export async function collectResponsesSseStream(
     rawResponseText,
     usage,
     error: responseError,
+    unparsable,
   };
 }

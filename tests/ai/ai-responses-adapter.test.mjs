@@ -115,3 +115,26 @@ test("只有明确不支持 Responses API 时才允许降级", () => {
   assert.equal(isResponsesApiUnsupported(429, "rate limit"), false);
   assert.equal(isResponsesApiUnsupported(500, "server error"), false);
 });
+
+test("Responses 流式事件同样逐步预览 finish_response 答复", async () => {
+  const message = "已确认服务正常运行。";
+  const args = JSON.stringify({ message });
+  const encoder = new TextEncoder();
+  const events = [
+    { type: "response.output_item.added", output_index: 0, item: { type: "function_call", call_id: "call-1", name: "finish_response", arguments: "" } },
+    ...args.match(/[\s\S]{1,4}/g).map(delta => ({ type: "response.function_call_arguments.delta", output_index: 0, delta })),
+    { type: "response.completed", response: { usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } },
+  ];
+  const body = new ReadableStream({
+    start(controller) {
+      for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      controller.close();
+    },
+  });
+  const previews = [];
+
+  await collectResponsesSseStream(body, undefined, { onFinishPreview: text => previews.push(text) });
+
+  assert.ok(previews.length > 2);
+  assert.equal(previews.at(-1), message);
+});

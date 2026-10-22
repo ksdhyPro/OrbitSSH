@@ -131,7 +131,12 @@ export async function runAgentLoop(
       settings,
       executedCommands,
       signal,
-      emit ? text => emit.sendChunk(messageId, text) : undefined,
+      emit
+        ? {
+            append: text => emit.sendChunk(messageId, text),
+            replace: text => emit.replaceMessage(messageId, text),
+          }
+        : undefined,
       policyFeedback,
       preparedContext?.memory ?? options.memory,
     );

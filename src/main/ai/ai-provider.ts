@@ -16,7 +16,6 @@ import {
 } from "./ai-context.js";
 import {
   estimateTokenCount,
-  isContextWindowExceededError,
   type AiConversationMemory,
   type AiTokenUsage,
 } from "./ai-context-budget.js";
@@ -42,7 +41,26 @@ import {
   requestAiJsonWithCompatibilityFallback,
   type AiCompatibilityFallbackParameter,
 } from "./ai-provider-compatibility.js";
-import { MAX_AI_PROVIDER_REQUEST_MS } from "./ai-limits.js";
+import {
+  AI_NON_STREAM_RESPONSE_TIMEOUT_MS,
+  AI_REQUEST_TOTAL_TIMEOUT_MS,
+  AI_STREAM_FIRST_BYTE_TIMEOUT_MS,
+  AI_STREAM_IDLE_TIMEOUT_MS,
+} from "./ai-limits.js";
+import { createRequestDeadline } from "./ai-request-deadline.js";
+import {
+  AiProviderPayloadError,
+  describeHttpFailure,
+  describeRequestError,
+  extractProviderErrorMessage,
+  type AiRequestFailure,
+} from "./ai-request-errors.js";
+import {
+  getRememberedProtocol,
+  isToolChoiceUnsupported,
+  rememberProtocol,
+  rememberToolChoiceUnsupported,
+} from "../storage/ai-protocol-store.js";
 import { getAiUnavailableMessage, resolveActiveAiConfig } from "./ai-model-config.js";
 
 export type {
@@ -167,13 +185,21 @@ const aiTools = [
 ];
 
 const maxAiResponseAttempts = 2;
+// 限流或服务端繁忙时多给一次机会，并按 Retry-After 或指数退避等待。
+const maxAiServerBusyAttempts = 3;
 type AiApiProtocol = "responses" | "chat_completions";
-const unsupportedResponsesConfigs = new Set<string>();
-const unsupportedToolChoiceConfigs = new Set<string>();
+
+/** 流式输出到界面气泡：append 追加正文，replace 整体替换（用于最终答复预览和重试前清空）。 */
+export interface AiStreamSink {
+  append(text: string): void;
+  replace(text: string): void;
+}
 
 type AiTurnAttemptResult = ParsedAssistantResponse & {
   // 仅供请求层判断是否需要重试，不向渲染层暴露。
   retryable?: boolean;
+  retryAfterMs?: number;
+  serverBusy?: boolean;
 };
 
 function summarizeToolCalls(rawToolCalls: RawToolCall[]) {
@@ -186,42 +212,40 @@ function summarizeToolCalls(rawToolCalls: RawToolCall[]) {
   }));
 }
 
-function getErrorCode(error: unknown): string {
-  if (!error || typeof error !== "object") return "";
-  const record = error as Record<string, unknown>;
-  if (typeof record.code === "string") return record.code;
-  return getErrorCode(record.cause);
-}
-
-function createAiRequestErrorResponse(error: unknown): AiTurnAttemptResult {
-  if (error instanceof Error && error.message === "AI_RESPONSE_TOO_LARGE") {
-    return { reply: "AI 服务响应过大，已停止接收。", commands: [], retryable: true };
-  }
-  if (getErrorCode(error) === "UND_ERR_CONNECT_TIMEOUT") {
-    return {
-      reply: "无法连接 AI 服务：连接超时。请检查网络、代理或防火墙设置后重试。",
-      commands: [],
-      retryable: true,
-    };
-  }
-  return {
-    reply: "无法连接 AI 服务。请检查网络、代理配置或稍后重试。",
-    commands: [],
-    retryable: true,
-  };
-}
-
-function createAiRequestTimeoutResponse(): AiTurnAttemptResult {
-  return {
-    reply: "AI 服务响应超时，已停止本次等待。请检查网络或稍后重试。",
-    commands: [],
-    retryable: true,
-  };
-}
-
 function getSafeAiErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return truncateText(redactSensitiveTerminalText(message), 300);
+}
+
+function toFailureResult(failure: AiRequestFailure, serverBusy = false): AiTurnAttemptResult {
+  return {
+    reply: failure.message,
+    commands: [],
+    retryable: failure.retryable,
+    retryAfterMs: failure.retryAfterMs,
+    contextLimitExceeded: failure.contextLimitExceeded,
+    serverBusy,
+  };
+}
+
+function createDeadline(streaming: boolean) {
+  return createRequestDeadline({
+    firstByteMs: streaming
+      ? AI_STREAM_FIRST_BYTE_TIMEOUT_MS
+      : AI_NON_STREAM_RESPONSE_TIMEOUT_MS,
+    idleMs: AI_STREAM_IDLE_TIMEOUT_MS,
+    totalMs: AI_REQUEST_TOTAL_TIMEOUT_MS,
+  });
+}
+
+function getCompatibilityKey(config: AiModelConfig): string {
+  return `${config.baseUrl}\n${config.model}`;
+}
+
+/** DeepSeek 与 GLM 只提供 Chat Completions 兼容接口；其他服务按记住的探测结果选择。 */
+function getPreferredProtocol(config: AiModelConfig): AiApiProtocol | undefined {
+  if (config.provider === "deepseek" || config.provider === "glm") return "chat_completions";
+  return getRememberedProtocol(getCompatibilityKey(config));
 }
 
 interface PreferredApiResponse {
@@ -243,31 +267,29 @@ async function requestPreferredApi(
     Authorization: `Bearer ${activeConfig.apiKey}`,
     "Content-Type": "application/json",
   };
-  const createCompatibilityFallbackHandler = (
-    protocol: AiApiProtocol,
-    toolChoiceCompatibilityKey: string,
-  ) => (parameter: AiCompatibilityFallbackParameter) => {
-    if (parameter === "tool_choice") {
-      // 同一接口和模型在当前运行期内不再重复发送已确认不支持的参数。
-      unsupportedToolChoiceConfigs.add(toolChoiceCompatibilityKey);
-    }
-    writeAppLog({
-      scope: "main.ai",
-      level: "warn",
-      message: "AI 请求参数不受支持，已回退兼容模式",
-      data: {
-        provider: providerName,
-        model: activeConfig.model,
-        tabId,
-        api: protocol,
-        parameter,
-      },
-    });
-  };
-  const compatibilityKey = `${activeConfig.baseUrl}\n${activeConfig.model}`;
-  if (!unsupportedResponsesConfigs.has(compatibilityKey)) {
-    const responsesToolChoiceKey = `${compatibilityKey}\nresponses`;
-    if (unsupportedToolChoiceConfigs.has(responsesToolChoiceKey)) {
+  const compatibilityKey = getCompatibilityKey(activeConfig);
+  const createCompatibilityFallbackHandler = (protocol: AiApiProtocol) =>
+    (parameter: AiCompatibilityFallbackParameter) => {
+      if (parameter === "tool_choice") {
+        // 同一接口和模型以后不再发送已确认不支持的参数，结果跨重启保留。
+        rememberToolChoiceUnsupported(compatibilityKey, protocol);
+      }
+      writeAppLog({
+        scope: "main.ai",
+        level: "warn",
+        message: "AI 请求参数不受支持，已回退兼容模式",
+        data: {
+          provider: providerName,
+          model: activeConfig.model,
+          tabId,
+          api: protocol,
+          parameter,
+        },
+      });
+    };
+
+  if (getPreferredProtocol(activeConfig) !== "chat_completions") {
+    if (isToolChoiceUnsupported(compatibilityKey, "responses")) {
       delete responsesBody.tool_choice;
     }
     const responsesResult = await requestAiJsonWithCompatibilityFallback(
@@ -277,18 +299,19 @@ async function requestPreferredApi(
       signal,
       false,
       fetch,
-      createCompatibilityFallbackHandler("responses", responsesToolChoiceKey),
+      createCompatibilityFallbackHandler("responses"),
     );
     const { response, responseText } = responsesResult;
     if (response.ok) {
+      rememberProtocol(compatibilityKey, "responses");
       return { response, protocol: "responses", responseText: "", requestBody: responsesBody };
     }
 
     if (!isResponsesApiUnsupported(response.status, responseText)) {
       return { response, protocol: "responses", responseText, requestBody: responsesBody };
     }
-    // 同一地址和模型确认不支持后，本次运行期内直接使用 Chat Completions。
-    unsupportedResponsesConfigs.add(compatibilityKey);
+    // 确认不支持后记住结果，之后直接使用 Chat Completions，不再每次启动都探测一次。
+    rememberProtocol(compatibilityKey, "chat_completions");
     writeAppLog({
       scope: "main.ai",
       level: "warn",
@@ -302,19 +325,17 @@ async function requestPreferredApi(
     });
   }
 
-  const requestUrl = `${activeConfig.baseUrl}/chat/completions`;
-  const chatToolChoiceKey = `${compatibilityKey}\nchat_completions`;
-  if (unsupportedToolChoiceConfigs.has(chatToolChoiceKey)) {
+  if (isToolChoiceUnsupported(compatibilityKey, "chat_completions")) {
     delete chatBody.tool_choice;
   }
   const chatResult = await requestAiJsonWithCompatibilityFallback(
-    requestUrl,
+    `${activeConfig.baseUrl}/chat/completions`,
     headers,
     chatBody,
     signal,
     Boolean(chatBody.stream),
     fetch,
-    createCompatibilityFallbackHandler("chat_completions", chatToolChoiceKey),
+    createCompatibilityFallbackHandler("chat_completions"),
   );
   return {
     response: chatResult.response,
@@ -324,24 +345,20 @@ async function requestPreferredApi(
   };
 }
 
-function createAiStatusErrorResponse(
-  response: Response,
-  responseText: string,
-): AiTurnAttemptResult {
-  const contextLimitExceeded = isContextWindowExceededError(
-    response.status,
-    responseText,
-  );
-
-  return {
-    reply: contextLimitExceeded
-      ? "模型上下文窗口已达到上限。"
-      : `AI 请求失败（HTTP ${response.status}）。请检查模型配置或稍后重试。`,
-    commands: [],
-    retryable:
-      !contextLimitExceeded &&
-      (response.status === 408 || response.status === 429 || response.status >= 500),
-    contextLimitExceeded,
+/**
+ * 把 finish_response 的流式预览转换为气泡更新：第一次整体替换（清掉工具调用前的过渡文字），
+ * 之后只追加新增部分，避免长答复每个片段都重发全文。
+ */
+function createFinishPreviewForwarder(sink: AiStreamSink) {
+  let sent: string | null = null;
+  return (preview: string): void => {
+    if (sent !== null && preview.startsWith(sent)) {
+      const delta = preview.slice(sent.length);
+      if (delta) sink.append(delta);
+    } else {
+      sink.replace(preview);
+    }
+    sent = preview;
   };
 }
 
@@ -350,7 +367,7 @@ async function requestAiTurnOnce(
   settings: AppSettings,
   executedCommands: ExecutedAiCommandContext[],
   signal?: AbortSignal,
-  sendChunk?: (text: string) => void,
+  sink?: AiStreamSink,
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
   responseProtocolCorrection = false,
@@ -361,10 +378,10 @@ async function requestAiTurnOnce(
     : "";
   const activeConfig = resolveActiveAiConfig(settings);
   if (!activeConfig) return { reply: getAiUnavailableMessage(settings), commands: [] };
-  const timeoutSignal = AbortSignal.timeout(MAX_AI_PROVIDER_REQUEST_MS);
+  const deadline = createDeadline(Boolean(sink));
   const requestSignal = signal
-    ? AbortSignal.any([signal, timeoutSignal])
-    : timeoutSignal;
+    ? AbortSignal.any([signal, deadline.signal])
+    : deadline.signal;
 
   const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
   let rawResponseText = "";
@@ -379,7 +396,7 @@ async function requestAiTurnOnce(
         tabId: input.tabId,
         mode: input.mode,
         executedCommandCount: executedCommands.length,
-        streaming: Boolean(sendChunk),
+        streaming: Boolean(sink),
         sharedTerminalContext: settings.ai.shareTerminalContext,
       },
     });
@@ -398,7 +415,7 @@ async function requestAiTurnOnce(
       tools: aiTools,
       tool_choice: "required",
     };
-    if (sendChunk) {
+    if (sink) {
       chatBody.stream = true;
       // 兼容接口不返回 usage 时，上层会自动使用本地粗算值兜底。
       chatBody.stream_options = { include_usage: true };
@@ -408,7 +425,7 @@ async function requestAiTurnOnce(
       input: buildResponsesInput(requestMessages),
       tools: buildResponsesTools(aiTools),
       tool_choice: "required",
-      stream: Boolean(sendChunk),
+      stream: Boolean(sink),
       store: false,
       parallel_tool_calls: false,
     };
@@ -420,6 +437,7 @@ async function requestAiTurnOnce(
       providerName,
       input.tabId,
     );
+    deadline.markResponseStarted();
     const { response, protocol } = preferredResponse;
     rawResponseText = preferredResponse.responseText;
     if (!response.ok) {
@@ -435,16 +453,23 @@ async function requestAiTurnOnce(
           api: protocol,
         },
       });
-      return createAiStatusErrorResponse(response, rawResponseText);
+      return toFailureResult(
+        describeHttpFailure(response.status, rawResponseText, response.headers.get("retry-after")),
+        response.status === 408 || response.status === 429 || response.status >= 500,
+      );
     }
 
     let reply = "";
     let usage: AiTokenUsage | undefined;
     let normalizedToolCalls: RawToolCall[] = [];
-    if (sendChunk && response.body) {
+    if (sink && response.body) {
+      const collectorOptions = {
+        onActivity: () => deadline.markActivity(),
+        onFinishPreview: createFinishPreviewForwarder(sink),
+      };
       const streamed = protocol === "responses"
-        ? await collectResponsesSseStream(response.body, sendChunk)
-        : await collectSseStream(response.body, sendChunk);
+        ? await collectResponsesSseStream(response.body, text => sink.append(text), collectorOptions)
+        : await collectSseStream(response.body, text => sink.append(text), collectorOptions);
       reply = streamed.contentText;
       rawResponseText = streamed.rawResponseText;
       usage = streamed.usage;
@@ -454,18 +479,25 @@ async function requestAiTurnOnce(
         function: { name: toolCall.name, arguments: toolCall.arguments },
       }));
       if ("error" in streamed && typeof streamed.error === "string") {
-        throw new Error(streamed.error);
+        throw new AiProviderPayloadError(streamed.error);
+      }
+      if (streamed.unparsable) {
+        throw new SyntaxError("AI 服务返回的既不是 SSE 事件也不是 JSON");
       }
     } else {
       rawResponseText = await response.text();
       const payload = JSON.parse(rawResponseText) as Record<string, unknown>;
       if (protocol === "responses") {
         const parsed = parseResponsesPayload(payload);
-        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.error) throw new AiProviderPayloadError(parsed.error);
         usage = parsed.usage;
         reply = parsed.contentText.trim();
         normalizedToolCalls = parsed.toolCalls;
       } else {
+        const providerError = extractProviderErrorMessage(rawResponseText);
+        if (!Array.isArray(payload.choices) && providerError) {
+          throw new AiProviderPayloadError(providerError);
+        }
         usage = parseAiTokenUsage(payload.usage);
         const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
         const message = (choice?.message ?? {}) as Record<string, unknown>;
@@ -532,7 +564,7 @@ async function requestAiTurnOnce(
         data: {
           provider: providerName,
           tabId: input.tabId,
-          streaming: Boolean(sendChunk),
+          streaming: Boolean(sink),
           contentLength: reply.length,
         },
       });
@@ -589,35 +621,60 @@ async function requestAiTurnOnce(
       usage: resolvedUsage,
     };
   } catch (error) {
-    if (timeoutSignal.aborted && !signal?.aborted) {
-      return createAiRequestTimeoutResponse();
-    }
-    if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+    if (signal?.aborted) {
       return { reply: "[已终止]", commands: [] };
     }
+    const failure = describeRequestError(error, deadline.reason);
     writeAppLog({
       scope: "main.ai",
+      level: "warn",
       message: "AI 对话请求失败",
       data: {
         provider: providerName,
         tabId: input.tabId,
+        timeout: deadline.reason,
         error: getSafeAiErrorMessage(error),
       },
     });
-    return createAiRequestErrorResponse(error);
+    return toFailureResult(failure);
+  } finally {
+    deadline.dispose();
   }
 }
 
+/** 协议纠正立即重试；服务端繁忙按 Retry-After 或 1s、2s 退避；网络和超时问题等待 1s。 */
+function getRetryDelayMs(result: AiTurnAttemptResult, attempt: number): number {
+  if (result.protocolError) return 0;
+  if (result.retryAfterMs !== undefined) return result.retryAfterMs;
+  if (result.serverBusy) return 1000 * 2 ** (attempt - 1);
+  return 1000;
+}
+
+function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<boolean> {
+  if (delayMs <= 0) return Promise.resolve(!signal?.aborted);
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve(false);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
- * 请求异常时最多自动重试一次；合法工具调用的空文本回复不属于异常。
- * 第二次仍失败时将结果交给上层，由现有逻辑通知用户。
+ * 请求异常时自动重试：一般问题重试一次，限流或服务端繁忙最多重试两次并退避等待。
+ * 合法工具调用的空文本回复不属于异常；重试耗尽后把具体原因交给上层展示。
  */
 export async function requestAiTurn(
   input: AiChatInput,
   settings: AppSettings,
   executedCommands: ExecutedAiCommandContext[],
   signal?: AbortSignal,
-  sendChunk?: (text: string) => void,
+  sink?: AiStreamSink,
   policyFeedback?: LocalPolicyRejectionFeedback,
   memory?: AiConversationMemory,
   longCommandProgress?: AiLongCommandProgressContext,
@@ -628,7 +685,7 @@ export async function requestAiTurn(
     settings,
     executedCommands,
     signal,
-    sendChunk,
+    sink,
     policyFeedback,
     memory,
     false,
@@ -638,9 +695,10 @@ export async function requestAiTurn(
   while (
     result.retryable &&
     !result.contextLimitExceeded &&
-    attempt < maxAiResponseAttempts &&
+    attempt < (result.serverBusy ? maxAiServerBusyAttempts : maxAiResponseAttempts) &&
     !signal?.aborted
   ) {
+    const delayMs = getRetryDelayMs(result, attempt);
     writeAppLog({
       scope: "main.ai",
       level: "warn",
@@ -649,15 +707,19 @@ export async function requestAiTurn(
         tabId: input.tabId,
         attempt,
         nextAttempt: attempt + 1,
+        delayMs,
       },
     });
+    if (!(await waitForRetry(delayMs, signal))) break;
+    // 清空上一次尝试已输出到气泡的内容，避免重试时文字重复。
+    sink?.replace("");
     attempt += 1;
     result = await requestAiTurnOnce(
       input,
       settings,
       executedCommands,
       signal,
-      sendChunk,
+      sink,
       policyFeedback,
       memory,
       Boolean(result.protocolError),
@@ -689,10 +751,10 @@ export async function summarizeAiConversation(
   const activeConfig = resolveActiveAiConfig(settings);
   if (!activeConfig) throw new Error(getAiUnavailableMessage(settings));
 
-  const timeoutSignal = AbortSignal.timeout(MAX_AI_PROVIDER_REQUEST_MS);
+  const deadline = createDeadline(false);
   const requestSignal = signal
-    ? AbortSignal.any([signal, timeoutSignal])
-    : timeoutSignal;
+    ? AbortSignal.any([signal, deadline.signal])
+    : deadline.signal;
   const historyText = redactSensitiveTerminalText(JSON.stringify(
     input.history.map(message => ({
       role: message.role,
@@ -730,31 +792,43 @@ export async function summarizeAiConversation(
   }
 
   const providerName = aiProviderLabels[activeConfig.provider] ?? activeConfig.name;
-  const preferredResponse = await requestPreferredApi(
-    activeConfig,
-    responsesBody,
-    chatBody,
-    requestSignal,
-    providerName,
-    input.tabId,
-  );
-  const { response, protocol } = preferredResponse;
+  try {
+    const preferredResponse = await requestPreferredApi(
+      activeConfig,
+      responsesBody,
+      chatBody,
+      requestSignal,
+      providerName,
+      input.tabId,
+    );
+    deadline.markResponseStarted();
+    const { response, protocol } = preferredResponse;
 
-  if (!response.ok) {
-    throw new Error(`上下文压缩请求失败（HTTP ${response.status}）`);
+    if (!response.ok) {
+      const responseText = preferredResponse.responseText || await response.text().catch(() => "");
+      throw new Error(`上下文压缩请求失败：${describeHttpFailure(response.status, responseText).message}`);
+    }
+    const responseText = await response.text();
+    const payload = JSON.parse(responseText) as Record<string, unknown>;
+    let summary = "";
+    if (protocol === "responses") {
+      const parsed = parseResponsesPayload(payload);
+      if (parsed.error) throw new AiProviderPayloadError(parsed.error);
+      summary = parsed.contentText.trim();
+    } else {
+      const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
+      const message = (choice?.message ?? {}) as Record<string, unknown>;
+      summary = typeof message.content === "string" ? message.content.trim() : "";
+    }
+    if (!summary) throw new Error("模型未返回有效的上下文摘要");
+    return summary;
+  } catch (error) {
+    if (signal?.aborted || (error instanceof Error && error.message.startsWith("上下文压缩请求失败"))) {
+      throw error;
+    }
+    if (error instanceof Error && error.message === "模型未返回有效的上下文摘要") throw error;
+    throw new Error(`上下文压缩请求失败：${describeRequestError(error, deadline.reason).message}`);
+  } finally {
+    deadline.dispose();
   }
-  const responseText = await response.text();
-  const payload = JSON.parse(responseText) as Record<string, unknown>;
-  let summary = "";
-  if (protocol === "responses") {
-    const parsed = parseResponsesPayload(payload);
-    if (parsed.error) throw new Error(parsed.error);
-    summary = parsed.contentText.trim();
-  } else {
-    const choice = (payload.choices as Array<Record<string, unknown>>)?.[0];
-    const message = (choice?.message ?? {}) as Record<string, unknown>;
-    summary = typeof message.content === "string" ? message.content.trim() : "";
-  }
-  if (!summary) throw new Error("模型未返回有效的上下文摘要");
-  return summary;
 }

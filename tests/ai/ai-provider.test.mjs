@@ -198,3 +198,51 @@ test("Agent 的 Responses 和 Chat 请求都强制模型调用工具", async () 
 
   assert.equal(requiredToolChoiceCount, 2);
 });
+
+function createSseBody(lines) {
+  const encoder = new TextEncoder();
+  return new ReadableStream({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(line));
+      controller.close();
+    },
+  });
+}
+
+test("finish_response 的最终答复在参数流式到达时逐步预览", async () => {
+  const message = "磁盘使用率 \"50%\"\n建议清理 /var/log";
+  const args = JSON.stringify({ message });
+  // 每 3 个字符一个分片，模拟模型逐步输出工具参数。
+  const pieces = args.match(/[\s\S]{1,3}/g);
+  const lines = [
+    `data: ${JSON.stringify({ choices: [{ delta: { content: "我来总结一下。" } }] })}\n\n`,
+    `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "finish-1", type: "function", function: { name: "finish_response", arguments: "" } }] } }] })}\n\n`,
+    ...pieces.map(piece => `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }] })}\n\n`),
+    "data: [DONE]\n\n",
+  ];
+  const previews = [];
+  const content = [];
+  let activity = 0;
+
+  const result = await collectSseStream(createSseBody(lines), text => content.push(text), {
+    onFinishPreview: text => previews.push(text),
+    onActivity: () => {
+      activity += 1;
+    },
+  });
+
+  assert.equal(content.join(""), "我来总结一下。");
+  assert.ok(previews.length > 5, `预览次数 ${previews.length}`);
+  assert.equal(previews.at(-1), message);
+  assert.ok(previews.every((preview, index) => index === 0 || preview.startsWith(previews[index - 1])));
+  assert.equal(activity, lines.length);
+  assert.equal(result.toolCalls[0].arguments, args);
+});
+
+test("流式请求收到网页而不是 SSE/JSON 时标记为无法解析", async () => {
+  const result = await collectSseStream(createSseBody(["<!doctype html><html><body>登录页</body></html>"]));
+  assert.equal(result.unparsable, true);
+
+  const valid = await collectSseStream(createSseBody([`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`]));
+  assert.equal(valid.unparsable, false);
+});

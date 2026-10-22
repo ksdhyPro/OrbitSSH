@@ -50,8 +50,12 @@ markdown.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   return defaultLinkOpen(tokens, idx, options, env, self);
 };
 
-/** 将 AI Markdown 回复转换为可安全渲染的 HTML。 */
-export function renderMarkdown(content: string): string {
+// 流式输出时每个片段都会触发整个面板重新渲染，按内容缓存结果，
+// 只有正在变化的那条消息需要重新解析和净化。
+const RENDER_CACHE_LIMIT = 300;
+const renderCache = new Map<string, string>();
+
+function renderMarkdownUncached(content: string): string {
   const html = markdown.render(content);
 
   return DOMPurify.sanitize(html, {
@@ -59,4 +63,22 @@ export function renderMarkdown(content: string): string {
     ADD_ATTR: ["target", "rel"],
     FORBID_TAGS: ["img", "iframe", "script", "style"],
   });
+}
+
+/** 将 AI Markdown 回复转换为可安全渲染的 HTML，相同内容直接复用缓存结果。 */
+export function renderMarkdown(content: string): string {
+  const cached = renderCache.get(content);
+  if (cached !== undefined) {
+    // 重新插入以维护最近使用顺序。
+    renderCache.delete(content);
+    renderCache.set(content, cached);
+    return cached;
+  }
+
+  const html = renderMarkdownUncached(content);
+  renderCache.set(content, html);
+  if (renderCache.size > RENDER_CACHE_LIMIT) {
+    renderCache.delete(renderCache.keys().next().value!);
+  }
+  return html;
 }

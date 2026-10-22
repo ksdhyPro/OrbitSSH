@@ -43,11 +43,22 @@ mock.module(distUrl('ai/ai-saved-server-command.js'), {
   }
 })
 mock.module(distUrl('storage/ai-conversation-store.js'), { namedExports: repository })
+const protocols = new Map()
+mock.module(distUrl('storage/ai-protocol-store.js'), {
+  namedExports: {
+    getRememberedProtocol: key => protocols.get(key)?.protocol,
+    rememberProtocol: (key, protocol) => protocols.set(key, { ...protocols.get(key), protocol }),
+    isToolChoiceUnsupported: (key, protocol) => protocols.get(key)?.toolChoice?.includes(protocol) ?? false,
+    rememberToolChoiceUnsupported: (key, protocol) =>
+      protocols.set(key, { ...protocols.get(key), toolChoice: [...(protocols.get(key)?.toolChoice ?? []), protocol] })
+  }
+})
 
 const runtime = await import(distUrl('ai/ai-agent-runtime.js'))
 
-const model = { requests: [], responses: [] }
+const model = { requests: [], responses: [], urls: [] }
 globalThis.fetch = async (url, init) => {
+  model.urls.push(String(url))
   if (String(url).endsWith('/responses')) {
     return new Response('{"error":{"message":"not found"}}', { status: 404 })
   }
@@ -104,6 +115,7 @@ function reset() {
   terminal.execute = async () => ({ stdout: 'Filesystem 50%', stderr: '', exitCode: 0, timedOut: false, durationMs: 1 })
   model.requests = []
   model.responses = []
+  model.urls = []
 }
 
 test.after(async () => {
@@ -237,4 +249,85 @@ test('模型报告上下文窗口超限时压缩后重试一次', async () => {
   assert.match(model.requests[1].messages[0].content, /压缩 OrbitSSH 对话上下文/)
   assert.ok(model.requests[2].messages.some(message => /之前讨论了磁盘问题/.test(message.content)))
   assert.equal(result.messages.at(-1).content, '已基于摘要继续回答。')
+})
+
+function streamFinish(message, pieceSize = 4) {
+  const args = JSON.stringify({ message })
+  const encoder = new TextEncoder()
+  const lines = [
+    `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'finish-stream', type: 'function', function: { name: 'finish_response', arguments: '' } }] } }] })}\n\n`,
+    ...args.match(new RegExp(`[\\s\\S]{1,${pieceSize}}`, 'g')).map(piece =>
+      `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: piece } }] } }] })}\n\n`),
+    'data: [DONE]\n\n'
+  ]
+  return new Response(new ReadableStream({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(line))
+      controller.close()
+    }
+  }), { headers: { 'Content-Type': 'text/event-stream' } })
+}
+
+function createWebContents() {
+  const events = []
+  return { events, webContents: { isDestroyed: () => false, send: (channel, payload) => events.push({ channel, payload }) } }
+}
+
+test('最终答复随工具参数流式显示，先替换过渡文字再逐段追加', async () => {
+  reset()
+  const finalMessage = '磁盘使用率 50%，/var/log 占用最高，建议清理旧日志。'
+  model.responses.push(() => streamFinish(finalMessage))
+  const { events, webContents } = createWebContents()
+
+  const result = await runtime.runAiChat(createInput(), createSettings(), webContents)
+
+  const chunks = events.filter(event => event.channel === 'ai:stream-chunk').map(event => event.payload)
+  assert.ok(chunks.length > 5, `流式片段数 ${chunks.length}`)
+  assert.equal(chunks[0].replace, true)
+  assert.ok(chunks.slice(1).every(chunk => !chunk.replace))
+  assert.equal(chunks[0].chunk + chunks.slice(1).map(chunk => chunk.chunk).join(''), finalMessage)
+  assert.equal(result.messages.at(-1).content, finalMessage)
+})
+
+test('限流时按 Retry-After 退避重试，服务端繁忙最多尝试三次', async () => {
+  reset()
+  model.responses.push(
+    new Response('{"error":{"message":"rate limited"}}', { status: 429, headers: { 'Retry-After': '0' } }),
+    new Response('{"error":{"message":"overloaded"}}', { status: 503, headers: { 'Retry-After': '0' } }),
+    finish('第三次请求成功。')
+  )
+
+  const result = await runtime.runAiChat(createInput(), createSettings())
+
+  assert.equal(model.requests.length, 3)
+  assert.equal(result.messages.at(-1).content, '第三次请求成功。')
+})
+
+test('API Key 无效时不重试，并直接说明原因', async () => {
+  reset()
+  model.responses.push(new Response('{"error":{"message":"invalid api key"}}', { status: 401 }))
+
+  const result = await runtime.runAiChat(createInput(), createSettings())
+
+  assert.equal(model.requests.length, 1)
+  assert.match(result.messages.at(-1).content, /API Key 无效/)
+  assert.match(result.messages.at(-1).content, /invalid api key/)
+})
+
+test('DeepSeek 直接使用 Chat Completions，其他服务探测一次后记住结果', async () => {
+  reset()
+  model.responses.push(finish('ok'))
+  await runtime.runAiChat(createInput(), createSettings({ provider: 'deepseek', baseUrl: 'http://deepseek.local/v1' }))
+  assert.deepEqual(model.urls, ['http://deepseek.local/v1/chat/completions'])
+
+  reset()
+  model.responses.push(finish('ok'), finish('ok'))
+  const settings = createSettings({ provider: 'other', baseUrl: 'http://gateway.local/v1' })
+  await runtime.runAiChat(createInput(), settings)
+  await runtime.runAiChat(createInput(), settings)
+  assert.deepEqual(model.urls, [
+    'http://gateway.local/v1/responses',
+    'http://gateway.local/v1/chat/completions',
+    'http://gateway.local/v1/chat/completions'
+  ])
 })

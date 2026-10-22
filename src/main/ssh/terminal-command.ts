@@ -1,4 +1,5 @@
 import { exec, spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { promisify } from "node:util";
 import { type Client, type ClientChannel } from "ssh2";
 
@@ -53,17 +54,22 @@ export function executeSshTerminalCommand(
     let stdout = "";
     let stderr = "";
     let stream: ClientChannel | undefined;
+    // 多字节字符可能被拆到两个数据块中，逐块 toString 会产生乱码，必须按流解码。
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
 
-    const onStdout = (data: Buffer): void => {
-      const text = data.toString("utf8");
+    const appendStdout = (text: string): void => {
+      if (!text) return;
       stdout = `${stdout}${text}`.slice(-20_000);
       onOutput?.("stdout", text);
     };
-    const onStderr = (data: Buffer): void => {
-      const text = data.toString("utf8");
+    const appendStderr = (text: string): void => {
+      if (!text) return;
       stderr = `${stderr}${text}`.slice(-10_000);
       onOutput?.("stderr", text);
     };
+    const onStdout = (data: Buffer): void => appendStdout(stdoutDecoder.write(data));
+    const onStderr = (data: Buffer): void => appendStderr(stderrDecoder.write(data));
     const cleanup = (): void => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
@@ -105,6 +111,8 @@ export function executeSshTerminalCommand(
       stopRemoteCommand();
     };
     const onClose = (code?: number): void => {
+      appendStdout(stdoutDecoder.end());
+      appendStderr(stderrDecoder.end());
       finish({
         stdout,
         stderr,
@@ -276,17 +284,21 @@ function executeStreamingLocalTerminalCommand(
       reject(error);
     };
 
-    const appendOutput = (
-      stream: "stdout" | "stderr",
-      data: string | Buffer,
-    ): void => {
-      const text = data.toString();
+    const decoders = {
+      stdout: new StringDecoder("utf8"),
+      stderr: new StringDecoder("utf8"),
+    };
+    const appendText = (stream: "stdout" | "stderr", text: string): void => {
+      if (!text) return;
       if (stream === "stdout") {
         stdout = `${stdout}${text}`.slice(-20_000);
       } else {
         stderr = `${stderr}${text}`.slice(-10_000);
       }
       onOutput(stream, text);
+    };
+    const appendOutput = (stream: "stdout" | "stderr", data: string | Buffer): void => {
+      appendText(stream, typeof data === "string" ? data : decoders[stream].write(data));
     };
     const onAbort = (): void => {
       child.kill();
@@ -300,7 +312,11 @@ function executeStreamingLocalTerminalCommand(
     child.stdout?.on("data", data => appendOutput("stdout", data));
     child.stderr?.on("data", data => appendOutput("stderr", data));
     child.on("error", fail);
-    child.on("close", code => finish(code));
+    child.on("close", code => {
+      appendText("stdout", decoders.stdout.end());
+      appendText("stderr", decoders.stderr.end());
+      finish(code);
+    });
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
