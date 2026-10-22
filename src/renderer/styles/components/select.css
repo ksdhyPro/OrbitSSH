@@ -1,0 +1,188 @@
+/* ===== 下拉选择（AppSelect） ===== */
+
+.app-select {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.app-select.open {
+  z-index: 60;
+}
+
+.app-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height-md);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  outline: none;
+  padding: 0 34px 0 10px;
+  background:
+    linear-gradient(180deg, var(--surface-gloss), transparent), var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.app-select-trigger:hover:not(:disabled) {
+  border-color: var(--border-hover-strong);
+  background:
+    linear-gradient(180deg, var(--surface-gloss-hover), transparent),
+    var(--bg-hover-soft);
+}
+
+.app-select-trigger:focus-visible,
+.app-select.open .app-select-trigger {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.app-select-trigger:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.app-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-value.placeholder {
+  color: var(--text-placeholder);
+}
+
+.app-select-detail {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.app-select-chevron {
+  display: block;
+  flex: 0 0 auto;
+  width: var(--icon-size-micro);
+  height: var(--icon-size-micro);
+  opacity: 0.72;
+  filter: var(--icon-filter);
+  transition:
+    opacity 120ms ease,
+    transform 150ms ease;
+}
+
+.app-select.open .app-select-chevron {
+  opacity: 1;
+  transform: rotate(180deg);
+}
+
+.app-select-listbox {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 80;
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-lg);
+  background: var(--surface-floating);
+  box-shadow: var(--shadow-popover);
+  backdrop-filter: blur(24px) saturate(1.12);
+}
+
+.app-select-option {
+  display: flex;
+  font-weight: var(--font-weight-regular);
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px 6px 10px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
+}
+
+.app-select-option > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-select-option.active:not(:disabled) {
+  background: var(--bg-hover-strong);
+  color: var(--text-primary);
+}
+
+.app-select-option.selected {
+  background: var(--selected-bg);
+  color: var(--text-heading);
+}
+
+.app-select-option.selected.active:not(:disabled) {
+  background: var(--selected-bg);
+  box-shadow: inset 0 0 0 1px var(--selected-ring);
+}
+
+.app-select-option:disabled {
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.app-select-option-check {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--text-primary);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
+  opacity: 0;
+}
+
+.app-select-option-check.visible {
+  opacity: 1;
+}
+
+.app-select-menu-enter-active,
+.app-select-menu-leave-active {
+  transform-origin: top center;
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.app-select-menu-enter-from,
+.app-select-menu-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.985);
+}

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const settingsDialogUrl = new URL(
   '../../src/renderer/components/SettingsDialog.vue',
@@ -8,10 +9,6 @@ const settingsDialogUrl = new URL(
 )
 const settingsStoreUrl = new URL(
   '../../src/renderer/stores/useSettingsStore.ts',
-  import.meta.url,
-)
-const aiSettingsStyleUrl = new URL(
-  '../../src/renderer/styles/ai-settings.css',
   import.meta.url,
 )
 
@@ -32,7 +29,7 @@ test('预提示词包含在本地设置保存数据中', async () => {
 })
 
 test('预提示词区域使用单列内容高度布局，拖拽文本框时会撑开下一设置项', async () => {
-  const source = await readFile(aiSettingsStyleUrl, 'utf8')
+  const source = await readRendererStyles()
 
   assert.match(
     source,

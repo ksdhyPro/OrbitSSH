@@ -1,0 +1,136 @@
+/* ===== 自定义指令弹窗 ===== */
+
+/* 常用命令弹窗沿用连接表单布局，命令内容支持多行编辑。 */
+.automation-task-form {
+  display: grid;
+  gap: 14px;
+}
+
+/* 标签与输入控件分开，避免命令表单阅读时视觉过于拥挤。 */
+.automation-task-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.automation-task-form label > span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.automation-task-form input {
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+}
+
+.automation-task-form .dialog-actions {
+  margin-top: 2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.automation-task-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+.automation-task-form textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.automation-task-hint,
+.automation-run-notice {
+  margin: -4px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.automation-run-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.automation-script-preview-wrap {
+  position: relative;
+}
+
+.automation-script-preview,
+.automation-run-output,
+.terminal-paste-preview {
+  min-height: 132px;
+  max-height: 300px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: var(--font-size-sm)/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 指令内容支持鼠标选词及系统复制快捷键。 */
+.automation-script-preview {
+  user-select: text;
+}
+
+.automation-script-copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated-2);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.automation-script-copy-button:hover {
+  background: var(--bg-hover-strong);
+}
+
+.automation-script-copy-button img {
+  width: 16px;
+  height: 16px;
+  filter: var(--icon-filter);
+}
+
+.automation-run-status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.automation-run-status.is-completed {
+  color: var(--success);
+}
+
+.automation-run-status.is-failed {
+  color: var(--danger);
+}
+
+.automation-run-status.is-cancelled {
+  color: var(--text-tertiary);
+}

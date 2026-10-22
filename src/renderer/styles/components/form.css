@@ -1,0 +1,20 @@
+/* ===== 表单行、错误提示与操作区 ===== */
+
+.form-row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+}
+
+.form-error {
+  min-height: 18px;
+  color: var(--danger);
+  font-size: var(--font-size-sm);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}

@@ -1,9 +1,11 @@
+/* ===== 分段选择、开关、步进器与空状态 ===== */
+
 /* ===== 分段选择（SegmentedControl） =====
  * 激活态颜色通过 --segmented-active-* 变量定制，业务区域只覆盖变量，不重写选择器。
  */
 .segmented {
   --segmented-active-border: var(--accent);
-  --segmented-active-bg: var(--accent-fill);
+  --segmented-active-bg: var(--bg-hover-strong);
   --segmented-active-color: var(--text-primary);
   --segmented-active-shadow: inset 0 0 0 1px var(--focus-ring);
 
@@ -20,7 +22,7 @@
   border: 1px solid var(--border-input);
   border-radius: var(--radius-md);
   background: var(--bg-input);
-  color: var(--text-dim);
+  color: var(--text-muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-regular);
   white-space: nowrap;
@@ -32,7 +34,7 @@
 
 .segmented-option:hover {
   border-color: var(--border-hover-strong);
-  background: var(--bg-hover-cool);
+  background: var(--bg-hover-soft);
   color: var(--text-primary);
 }
 
@@ -41,6 +43,14 @@
   background: var(--segmented-active-bg);
   color: var(--segmented-active-color);
   box-shadow: var(--segmented-active-shadow);
+}
+
+/* 浅色主题中分段选择的选中态使用主色（陶土橙），与主按钮一致。 */
+:root[data-theme="light"] .segmented-buttons {
+  --segmented-active-border: var(--brand);
+  --segmented-active-bg: var(--brand);
+  --segmented-active-color: var(--brand-ink);
+  --segmented-active-shadow: none;
 }
 
 /* 高风险选项无论是否选中都保留警示色。 */
@@ -182,4 +192,45 @@
   height: 100%;
   place-items: center;
   text-align: center;
+}
+
+.stepper-control {
+  display: grid;
+  grid-template-columns: 34px 72px 34px;
+  justify-content: end;
+  gap: 8px;
+  align-items: center;
+}
+
+.stepper-control button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated-3);
+  color: var(--text-primary);
+  font-weight: var(--font-weight-regular);
+  transition:
+    background-color 120ms ease,
+    transform 100ms ease;
+}
+
+.stepper-control button:hover {
+  background: var(--bg-hover);
+}
+
+.stepper-control button:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.stepper-control output {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
 }

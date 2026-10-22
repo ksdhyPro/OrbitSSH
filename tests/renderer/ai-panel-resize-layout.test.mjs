@@ -1,17 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const appSourceUrl = new URL('../../src/renderer/App.vue', import.meta.url)
-const baseStyleUrl = new URL(
-  '../../src/renderer/styles/base.css',
-  import.meta.url,
-)
-const aiStyleUrl = new URL('../../src/renderer/styles/ai.css', import.meta.url)
-const aiComposeStyleUrl = new URL(
-  '../../src/renderer/styles/ai-compose.css',
-  import.meta.url,
-)
 const sidebarStoreUrl = new URL(
   '../../src/renderer/stores/useSidebarStore.ts',
   import.meta.url,
@@ -19,8 +11,8 @@ const sidebarStoreUrl = new URL(
 
 test('AI 模式下对话区作为主视图，不再占用内容区右侧列', async () => {
   const [baseStyle, aiStyle, appSource] = await Promise.all([
-    readFile(baseStyleUrl, 'utf8'),
-    readFile(aiStyleUrl, 'utf8'),
+    readRendererStyles(),
+    readRendererStyles(),
     readFile(appSourceUrl, 'utf8'),
   ])
   const contentShellRule = baseStyle.match(
@@ -37,8 +29,8 @@ test('AI 模式下对话区作为主视图，不再占用内容区右侧列', as
 
 test('AI 面板头部和输入操作区允许内容随面板收缩', async () => {
   const aiStyle = [
-    await readFile(aiStyleUrl, 'utf8'),
-    await readFile(aiComposeStyleUrl, 'utf8'),
+    await readRendererStyles(),
+    await readRendererStyles(),
   ].join('\n')
   const headerContentRule = aiStyle.match(
     /\.ai-panel-heading\s*\{[\s\S]*?\n\}/,
@@ -53,7 +45,7 @@ test('AI 面板头部和输入操作区允许内容随面板收缩', async () =>
 })
 
 test('待批准的长命令限制显示高度并支持鼠标纵向滚动', async () => {
-  const aiStyle = await readFile(aiStyleUrl, 'utf8')
+  const aiStyle = await readRendererStyles()
   const approvalCommandRule = [
     ...aiStyle.matchAll(/\.ai-approval-popover code\s*\{[\s\S]*?\n\}/g),
   ].at(-1)?.[0]
@@ -68,7 +60,7 @@ test('AI 头部与终端标签栏等高且当前连接使用 Tag 展示', async 
       new URL('../../src/renderer/components/AiPanel.vue', import.meta.url),
       'utf8',
     ),
-    readFile(aiStyleUrl, 'utf8'),
+    readRendererStyles(),
   ])
   const headerRule = aiStyle.match(
     /\.ai-panel-header\s*\{[\s\S]*?\n\}/,

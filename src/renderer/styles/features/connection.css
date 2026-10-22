@@ -1,0 +1,43 @@
+/* ===== 新增 / 编辑连接表单 ===== */
+
+.connection-form {
+  display: grid;
+  gap: 10px;
+}
+
+.connection-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.connection-form label span {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.connection-form input {
+  height: 34px;
+  border-radius: var(--radius-md);
+}
+
+.key-file-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.key-file-picker input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.key-file-picker input[readonly] {
+  color: var(--text-secondary);
+}
+
+.browse-button {
+  flex: 0 0 auto;
+  min-width: 74px;
+}

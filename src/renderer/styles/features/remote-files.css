@@ -1,6 +1,7 @@
-﻿
-.empty-hint.error {
-  color: var(--danger);
+/* ===== 远程文件面板 ===== */
+
+.file-panel {
+  container-type: inline-size;
 }
 
 .file-path-row {
@@ -28,7 +29,7 @@
 }
 
 .file-path-input:disabled {
-  color: var(--text-faint);
+  color: var(--text-disabled);
   opacity: 0.72;
 }
 
@@ -59,9 +60,9 @@
   min-height: 26px;
   /* 与文件行的右侧框选留白对齐。 */
   padding: 0 46px 0 36px;
-  border-top: 1px solid var(--line-translucent-strong);
+  border-top: 1px solid var(--line-translucent);
   border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-faint);
+  color: var(--text-disabled);
   font-size: var(--font-size-2xs);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -185,7 +186,7 @@
 }
 
 .file-node:hover {
-  background: var(--hover-file);
+  background: var(--bg-hover-soft);
 }
 
 .file-node.selected {
@@ -194,7 +195,7 @@
     var(--selected-bg);
   box-shadow:
     inset 0 0 0 0.5px var(--selected-ring),
-    0 1px 2px rgba(0, 0, 0, 0.06);
+    var(--shadow-raised);
 }
 
 .file-node.selected:hover {
@@ -244,7 +245,7 @@
 
 .file-node small {
   flex: 0 0 auto;
-  color: var(--text-faint);
+  color: var(--text-disabled);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -281,7 +282,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-faint);
+  color: var(--text-disabled);
   font-size: var(--font-size-sm);
 }
 
@@ -305,266 +306,17 @@
   color: var(--text-muted);
 }
 
-.context-menu {
-  position: fixed;
-  z-index: 80;
-  /* 所有浮动菜单共用顶部“工具/帮助”的紧凑面板规格。 */
-  min-width: 180px;
-  margin: 0;
-  max-height: calc(100vh - 16px);
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border: 1px solid var(--border-menu);
-  padding: 4px;
+.sftp-disconnected-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid rgba(231, 72, 86, 0.32);
   border-radius: var(--radius-sm);
-  background: var(--surface-floating-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: var(--shadow-menu);
-  will-change: opacity, transform;
-}
-
-/* 顶栏下拉 / 右键菜单进场过渡：淡入 + 轻微上浮，模拟原生菜单的弹出感 */
-.context-menu-enter-active,
-.context-menu-leave-active {
-  transition:
-    opacity 120ms ease-out,
-    transform 120ms ease-out;
-}
-
-.context-menu-enter-from,
-.context-menu-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
-}
-
-.context-menu button {
-  position: relative;
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  min-height: 28px;
-  margin: 0;
-  padding: 3px 8px;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--font-size-md);
-  text-align: left;
-  transition:
-    background-color 100ms ease,
-    color 100ms ease,
-    transform 80ms ease;
-}
-
-.context-menu button .menu-item-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.context-menu button .menu-item-label {
-  line-height: 1.3;
-}
-
-/* 带子菜单的条目在右侧提示可继续展开，图标位置与所有菜单保持一致。 */
-.context-menu .menu-item-submenu-indicator {
-  display: grid;
-  place-items: center;
-  flex: 0 0 14px;
-  width: 14px;
-  height: 14px;
-  margin-left: auto;
-}
-
-.context-menu .menu-item-submenu-indicator img {
-  display: block;
-  width: 12px;
-  height: 12px;
-  filter: var(--icon-filter);
-  opacity: 0.62;
-}
-
-.context-menu button:hover:not(:disabled) .menu-item-submenu-indicator img {
-  opacity: 0.9;
-}
-
-.context-menu button small {
-  color: var(--text-tertiary);
+  background: rgba(231, 72, 86, 0.1);
+  color: #e74856;
   font-size: var(--font-size-sm);
-  line-height: 1.3;
-}
-
-.context-menu button:hover:not(:disabled) {
-  background: var(--bg-hover-item);
-  color: var(--text-primary);
-}
-
-.context-menu button.separator-before {
-  margin-top: 7px;
-}
-
-.context-menu button.separator-before::before {
-  position: absolute;
-  top: -4px;
-  right: 7px;
-  left: 7px;
-  height: 1px;
-  background: var(--border-subtle);
-  content: "";
-  pointer-events: none;
-}
-
-.context-menu button:active:not(:disabled) {
-  transform: scale(0.985);
-}
-
-.context-menu button.danger:hover:not(:disabled) {
-  background: var(--danger-overlay);
-  color: var(--danger-strong);
-}
-
-/* 警告操作保留暖橙语义，与不可逆删除的红色危险态区分。 */
-.context-menu button.warning {
-  color: var(--warning);
-}
-
-.context-menu button.warning small {
-  color: var(--warning);
-  opacity: 0.78;
-}
-
-.context-menu button.warning:hover:not(:disabled) {
-  background: var(--warning-fill);
-  color: var(--warning);
-}
-
-.context-menu button:disabled {
-  background: transparent;
-  color: var(--text-disabled-strong);
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.context-menu .menu-item-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-xs);
-  color: var(--text-muted);
-}
-
-.context-menu .menu-item-icon img {
-  display: block;
-  width: var(--icon-size-regular);
-  height: var(--icon-size-regular);
-  opacity: 0.86;
-  filter: var(--icon-filter);
-  transition: opacity 100ms ease;
-}
-
-.context-menu button:hover:not(:disabled) .menu-item-icon img {
-  opacity: 1;
-}
-
-.context-menu button.danger .menu-item-icon img {
-  filter: none;
-}
-
-.context-menu button.warning .menu-item-icon img {
-  filter: var(--warning-icon-filter);
-}
-
-.workspace {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-  /* padding: 20px; */
-  background-color: var(--bg-deep);
-  overflow: hidden;
-}
-
-.topbar {
-  position: relative;
-  z-index: 10002;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 50px;
-  padding: 0 0 0 16px;
-  border-bottom: 1px solid var(--border-window);
-  background: var(--surface-topbar);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
-  -webkit-app-region: no-drag;
-}
-
-.titlebar-drag-zone {
-  flex: 1 1 auto;
-  min-width: 24px;
-  height: 100%;
-  -webkit-app-region: drag;
-}
-
-.window-actions {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex: 0 0 auto;
-  height: 100%;
-  -webkit-app-region: no-drag;
-}
-
-.tasklist {
-  position: relative;
-  height: 100%;
-}
-
-.tasklist-trigger {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: auto;
-  min-width: 42px;
-  /* min-width: 104px; */
-  padding: 0 10px;
-  font-size: var(--font-size-sm);
-}
-
-.tasklist-trigger img {
-  width: var(--icon-size-regular);
-  height: var(--icon-size-regular);
-}
-
-.tasklist-trigger strong {
-  display: grid;
-  place-items: center;
-  min-width: 14px;
-  height: 14px;
-  border-radius: var(--radius-full);
-  background: var(--danger-bg);
-  color: #ffffff;
-  font-size: 8px;
-  position: absolute;
-  top: 2px;
-  right: 2px;
-}
-
-.tasklist-trigger .tasklist-dot {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 7px;
-  height: 7px;
-  border: 1px solid var(--topbar-bg, #1f2937);
-  border-radius: 50%;
-  background: #ef4444;
+  font-weight: var(--font-weight-regular);
+  line-height: 1;
 }

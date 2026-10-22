@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const dialogUrl = new URL('../../src/renderer/components/DataTransferDialog.vue', import.meta.url)
 const contextMenuUrl = new URL('../../src/renderer/components/ContextMenu.vue', import.meta.url)
-const formStyleUrl = new URL('../../src/renderer/styles/forms-and-status.css', import.meta.url)
 
 function getRule(source, selector) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -15,7 +15,7 @@ test('文件传输右键菜单使用鼠标视口坐标并挂载到 body', async 
   const [dialog, contextMenu, formStyle] = await Promise.all([
     readFile(dialogUrl, 'utf8'),
     readFile(contextMenuUrl, 'utf8'),
-    readFile(formStyleUrl, 'utf8'),
+    readRendererStyles(),
   ])
 
   // clientX/clientY 属于视口坐标，菜单必须脱离弹窗定位上下文，避免位置随弹窗偏移。

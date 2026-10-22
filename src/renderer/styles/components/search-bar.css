@@ -1,3 +1,5 @@
+/* ===== 浮动搜索栏（SearchBar） ===== */
+
 /* ===== 浮动搜索栏（终端搜索、文件编辑器搜索替换共用） =====
  * 定位由使用方决定（如 .terminal-search、.file-editor-toolbar），此处只负责外观与内部布局。
  */
@@ -9,9 +11,9 @@
   gap: 6px;
   align-items: center;
   padding: 6px;
-  border: 1px solid var(--border-float);
+  border: 1px solid var(--border-emphasis);
   border-radius: var(--radius-xl);
-  background: var(--surface-floating-strong);
+  background: var(--surface-floating);
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: var(--shadow-popover);
   animation: search-bar-enter 140ms ease-out;
@@ -64,7 +66,7 @@
 .search-bar-count {
   min-width: 48px;
   color: var(--text-tertiary);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   text-align: center;

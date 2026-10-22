@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const componentUrl = new URL(
   '../../src/renderer/components/StatusBar.vue',
-  import.meta.url,
-)
-const styleUrl = new URL(
-  '../../src/renderer/styles/forms-and-status.css',
   import.meta.url,
 )
 
@@ -45,7 +42,7 @@ test('迷你折线按近期数据范围缩放并让稳定数据保持居中', as
 })
 
 test('迷你折线保持紧凑且不会增加状态栏高度', async () => {
-  const style = await readFile(styleUrl, 'utf8')
+  const style = await readRendererStyles()
   const sparklineRule = style.match(
     /\.status-sparkline\s*\{[\s\S]*?\n\}/,
   )?.[0]

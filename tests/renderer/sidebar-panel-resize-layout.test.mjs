@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const appSourceUrl = new URL('../../src/renderer/App.vue', import.meta.url)
-const baseStyleUrl = new URL('../../src/renderer/styles/base.css', import.meta.url)
 const serverSidebarUrl = new URL('../../src/renderer/components/ServerSidebar.vue', import.meta.url)
 const automationSidebarUrl = new URL('../../src/renderer/components/AutomationSidebar.vue', import.meta.url)
 const sftpPanelUrl = new URL('../../src/renderer/components/SftpPanel.vue', import.meta.url)
@@ -35,7 +35,7 @@ test('左侧面板可拖拽排序，排在最下面的面板自动填满剩余�
 })
 
 test('左侧面板分隔条沿用侧边栏的细线与居中强调手柄样式', async () => {
-  const baseStyle = await readFile(baseStyleUrl, 'utf8')
+  const baseStyle = await readRendererStyles()
   const panelResizerRule = baseStyle.match(
     /\.sidebar-panel-resizer\s*\{[\s\S]*?\n\}/,
   )?.[0]
@@ -48,13 +48,13 @@ test('左侧面板分隔条沿用侧边栏的细线与居中强调手柄样式',
 
   assert.match(panelResizerRule ?? '', /background:\s*var\(--bg-elevated-1\)/)
   assert.match(panelResizerBeforeRule ?? '', /height:\s*1px/)
-  assert.match(panelResizerBeforeRule ?? '', /background:\s*var\(--border-window\)/)
+  assert.match(panelResizerBeforeRule ?? '', /background:\s*var\(--border-default\)/)
   assert.match(panelResizerAfterRule ?? '', /width:\s*48px/)
   assert.match(panelResizerAfterRule ?? '', /height:\s*3px/)
 })
 
 test('自定义指令列表按内容从顶部紧凑排列，不拉伸单个指令卡片', async () => {
-  const baseStyle = await readFile(baseStyleUrl, 'utf8')
+  const baseStyle = await readRendererStyles()
   const automationListRule = baseStyle.match(
     /\.grouped-list\s*\{[\s\S]*?\n\}/,
   )?.[0]
@@ -68,7 +68,7 @@ test('面板标题区域可直接发起拖拽排序', async () => {
     readFile(automationSidebarUrl, 'utf8'),
     readFile(sftpPanelUrl, 'utf8'),
     readFile(sidebarPanelUrl, 'utf8'),
-    readFile(baseStyleUrl, 'utf8'),
+    readRendererStyles(),
   ])
 
   // 三个面板共用 SidebarPanel 外壳，标题行统一可拖拽。
@@ -100,7 +100,7 @@ test('侧栏容器高度变化时重新计算面板显示高度，避免固定�
 test('折叠面板标题紧凑且侧栏底部保留视觉间距', async () => {
   const [appSource, baseStyle] = await Promise.all([
     readFile(appSourceUrl, 'utf8'),
-    readFile(baseStyleUrl, 'utf8'),
+    readRendererStyles(),
   ])
 
   assert.match(appSource, /SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28/)

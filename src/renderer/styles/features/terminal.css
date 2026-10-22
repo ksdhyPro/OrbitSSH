@@ -1,194 +1,4 @@
-﻿.tasklist-panel {
-  position: absolute;
-  top: 50px;
-  right: 0;
-  z-index: 10003;
-  width: 340px;
-  max-height: 420px;
-  overflow: auto;
-  border: 1px solid var(--border-input);
-  padding: 5px;
-  border-radius: var(--radius-xl);
-  background: var(--surface-floating-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: var(--shadow-tasklist);
-}
-
-.tasklist-panel header,
-.tasklist-item {
-  padding: 10px;
-}
-
-.tasklist-panel header {
-  position: sticky;
-  top: -5px;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border-subtle);
-  color: var(--text-heading);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-  background: var(--surface-floating-strong);
-  backdrop-filter: blur(18px) saturate(140%);
-}
-
-.tasklist-panel header small,
-.tasklist-item p,
-.tasklist-item small {
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-}
-
-.tasklist-empty {
-  margin: 6px;
-  padding: 24px 12px;
-  border-radius: var(--radius-md);
-  background: var(--bg-elevated-3);
-  color: var(--text-tertiary);
-  font-size: var(--font-size-sm);
-  text-align: center;
-}
-
-.tasklist-item + .tasklist-item {
-  border-top: 1px solid var(--line-translucent);
-}
-
-.tasklist-item {
-  border-radius: var(--radius-md);
-  transition:
-    background-color 120ms ease,
-    box-shadow 120ms ease;
-}
-
-.tasklist-item:hover {
-  background: var(--bg-hover-cool);
-  box-shadow: inset 0 0 0 0.5px var(--border-subtle);
-}
-
-.tasklist-item-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.tasklist-item strong {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tasklist-direction {
-  display: inline-grid;
-  place-items: center;
-  height: 18px;
-  margin-right: 6px;
-  padding: 0 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-badge);
-  color: var(--text-badge);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-}
-
-.tasklist-item p {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tasklist-progress {
-  height: 5px;
-  margin-top: 8px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  background: var(--bg-hover-item);
-}
-
-.tasklist-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.tasklist-detail {
-  min-width: 0;
-}
-
-.tasklist-current-item {
-  margin-top: 2px !important;
-}
-
-.tasklist-info img {
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-  filter: var(--icon-filter);
-  opacity: 0.8;
-}
-
-.tasklist-progress span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--brand);
-  transition: width 140ms ease;
-}
-
-.tasklist-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.tasklist-actions button {
-  min-width: 24px;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  background: none;
-  cursor: pointer;
-}
-
-.tasklist-actions img {
-  width: var(--icon-size-compact);
-  height: var(--icon-size-compact);
-}
-
-.tasklist-actions button:hover {
-  background: none !important;
-}
-
-.tasklist-actions button.danger:hover {
-  background: var(--danger-overlay);
-  color: var(--danger-strong);
-}
-
-.window-action-divider {
-  width: 1px;
-  height: 22px;
-  margin: 0 2px;
-  background: var(--border-window);
-}
-
-.window-actions button:hover {
-  background: var(--accent-hover);
-  color: var(--text-primary);
-}
-
-.window-actions .window-close:hover {
-  background: var(--danger-hover-bg);
-}
+/* ===== 终端区域与会话标签 ===== */
 
 .terminal-area {
   position: relative;
@@ -200,7 +10,7 @@
   margin: 0;
   overflow: hidden;
   background: var(--terminal-surface);
-  box-shadow: inset 0 0 0 1px var(--terminal-border);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
 .session-tabs {
@@ -213,7 +23,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  border-bottom: 1px solid var(--border-tab);
+  border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-elevated-1);
   white-space: nowrap;
   scrollbar-width: thin;
@@ -242,8 +52,8 @@
   padding: 0 8px 0 12px;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--bg-tab);
-  color: var(--text-tab);
+  background: transparent;
+  color: var(--text-secondary);
   transition:
     background-color 120ms ease,
     box-shadow 120ms ease,
@@ -251,7 +61,7 @@
 }
 
 .session-tab:hover:not(.active) {
-  background: var(--bg-hover-cool);
+  background: var(--bg-hover-soft);
   color: var(--text-primary);
 }
 
@@ -267,8 +77,8 @@
     var(--bg-tab-active);
   color: var(--text-primary);
   box-shadow:
-    inset 0 0 0 0.5px var(--border-tab),
-    0 1px 3px rgba(0, 0, 0, 0.12);
+    inset 0 0 0 0.5px var(--border-subtle),
+    var(--shadow-raised);
 }
 
 .session-tab span {
@@ -298,21 +108,6 @@
   color: var(--danger);
 }
 
-.sftp-disconnected-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 18px;
-  margin-left: 8px;
-  padding: 0 6px;
-  border: 1px solid rgba(231, 72, 86, 0.32);
-  border-radius: var(--radius-sm);
-  background: rgba(231, 72, 86, 0.1);
-  color: #e74856;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-regular);
-  line-height: 1;
-}
-
 .session-tab-close {
   display: grid;
   place-items: center;
@@ -336,7 +131,7 @@
 }
 
 .session-tab-close:hover {
-  background: var(--hover-overlay);
+  background: var(--bg-hover-strong);
   opacity: 1;
 }
 
@@ -362,7 +157,7 @@
 }
 
 .session-tab-reconnect:hover {
-  background: var(--hover-overlay);
+  background: var(--bg-hover-strong);
   opacity: 1;
 }
 
@@ -383,11 +178,13 @@
   padding: 32px;
   text-align: center;
 }
+
 .terminal-hosts {
   padding: 20px;
   box-sizing: border-box;
   background: var(--terminal-surface);
 }
+
 .terminal-hosts,
 .terminal-host {
   min-width: 0;
@@ -465,7 +262,7 @@
 
 .terminal-empty p {
   max-width: 520px;
-  color: var(--text-dim);
+  color: var(--text-muted);
   line-height: 1.6;
 }
 
@@ -546,4 +343,16 @@
 /* SSH 弹窗位于遮罩层之上，终端右键菜单及其子菜单需继续显示在弹窗上方。 */
 body:has(.app-dialog-terminal) .context-menu {
   z-index: 10001;
+}
+
+.terminal-paste-confirm {
+  display: grid;
+  gap: 14px;
+}
+
+.terminal-paste-confirm > p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
 }

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { readRendererStyles } from './helpers/styles.mjs'
 
 const dialogUrl = new URL('../../src/renderer/components/TransferTaskDialog.vue', import.meta.url)
-const styleUrl = new URL('../../src/renderer/styles/transfer-tasks.css', import.meta.url)
 const managerUrl = new URL('../../src/main/sftp/sftp-managed-task-manager.ts', import.meta.url)
 
 test('传输文件直接从第一层展示且不再渲染批次头部', async () => {
@@ -18,7 +18,7 @@ test('传输文件直接从第一层展示且不再渲染批次头部', async ()
 })
 
 test('批次之间仅使用分隔线区分', async () => {
-  const styleSource = await readFile(styleUrl, 'utf8')
+  const styleSource = await readRendererStyles()
 
   assert.match(
     styleSource,

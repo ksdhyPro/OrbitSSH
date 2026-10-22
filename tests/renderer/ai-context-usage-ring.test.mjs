@@ -1,19 +1,15 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readRendererStyles } from "./helpers/styles.mjs";
 
 const ringPath = new URL("../../src/renderer/components/AiContextUsageRing.vue", import.meta.url);
 const appPath = new URL("../../src/renderer/App.vue", import.meta.url);
-const stylePath = new URL("../../src/renderer/styles/ai.css", import.meta.url);
-const composeStylePath = new URL("../../src/renderer/styles/ai-compose.css", import.meta.url);
 
 test("输入框仅在模型配置上下文上限后显示用量圆环", async () => {
   const ring = await readFile(ringPath, "utf8");
   const app = await readFile(appPath, "utf8");
-  const style = [
-    await readFile(stylePath, "utf8"),
-    await readFile(composeStylePath, "utf8"),
-  ].join("\n");
+  const style = await readRendererStyles();
 
   assert.match(ring, /contextTokenLimitK[\s\S]*> 0/);
   assert.match(ring, /v-if="visible"/);

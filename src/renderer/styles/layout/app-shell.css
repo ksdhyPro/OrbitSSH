@@ -1,0 +1,617 @@
+/* ===== 应用外框：标题栏、左侧栏、面板分隔条与传输任务浮层 ===== */
+
+.app-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: 50px minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  background:
+    linear-gradient(
+      180deg,
+      var(--surface-gloss),
+      var(--shell-gradient-end) 38%
+    ),
+    var(--bg-base);
+}
+
+.content-shell {
+  display: grid;
+  /* AI 模式下对话区位于终端标签页下方的主视图，不再单独占用右侧列。 */
+  grid-template-columns:
+    var(--sidebar-width, 320px)
+    6px
+    minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  padding: 8px 4px;
+  overflow: hidden;
+  background: var(--bg-elevated-1);
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-panel-slot {
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 排在最下面的面板自动占用剩余高度，内部列表仍独立滚动。 */
+.sidebar-panel-slot.is-last {
+  flex: 1 1 auto;
+}
+
+.sidebar-panel-slot.is-last.collapsed {
+  flex: 0 0 auto;
+}
+
+.sidebar-panel-slot.dragging {
+  opacity: 0.55;
+}
+
+.sidebar-panel-resizer {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 10px;
+  height: 10px;
+  cursor: row-resize;
+  background: var(--bg-elevated-1);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-drag: none;
+  user-drag: none;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-panel-resizer::before {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border-default);
+  content: "";
+}
+
+.sidebar-panel-resizer::after {
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 48px;
+  height: 3px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  content: "";
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+}
+
+.sidebar-panel-resizer:hover::after,
+.sidebar-panel-resizer.active::after {
+  opacity: 0.72;
+}
+
+.sidebar-resizer {
+  position: relative;
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: var(--bg-elevated-1);
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-resizer::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--border-default);
+  content: "";
+}
+
+.sidebar-resizer::after {
+  position: absolute;
+  top: 50%;
+  left: 1px;
+  width: 3px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease;
+}
+
+/* 拖拽时只显示居中的短手柄，避免整条分隔线突然加粗。 */
+.sidebar-resizer:hover::after,
+.sidebar-resizer.active::after {
+  opacity: 0.72;
+}
+
+.ai-panel-resizer {
+  position: relative;
+  width: var(--ai-panel-resizer-width, 6px);
+  min-width: var(--ai-panel-resizer-width, 6px);
+  cursor: col-resize;
+  background: var(--bg-elevated-1);
+  -webkit-app-region: no-drag;
+}
+
+.ai-panel-resizer::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--border-default);
+  content: "";
+}
+
+.ai-panel-resizer::after {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 3px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease;
+}
+
+.ai-panel-resizer:hover::after,
+.ai-panel-resizer.active::after {
+  opacity: 0.72;
+}
+
+.ai-panel-resizer.collapsed {
+  cursor: default;
+  pointer-events: none;
+}
+
+.ai-panel-resizer.collapsed::before {
+  display: none;
+}
+
+.ai-panel-resizer.collapsed::after {
+  display: none;
+}
+
+.header-brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  /* width: 240px; */
+  /* min-width: 210px; */
+  -webkit-app-region: no-drag;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  display: block;
+  object-fit: cover;
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.header-brand h1,
+.header-brand p,
+.panel h2,
+.terminal-empty h2,
+.terminal-empty p {
+  margin: 0;
+}
+
+.header-brand h1 {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.1;
+}
+
+.header-brand p {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-2xs);
+}
+
+.header-menu {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.header-menu button {
+  height: 24px;
+  min-width: 36px;
+  padding: 0 7px;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.header-menu button:hover,
+.header-menu button.active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* 折叠状态仅保留紧凑标题行，为最底部面板留出更舒适的视觉呼吸空间。 */
+.sidebar-panel-slot.collapsed .panel-header {
+  flex-basis: 28px;
+  height: 28px;
+  padding: 0 4px 0 6px;
+}
+
+.mac-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: 100%;
+  padding-right: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.mac-window-control {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.28);
+}
+
+.mac-window-control img {
+  display: block;
+  width: 8px;
+  height: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.mac-window-controls:hover .mac-window-control img {
+  opacity: 1;
+}
+
+.mac-window-close {
+  background: #ff5f57;
+}
+
+.mac-window-minimize {
+  background: #febc2e;
+}
+
+.mac-window-zoom {
+  background: #28c840;
+}
+
+.window-actions button {
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  height: 50px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.window-actions img,
+.file-icon {
+  display: block;
+  width: var(--icon-size-regular);
+  height: var(--icon-size-regular);
+  /* 兼容以 img 引入且内嵌固定浅色填充的 SVG 图标。 */
+  filter: var(--icon-filter);
+}
+
+.workspace {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  /* padding: 20px; */
+  background-color: var(--bg-deep);
+  overflow: hidden;
+}
+
+.topbar {
+  position: relative;
+  z-index: 10002;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 50px;
+  padding: 0 0 0 16px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface-topbar);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-drag-zone {
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 100%;
+  -webkit-app-region: drag;
+}
+
+.window-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.tasklist {
+  position: relative;
+  height: 100%;
+}
+
+.tasklist-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  min-width: 42px;
+  /* min-width: 104px; */
+  padding: 0 10px;
+  font-size: var(--font-size-sm);
+}
+
+.tasklist-trigger img {
+  width: var(--icon-size-regular);
+  height: var(--icon-size-regular);
+}
+
+.tasklist-trigger strong {
+  display: grid;
+  place-items: center;
+  min-width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--danger-bg);
+  color: #ffffff;
+  font-size: 8px;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+.tasklist-trigger .tasklist-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--bg-base);
+  border-radius: 50%;
+  background: var(--danger-bg);
+}
+
+.tasklist-panel {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  z-index: 10003;
+  width: 340px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border-input);
+  padding: 5px;
+  border-radius: var(--radius-xl);
+  background: var(--surface-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--shadow-menu);
+}
+
+.tasklist-panel header,
+.tasklist-item {
+  padding: 10px;
+}
+
+.tasklist-panel header {
+  position: sticky;
+  top: -5px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-heading);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  background: var(--surface-floating);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.tasklist-panel header small,
+.tasklist-item p,
+.tasklist-item small {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.tasklist-empty {
+  margin: 6px;
+  padding: 24px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated-3);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.tasklist-item + .tasklist-item {
+  border-top: 1px solid var(--line-translucent);
+}
+
+.tasklist-item {
+  border-radius: var(--radius-md);
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.tasklist-item:hover {
+  background: var(--bg-hover-soft);
+  box-shadow: inset 0 0 0 0.5px var(--border-subtle);
+}
+
+.tasklist-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tasklist-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasklist-direction {
+  display: inline-grid;
+  place-items: center;
+  height: 18px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover-strong);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-regular);
+}
+
+.tasklist-item p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasklist-progress {
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--bg-hover-strong);
+}
+
+.tasklist-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.tasklist-detail {
+  min-width: 0;
+}
+
+.tasklist-current-item {
+  margin-top: 2px !important;
+}
+
+.tasklist-info img {
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+  filter: var(--icon-filter);
+  opacity: 0.8;
+}
+
+.tasklist-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand);
+  transition: width 140ms ease;
+}
+
+.tasklist-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.tasklist-actions button {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.tasklist-actions img {
+  width: var(--icon-size-compact);
+  height: var(--icon-size-compact);
+}
+
+.tasklist-actions button:hover {
+  background: none !important;
+}
+
+.tasklist-actions button.danger:hover {
+  background: var(--danger-overlay);
+  color: var(--danger-strong);
+}
+
+.window-action-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
+  background: var(--border-default);
+}
+
+.window-actions button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.window-actions .window-close:hover {
+  background: var(--danger-hover-bg);
+}

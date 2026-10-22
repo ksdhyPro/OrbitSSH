@@ -1,0 +1,122 @@
+/* ===== 远程文件编辑器与图片预览 ===== */
+
+.file-editor-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.file-editor-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 3;
+}
+
+.file-editor-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 360px;
+  color: var(--text-muted);
+  background: var(--bg-deep);
+}
+
+.file-editor-loading::before,
+.image-preview-state:not(.error)::before {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--spinner-track);
+  border-top-color: var(--accent-bright);
+  border-radius: 50%;
+  animation: file-node-spin 0.8s linear infinite;
+  content: "";
+}
+
+.image-preview-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 420px;
+}
+
+.image-preview-body,
+.image-preview-state {
+  display: grid;
+  place-items: center;
+  min-height: 360px;
+  padding: 18px;
+  background: var(--bg-deep);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.image-preview-body img {
+  display: block;
+  max-width: 100%;
+  max-height: 58vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+}
+
+.image-preview-state {
+  align-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.image-preview-state.error {
+  color: var(--danger);
+  background:
+    linear-gradient(var(--danger-overlay), var(--danger-overlay)),
+    var(--bg-deep);
+}
+
+.file-editor-body {
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-deep);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.file-editor-shell > .form-error {
+  min-height: 34px;
+  margin: 0;
+  padding: 8px 14px;
+  border-top: 1px solid var(--danger-border);
+  background: var(--danger-overlay);
+  line-height: 1.45;
+}
+
+.file-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated-2);
+  box-shadow: inset 0 1px var(--surface-gloss);
+}
+
+.file-editor-footer > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.file-editor-shell .file-editor-footer > span::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  content: "";
+}
+
+.file-editor-shell .file-editor-footer > span.dirty::before {
+  background: #ffd60a;
+}

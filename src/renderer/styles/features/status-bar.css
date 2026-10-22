@@ -1,0 +1,114 @@
+/* ===== 底部状态栏 ===== */
+
+/* ===== 状态栏 ===== */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 24px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated-1);
+  box-shadow: inset 0 1px var(--surface-gloss);
+  -webkit-app-region: no-drag;
+}
+
+.status-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-bar-item + .status-bar-item::before {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin-right: 10px;
+  background: var(--border-subtle);
+  content: "";
+}
+
+.status-bar-label {
+  color: var(--text-tertiary);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0.02em;
+}
+
+.status-bar-value {
+  color: var(--text-primary);
+}
+
+.status-sparkline {
+  width: 38px;
+  height: 12px;
+  margin-left: 5px;
+  overflow: visible;
+  vertical-align: -2px;
+}
+
+.status-sparkline polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.status-sparkline.sparkline-safe {
+  color: var(--success);
+}
+
+.status-sparkline.sparkline-warn {
+  color: var(--warning);
+}
+
+.status-sparkline.sparkline-danger {
+  color: var(--danger-bg);
+}
+
+.status-bar-value small {
+  margin-left: 4px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-2xs);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: var(--radius-full);
+  flex: 0 0 auto;
+}
+
+.dot-safe {
+  background: var(--success);
+}
+
+.dot-warn {
+  background: var(--warning);
+}
+
+.dot-danger {
+  background: var(--danger-bg);
+}
+
+.status-bar-os {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.status-bar-disconnected {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}

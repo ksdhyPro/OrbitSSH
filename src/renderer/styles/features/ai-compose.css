@@ -1,3 +1,5 @@
+/* ===== AI 输入区 ===== */
+
 /* AI 输入区、状态条及审批浮层。 */
 .ai-status-bar {
   position: relative;
@@ -54,7 +56,7 @@
   padding: 12px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
-  background: var(--surface-floating-strong);
+  background: var(--surface-floating);
   box-shadow: var(--shadow-popover);
 }
 
@@ -169,7 +171,7 @@
 }
 
 .ai-compose .ai-action-btn.ai-stop-btn {
-  background: var(--danger-bg, #d84d42);
+  background: var(--danger-bg);
   color: #fff;
 }
 

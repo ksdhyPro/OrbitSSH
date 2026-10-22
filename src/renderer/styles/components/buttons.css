@@ -1,3 +1,5 @@
+/* ===== 通用文字按钮与图标按钮 ===== */
+
 /* ===== 通用文字按钮 =====
  * 结构：.btn + 变体（.btn-primary / .btn-secondary / .btn-ghost / .btn-danger / .btn-danger-soft）
  *      + 可选尺寸（.btn-sm）。业务样式只调整宽度、间距等布局属性，不再重复定义颜色与尺寸。
@@ -61,7 +63,7 @@
 
 .btn-secondary:hover:not(:disabled) {
   border-color: var(--border-hover-strong);
-  background: var(--bg-hover-cool);
+  background: var(--bg-hover-soft);
 }
 
 /* 弱操作：取消、关闭等不需要强调的动作。 */
@@ -72,7 +74,7 @@
 
 .btn-ghost:hover:not(:disabled) {
   border-color: var(--border-hover-strong);
-  background: var(--accent-hover);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -150,7 +152,7 @@
 }
 
 .icon-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -160,7 +162,7 @@
 }
 
 .icon-btn.active {
-  background: var(--accent-soft);
+  background: var(--bg-hover-strong);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
