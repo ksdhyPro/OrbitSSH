@@ -18,7 +18,8 @@ describe("App 布局与工作模式", () => {
   it("普通模式不渲染 AI 对话，AI 模式只保留服务器面板并把 AI 作为主视图", () => {
     const source = app();
     expect(source).toMatch(/const isAiWorkspace = computed\(\(\) => appSettings\.ai\.enabled\)/);
-    expect(source).toMatch(/isAiWorkspace\.value \? \["servers"\] : sidebarPanelOrder\.value/);
+    // AI 模式只保留服务器面板由 sidebar-panels.test.ts 验证。
+    expect(source).toMatch(/useSidebarPanels\(\{\s*appSettings,\s*isAiWorkspace,/);
     expect(source).toMatch(/:ai-workspace="isAiWorkspace"/);
     expect(source).toMatch(/<AiPanel\s+layout="workspace"/);
     expect(source).not.toMatch(/startAiPanelResize/);
@@ -45,18 +46,15 @@ describe("App 布局与工作模式", () => {
 });
 
 describe("左侧面板拖拽与尺寸", () => {
-  it("面板可拖拽排序，最后一个面板自动填满剩余空间", () => {
+  it("App 模板把拖拽排序与分隔条事件绑定到 useSidebarPanels", () => {
+    // 排序、折叠、调整高度的行为由 sidebar-panels.test.ts 验证。
     const source = app();
-    expect(source).toMatch(/type SidebarPanel = "servers" \| "automation" \| "remoteFiles"/);
-    expect(source).toMatch(/appSettings\.sidebar\.panelOrder/);
+    expect(source).toMatch(/useSidebarPanels\(\{/);
     expect(source).toMatch(/@dragstart="startSidebarPanelDrag\(\$event, panel\)"/);
     expect(source).toMatch(/@drop="finishSidebarPanelDrag\(\$event, panel\)"/);
     expect(source).toMatch(/v-if="!isAiWorkspace && !isLastSidebarPanel\(panel\)"/);
     expect(source).toMatch(/@pointerdown="startSidebarPanelResize\(\$event, panel\)"/);
-    expect(source).toMatch(
-      /function startSidebarPanelResize[\s\S]*?if \(appSettings\.sidebar\[panel\]\.collapsed\) \{[\s\S]*?\.collapsed = false/,
-    );
-    expect(source).toMatch(/isLastSidebarPanel\(panel\)\s*\?\s*undefined/);
+    expect(source).toMatch(/ref="sidebarPanelsElement"/);
   });
 
   it("三个面板共用 SidebarPanel 外壳，标题行可直接拖拽", () => {
@@ -69,44 +67,6 @@ describe("左侧面板拖拽与尺寸", () => {
     for (const file of ["ServerSidebar.vue", "AutomationSidebar.vue"]) {
       expect(readSource(`src/renderer/components/${file}`)).toMatch(/<GroupedList\b/);
     }
-  });
-
-  it("展开面板时使用当前布局下的最大可用高度", () => {
-    const source = app();
-    expect(source).toMatch(
-      /function toggleSidebarPanel\([\s\S]*?const isOpening = appSettings\.sidebar\[panel\]\.collapsed/,
-    );
-    expect(source).toMatch(
-      /if \(candidate !== panel && !appSettings\.sidebar\[candidate\]\.collapsed\)[\s\S]*?\.height = SIDEBAR_PANEL_MIN_HEIGHT/,
-    );
-    expect(source).toMatch(
-      /if \(isOpening\) \{[\s\S]*?\.height = getSidebarPanelMaxHeight\(panel\)/,
-    );
-    expect(source).toMatch(
-      /sidebarPanelOrder\.value\.slice\(0, -1\)[\s\S]*?\.length\s*\* SIDEBAR_PANEL_RESIZER_HEIGHT/,
-    );
-  });
-
-  it("侧栏容器高度变化时重新计算面板高度，折叠标题保持 28px", () => {
-    const source = app();
-    expect(source).toMatch(/const sidebarPanelsHeight = ref\(0\)/);
-    expect(source).toMatch(/function refreshSidebarPanelsHeight\(\): void/);
-    expect(source).toMatch(/new ResizeObserver\(refreshSidebarPanelsHeight\)/);
-    expect(source).toMatch(/SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28/);
-  });
-
-  it("拖动分隔线时在相邻展开面板之间转移高度", () => {
-    const source = app();
-    expect(source).toMatch(/let resizingAdjacentSidebarPanel: SidebarPanel \| null = null/);
-    expect(source).toMatch(
-      /function getNextSidebarPanel\(panel: SidebarPanel\): SidebarPanel \| null/,
-    );
-    expect(source).toMatch(
-      /const adjacentDelta = Math\.min\(appliedDelta, Math\.max\(adjacentSlack, 0\)\)/,
-    );
-    expect(source).toMatch(
-      /appSettings\.sidebar\[adjacentPanel\]\.height = resizingAdjacentPanelStartHeight - adjacentDelta/,
-    );
   });
 });
 
