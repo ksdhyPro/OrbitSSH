@@ -19,11 +19,17 @@ test('左侧面板可拖拽排序，排在最下面的面板自动填满剩余�
   assert.match(appSource, /appSettings\.sidebar\.panelOrder/)
   assert.match(appSource, /@dragstart="startSidebarPanelDrag\(\$event, panel\)"/)
   assert.match(appSource, /@drop="finishSidebarPanelDrag\(\$event, panel\)"/)
+  // AI 模式只保留服务器面板，不显示面板分隔条；最后一个面板自动填充，不需要分隔条。
   assert.match(
     appSource,
-    /v-if="!isLastSidebarPanel\(panel\)"/,
+    /v-if="!isAiWorkspace && !isLastSidebarPanel\(panel\)"/,
   )
-  assert.match(appSource, /@mousedown="!appSettings\.sidebar\[panel\]\.collapsed/)
+  // 折叠面板的分隔条同样可以拖拽，开始拖拽时先展开到最小高度。
+  assert.match(appSource, /@pointerdown="startSidebarPanelResize\(\$event, panel\)"/)
+  assert.match(
+    appSource,
+    /function startSidebarPanelResize[\s\S]*?if \(appSettings\.sidebar\[panel\]\.collapsed\) \{[\s\S]*?\.collapsed = false/,
+  )
   assert.match(
     appSource,
     /isLastSidebarPanel\(panel\)/,
@@ -104,7 +110,7 @@ test('折叠面板标题紧凑且侧栏底部保留视觉间距', async () => {
   ])
 
   assert.match(appSource, /SIDEBAR_PANEL_COLLAPSED_HEADER_HEIGHT = 28/)
-  assert.match(baseStyle, /\.sidebar\s*\{[\s\S]*?padding:\s*8px 10px 20px/)
+  assert.match(baseStyle, /\n\.sidebar\s*\{[^}]*?padding:\s*8px 4px;/)
   assert.match(baseStyle, /\.sidebar-panel-slot\.collapsed \.panel-header\s*\{[\s\S]*?height:\s*28px/)
 })
 
@@ -114,5 +120,7 @@ test('拖动面板分隔线时在相邻展开面板之间转移高度', async ()
   assert.match(appSource, /let resizingAdjacentSidebarPanel: SidebarPanel \| null = null/)
   assert.match(appSource, /function getNextSidebarPanel\(panel: SidebarPanel\): SidebarPanel \| null/)
   assert.match(appSource, /const adjacentPanel = getNextSidebarPanel\(panel\)/)
-  assert.match(appSource, /appSettings\.sidebar\[adjacentPanel\]\.height = [\s\S]*?- appliedDelta/)
+  // 相邻面板已到最小高度时，允许继续从底部自动填充面板取高度，分隔线不会被卡死。
+  assert.match(appSource, /const adjacentDelta = Math\.min\(appliedDelta, Math\.max\(adjacentSlack, 0\)\)/)
+  assert.match(appSource, /appSettings\.sidebar\[adjacentPanel\]\.height = resizingAdjacentPanelStartHeight - adjacentDelta/)
 })
