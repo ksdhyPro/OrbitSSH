@@ -1,5 +1,5 @@
 import type { AiChatInput } from "../../shared/ai.js";
-import type { AiModelConfig, AiProvider, AppSettings } from "../../shared/settings.js";
+import type { AiProvider, AppSettings } from "../../shared/settings.js";
 import { writeAppLog } from "../logger.js";
 import { getTerminalContextSnapshot } from "../ssh/session-manager.js";
 import {
@@ -30,13 +30,8 @@ import {
   buildResponsesInput,
   buildResponsesTools,
   collectResponsesSseStream,
-  isResponsesApiUnsupported,
   parseResponsesPayload,
 } from "./ai-responses-adapter.js";
-import {
-  requestAiJsonWithCompatibilityFallback,
-  type AiCompatibilityFallbackParameter,
-} from "./ai-provider-compatibility.js";
 import {
   AI_NON_STREAM_RESPONSE_TIMEOUT_MS,
   AI_REQUEST_TOTAL_TIMEOUT_MS,
@@ -51,13 +46,10 @@ import {
   extractProviderErrorMessage,
   type AiRequestFailure,
 } from "./ai-request-errors.js";
-import {
-  getRememberedProtocol,
-  isToolChoiceUnsupported,
-  rememberProtocol,
-  rememberToolChoiceUnsupported,
-} from "../storage/ai-protocol-store.js";
+
 import { getAiUnavailableMessage, resolveActiveAiConfig } from "./ai-model-config.js";
+import { requestPreferredApi } from "./ai-protocol.js";
+import { aiTools } from "./ai-tools.js";
 
 export type {
   ParsedAiCommand,
@@ -72,125 +64,9 @@ const aiProviderLabels: Record<AiProvider, string> = {
   other: "其他",
 };
 
-const aiTools = [
-  {
-    type: "function" as const,
-    function: {
-      name: "run_shell_command",
-      description: "在远程服务器上执行一条 Shell 命令，用于查看系统状态、日志、文件、进程等。",
-      parameters: {
-        type: "object" as const,
-        properties: {
-          command: { type: "string", description: "要执行的完整 Shell 命令" },
-          reason: { type: "string", description: "为什么执行这条命令，用中文简短说明" },
-          risk: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-            description:
-              "命令风险级别：low=只读查询，medium=常规写入、安装或重启，high=删除、提权、凭据或不可逆操作",
-          },
-        },
-        required: ["command", "reason", "risk"],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "run_saved_server_command",
-      description:
-        "通过 OrbitSSH 已保存的 SSH 连接，在用户明确提及的服务器执行一条命令。授权模式和本地策略仍会生效。",
-      parameters: {
-        type: "object" as const,
-        properties: {
-          serverName: { type: "string", description: "用户提及的已保存服务器名称" },
-          command: { type: "string", description: "要在目标服务器执行的完整 Shell 命令" },
-          reason: { type: "string", description: "为什么执行这条命令，用中文简短说明" },
-          risk: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-            description: "风险级别，与当前服务器命令使用相同标准",
-          },
-        },
-        required: ["serverName", "command", "reason", "risk"],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "run_long_shell_command",
-      description:
-        "在当前服务器启动一条可能长时间运行的 Shell 命令。本地会保持本次对话运行并定期把新增输出交回模型；不确定命令长短时优先使用此工具。",
-      parameters: {
-        type: "object" as const,
-        properties: {
-          command: {
-            type: "string",
-            description: "要执行一次的完整 Shell 命令，不能包含后台执行符号",
-          },
-          reason: { type: "string", description: "为什么执行这条命令，用中文简短说明" },
-          risk: {
-            type: "string",
-            enum: ["low", "medium", "high"],
-            description: "命令风险级别，与普通命令使用相同标准",
-          },
-        },
-        required: ["command", "reason", "risk"],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "report_long_command_progress",
-      description:
-        "仅在长命令状态为 running 时汇报当前进度，并让本地继续等待同一条命令。不得用于启动或重复执行命令。",
-      parameters: {
-        type: "object" as const,
-        properties: {
-          message: {
-            type: "string",
-            description: "直接展示给用户的简短进度说明；没有新增输出时说明任务仍在执行中",
-          },
-        },
-        required: ["message"],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-  },
-  {
-    type: "function" as const,
-    function: {
-      name: "finish_response",
-      description: "已有信息足够回答用户时结束当前 Agent 流程，并返回完整的中文最终答复。",
-      parameters: {
-        type: "object" as const,
-        properties: {
-          message: {
-            type: "string",
-            description: "直接展示给用户的完整最终答复，不能只描述准备执行的动作",
-          },
-        },
-        required: ["message"],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-  },
-];
-
 const maxAiResponseAttempts = 2;
 // 限流或服务端繁忙时多给一次机会，并按 Retry-After 或指数退避等待。
 const maxAiServerBusyAttempts = 3;
-type AiApiProtocol = "responses" | "chat_completions";
 
 /** 流式输出到界面气泡：append 追加正文，replace 整体替换（用于最终答复预览和重试前清空）。 */
 export interface AiStreamSink {
@@ -237,113 +113,6 @@ function createDeadline(streaming: boolean) {
     idleMs: AI_STREAM_IDLE_TIMEOUT_MS,
     totalMs: AI_REQUEST_TOTAL_TIMEOUT_MS,
   });
-}
-
-function getCompatibilityKey(config: AiModelConfig): string {
-  return `${config.baseUrl}\n${config.model}`;
-}
-
-/** DeepSeek 与 GLM 只提供 Chat Completions 兼容接口；其他服务按记住的探测结果选择。 */
-function getPreferredProtocol(config: AiModelConfig): AiApiProtocol | undefined {
-  if (config.provider === "deepseek" || config.provider === "glm") return "chat_completions";
-  return getRememberedProtocol(getCompatibilityKey(config));
-}
-
-interface PreferredApiResponse {
-  response: Response;
-  protocol: AiApiProtocol;
-  responseText: string;
-  requestBody: Record<string, unknown>;
-}
-
-async function requestPreferredApi(
-  activeConfig: AiModelConfig,
-  responsesBody: Record<string, unknown>,
-  chatBody: Record<string, unknown>,
-  signal: AbortSignal,
-  providerName: string,
-  tabId: string,
-): Promise<PreferredApiResponse> {
-  const headers = {
-    Authorization: `Bearer ${activeConfig.apiKey}`,
-    "Content-Type": "application/json",
-  };
-  const compatibilityKey = getCompatibilityKey(activeConfig);
-  const createCompatibilityFallbackHandler =
-    (protocol: AiApiProtocol) => (parameter: AiCompatibilityFallbackParameter) => {
-      if (parameter === "tool_choice") {
-        // 同一接口和模型以后不再发送已确认不支持的参数，结果跨重启保留。
-        rememberToolChoiceUnsupported(compatibilityKey, protocol);
-      }
-      writeAppLog({
-        scope: "main.ai",
-        level: "warn",
-        message: "AI 请求参数不受支持，已回退兼容模式",
-        data: {
-          provider: providerName,
-          model: activeConfig.model,
-          tabId,
-          api: protocol,
-          parameter,
-        },
-      });
-    };
-
-  if (getPreferredProtocol(activeConfig) !== "chat_completions") {
-    if (isToolChoiceUnsupported(compatibilityKey, "responses")) {
-      delete responsesBody.tool_choice;
-    }
-    const responsesResult = await requestAiJsonWithCompatibilityFallback(
-      `${activeConfig.baseUrl}/responses`,
-      headers,
-      responsesBody,
-      signal,
-      false,
-      fetch,
-      createCompatibilityFallbackHandler("responses"),
-    );
-    const { response, responseText } = responsesResult;
-    if (response.ok) {
-      rememberProtocol(compatibilityKey, "responses");
-      return { response, protocol: "responses", responseText: "", requestBody: responsesBody };
-    }
-
-    if (!isResponsesApiUnsupported(response.status, responseText)) {
-      return { response, protocol: "responses", responseText, requestBody: responsesBody };
-    }
-    // 确认不支持后记住结果，之后直接使用 Chat Completions，不再每次启动都探测一次。
-    rememberProtocol(compatibilityKey, "chat_completions");
-    writeAppLog({
-      scope: "main.ai",
-      level: "warn",
-      message: "Responses API 不受支持，回退 Chat Completions",
-      data: {
-        provider: providerName,
-        model: activeConfig.model,
-        tabId,
-        status: response.status,
-      },
-    });
-  }
-
-  if (isToolChoiceUnsupported(compatibilityKey, "chat_completions")) {
-    delete chatBody.tool_choice;
-  }
-  const chatResult = await requestAiJsonWithCompatibilityFallback(
-    `${activeConfig.baseUrl}/chat/completions`,
-    headers,
-    chatBody,
-    signal,
-    Boolean(chatBody.stream),
-    fetch,
-    createCompatibilityFallbackHandler("chat_completions"),
-  );
-  return {
-    response: chatResult.response,
-    protocol: "chat_completions",
-    responseText: chatResult.responseText,
-    requestBody: chatBody,
-  };
 }
 
 /**

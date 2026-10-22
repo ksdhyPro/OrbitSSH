@@ -10,6 +10,11 @@ import { createServerConnectOptions } from "./auth-options.js";
 import { getIdleDisconnectMs, getSshKeepaliveIntervalMs } from "./connection-options.js";
 import { getServerAuthConfig } from "../storage/server-store.js";
 import { describeHostKeyError } from "./host-key-verification.js";
+import {
+  getShellPathIntegrationCommand,
+  stripInjectedShellCommandEcho,
+  type ShellEchoFilterState,
+} from "./shell-path-integration.js";
 import type {
   TerminalSessionKind,
   TerminalOpenResult,
@@ -48,14 +53,12 @@ interface BaseTerminalSession {
   outputBuffer: string;
 }
 
-interface SshTerminalSession extends BaseTerminalSession {
+// 回显过滤状态仅用于屏蔽本应用写入交互 Shell 的一次性初始化命令回显。
+interface SshTerminalSession extends BaseTerminalSession, ShellEchoFilterState {
   kind: "ssh";
   sshClient: Client;
   shellStream?: ClientChannel;
   outputDecoder: StringDecoder;
-  /** 仅用于屏蔽本应用写入交互 Shell 的一次性初始化命令回显。 */
-  pendingShellCommandEcho?: string;
-  pendingShellCommandEchoPrefix?: string;
 }
 
 interface LocalTerminalSession extends BaseTerminalSession {
@@ -70,25 +73,6 @@ const terminalSessions = new Map<string, TerminalSession>();
 const pathIntegrationInstallDelayMs = 120;
 const idleDisconnectCheckIntervalMs = 30_000;
 const maxTerminalOutputBufferChars = 12_000;
-
-/**
- * 为支持的交互 Shell 注入临时提示符钩子，使用户 cd 后主动发送 OSC 7 路径。
- * 钩子仅存在于当前 SSH Shell，不会修改远端的 Shell 配置文件。
- */
-function getShellPathIntegrationCommand(shellPath: string): string | null {
-  const shellName = shellPath.trim().split("/").at(-1)?.toLowerCase();
-
-  switch (shellName) {
-    case "bash":
-      return '__orbitssh_emit_cwd() { printf \'\\033]7;file://%s\\007\' "$PWD"; }; PROMPT_COMMAND="__orbitssh_emit_cwd${PROMPT_COMMAND:+;${PROMPT_COMMAND}}"\r';
-    case "zsh":
-      return "function __orbitssh_emit_cwd() { printf '\\033]7;file://%s\\007' \"$PWD\"; }; precmd_functions+=(__orbitssh_emit_cwd)\r";
-    case "fish":
-      return "function __orbitssh_emit_cwd --on-variable PWD; printf '\\033]7;file://%s\\007' \"$PWD\"; end\r";
-    default:
-      return null;
-  }
-}
 
 function appendTerminalOutput(session: TerminalSession, chunk: string): void {
   session.outputBuffer = `${session.outputBuffer}${chunk}`.slice(-maxTerminalOutputBufferChars);
@@ -335,49 +319,6 @@ function createSshShellEnv(): NodeJS.ProcessEnv {
     LC_ALL: "",
     CLICOLOR: "1",
   };
-}
-
-/**
- * 交互 Shell 会原样回显 SSH 客户端写入的字符。路径同步钩子属于内部命令，
- * 不应污染用户终端，因此只移除与本次注入完全匹配的一段回显。
- */
-function stripInjectedShellCommandEcho(session: SshTerminalSession, data: string): string {
-  const pendingCommand = session.pendingShellCommandEcho;
-
-  if (!pendingCommand) {
-    return data;
-  }
-
-  // 发送时以 CR 提交命令，终端回显通常会转换为 CRLF，因此仅匹配命令正文。
-  const commandText = pendingCommand.replace(/\r$/, "");
-  const bufferedPrefix = session.pendingShellCommandEchoPrefix ?? "";
-  const candidate = `${bufferedPrefix}${data}`;
-  const echoIndex = candidate.indexOf(commandText);
-
-  if (echoIndex < 0) {
-    // SSH 数据可能拆分在命令正文中间；暂存最长可匹配前缀，下一包继续判断。
-    const maxPrefixLength = Math.min(commandText.length - 1, candidate.length);
-
-    for (let length = maxPrefixLength; length > 0; length -= 1) {
-      const suffix = candidate.slice(-length);
-
-      if (commandText.startsWith(suffix)) {
-        session.pendingShellCommandEchoPrefix = suffix;
-        return candidate.slice(0, -length);
-      }
-    }
-
-    session.pendingShellCommandEchoPrefix = undefined;
-    return candidate;
-  }
-
-  session.pendingShellCommandEcho = undefined;
-  session.pendingShellCommandEchoPrefix = undefined;
-  const beforeEcho = candidate.slice(0, echoIndex);
-  const afterEcho = candidate.slice(echoIndex + commandText.length);
-
-  // 同时移除命令提交产生的换行，避免在首次提示符前留下空白行。
-  return `${beforeEcho}${afterEcho.replace(/^\r?\n/, "")}`;
 }
 
 function forwardSshShellData(session: SshTerminalSession, data: string): void {
