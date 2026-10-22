@@ -18,7 +18,6 @@ import type {
 } from "../../shared/sftp";
 import type { ContextMenuItem, ContextMenuState } from "../types/context-menu";
 import { resolveMenuPlacement } from "../utils/menu-position";
-import { getRemoteParentPath } from "../utils/path";
 import { isPreviewImageFile } from "../utils/file-kind";
 import {
   buildRemoteChildPath,
@@ -42,27 +41,22 @@ import ContextMenu from "./ContextMenu.vue";
 import DeleteConfirmDialog from "./DeleteConfirmDialog.vue";
 import RemoteFileList, { type RemoteFileListNode } from "./RemoteFileList.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
+import { toggleModifyTimeSortDirection } from "../utils/file-sort";
 import {
-  compareByModifyTime,
-  toggleModifyTimeSortDirection,
-  type ModifyTimeSortDirection,
-} from "../utils/file-sort";
-type TransferPaneKey = "left" | "right";
-const LOCAL_ENDPOINT_ID = "__local__";
-interface TransferPaneState {
-  tabId: string;
-  serverId: string;
-  currentPath: string;
-  parentPath: string;
-  pathInput: string;
-  nodes: RemoteFileNode[];
-  selectedPaths: Set<string>;
-  deletingPaths: Set<string>;
-  lastClickedIndex: number;
-  modifyTimeSortDirection: ModifyTimeSortDirection;
-  loading: boolean;
-  error: string;
-}
+  buildEndpointOptions,
+  buildTransferMenuItems,
+  canTransferBetweenPanes,
+  createTransferPaneState,
+  getOppositePaneKey,
+  getPaneLabel,
+  getSelectedNodes,
+  getVisibleNodes,
+  isLocalPane,
+  isRemoteNodeDeleting,
+  LOCAL_ENDPOINT_ID,
+  type TransferPaneKey,
+  type TransferPaneState,
+} from "../utils/transfer-panes";
 interface TransferContextMenuState extends ContextMenuState {
   paneKey: TransferPaneKey | null;
   node: RemoteFileNode | null;
@@ -91,34 +85,8 @@ const emit = defineEmits<{
 }>();
 const sftpStore = useSftpStore();
 const fileEditorStore = useFileEditorStore();
-const leftPane = reactive<TransferPaneState>({
-  tabId: `data-transfer-left-${crypto.randomUUID()}`,
-  serverId: LOCAL_ENDPOINT_ID,
-  currentPath: "",
-  parentPath: "",
-  pathInput: "",
-  nodes: [],
-  selectedPaths: new Set<string>(),
-  deletingPaths: new Set<string>(),
-  lastClickedIndex: -1,
-  modifyTimeSortDirection: "desc",
-  loading: false,
-  error: "",
-});
-const rightPane = reactive<TransferPaneState>({
-  tabId: `data-transfer-right-${crypto.randomUUID()}`,
-  serverId: "",
-  currentPath: "",
-  parentPath: "",
-  pathInput: "",
-  nodes: [],
-  selectedPaths: new Set<string>(),
-  deletingPaths: new Set<string>(),
-  lastClickedIndex: -1,
-  modifyTimeSortDirection: "desc",
-  loading: false,
-  error: "",
-});
+const leftPane = reactive<TransferPaneState>(createTransferPaneState("left", LOCAL_ENDPOINT_ID));
+const rightPane = reactive<TransferPaneState>(createTransferPaneState("right", ""));
 const focusedPane = ref<TransferPaneKey>("left");
 const renaming = ref<TransferRenamingState | null>(null);
 const transferContextMenu = reactive<TransferContextMenuState>({
@@ -159,133 +127,33 @@ const leftSelectedNodes = computed(() => getSelectedNodes(leftPane));
 const rightSelectedNodes = computed(() => getSelectedNodes(rightPane));
 const leftVisibleNodes = computed(() => getVisibleNodes(leftPane));
 const rightVisibleNodes = computed(() => getVisibleNodes(rightPane));
-const leftServerOptions = computed<AppSelectOption[]>(() => [
-  { value: LOCAL_ENDPOINT_ID, label: "本地" },
-  ...props.servers.map(server => ({
-    value: server.id,
-    label: server.name,
-  })),
-]);
-const rightServerOptions = computed<AppSelectOption[]>(() => [
-  { value: LOCAL_ENDPOINT_ID, label: "本地" },
-  ...props.servers.map(server => ({
-    value: server.id,
-    label: server.name,
-  })),
-]);
+const endpointOptions = computed<AppSelectOption[]>(() => buildEndpointOptions(props.servers));
 const transferMenuItems = computed<ContextMenuItem[]>(() => {
   const paneKey = transferContextMenu.paneKey ?? focusedPane.value;
-  const targetKey = getOppositePaneKey(paneKey);
   const pane = getPaneByKey(paneKey);
   const node = transferContextMenu.node;
-  const count = transferContextMenu.selectedCount;
-  const multiContext = isContextMultiSelection();
-  const items: ContextMenuItem[] = [
-    {
-      key: "transfer-to-other",
-      label: `传输到${getPaneLabel(targetKey)}`,
-      icon: arrowUpIcon,
-      disabled: !canTransferFromPane(paneKey),
+  return buildTransferMenuItems({
+    targetLabel: getPaneLabel(getOppositePaneKey(paneKey)),
+    isLocal: isLocalPane(pane),
+    node,
+    selectedCount: transferContextMenu.selectedCount,
+    multiSelection: isContextMultiSelection(),
+    canTransfer: canTransferFromPane(paneKey),
+    canDelete: canDeleteContextNodes(),
+    canRename: canRenameContextNode(),
+    canEdit: canEditContextNode(),
+    canDownload: Boolean(node && sftpStore.canDownloadRemoteFile(pane.tabId, node)),
+    isPreviewImage: Boolean(node && isPreviewImageFile(node)),
+    editLabel: node ? sftpStore.getFileEditMenuLabel(node) : "",
+    icons: {
+      transfer: arrowUpIcon,
+      download: arrowDownIcon,
+      edit: editIcon,
+      file: fileIcon,
+      folder: folderIcon,
+      trash: trashIcon,
     },
-  ];
-  if (isLocalPane(pane)) {
-    return items;
-  }
-
-  if (multiContext) {
-    items.push({
-      key: "delete",
-      label: `删除 ${transferContextMenu.selectedCount} 项`,
-      icon: trashIcon,
-      danger: true,
-      disabled: !canDeleteContextNodes(),
-    });
-    return items;
-  }
-
-  const createItems: ContextMenuItem[] =
-    !node || count === 0
-      ? [
-          {
-            key: "new-file",
-            label: "新建文件",
-            icon: fileIcon,
-          },
-          {
-            key: "new-directory",
-            label: "新建文件夹",
-            icon: folderIcon,
-          },
-        ]
-      : [];
-  if (!node) {
-    items.push(...createItems);
-    return items;
-  }
-
-  if (node.type === "directory") {
-    items.push(
-      ...createItems,
-      {
-        key: "download",
-        label: "下载文件夹",
-        icon: arrowDownIcon,
-        disabled: !sftpStore.canDownloadRemoteFile(pane.tabId, node),
-      },
-      {
-        key: "rename",
-        label: "重命名",
-        icon: editIcon,
-        disabled: !canRenameContextNode(),
-      },
-      {
-        key: "delete",
-        label: "删除",
-        icon: trashIcon,
-        danger: true,
-        disabled: !canDeleteContextNodes(),
-      },
-    );
-    return items;
-  }
-
-  const primaryItem = isPreviewImageFile(node)
-    ? {
-        key: "preview",
-        label: "预览",
-        icon: fileIcon,
-      }
-    : {
-        key: "edit",
-        label: sftpStore.getFileEditMenuLabel(node),
-        icon: editIcon,
-        disabled: !canEditContextNode(),
-      };
-
-  items.push(
-    ...createItems,
-    primaryItem,
-    {
-      key: "download",
-      label: "下载",
-      icon: arrowDownIcon,
-      disabled: !sftpStore.canDownloadRemoteFile(pane.tabId, node),
-    },
-    {
-      key: "rename",
-      label: "重命名",
-      icon: editIcon,
-      disabled: !canRenameContextNode(),
-    },
-    {
-      key: "delete",
-      label: "删除",
-      icon: trashIcon,
-      danger: true,
-      disabled: !canDeleteContextNodes(),
-    },
-  );
-  return items;
+  });
 });
 const footerText = computed(
   () =>
@@ -294,21 +162,6 @@ const footerText = computed(
 
 function getPaneByKey(paneKey: TransferPaneKey): TransferPaneState {
   return paneKey === "left" ? leftPane : rightPane;
-}
-function isLocalPane(pane: TransferPaneState): boolean {
-  return pane.serverId === LOCAL_ENDPOINT_ID;
-}
-function getOppositePaneKey(paneKey: TransferPaneKey): TransferPaneKey {
-  return paneKey === "left" ? "right" : "left";
-}
-function getPaneLabel(paneKey: TransferPaneKey): string {
-  return paneKey === "left" ? "左侧" : "右侧";
-}
-function getSelectedNodes(pane: TransferPaneState): RemoteFileNode[] {
-  return pane.nodes.filter(node => pane.selectedPaths.has(node.path));
-}
-function isRemoteNodeDeleting(pane: TransferPaneState, node: RemoteFileNode): boolean {
-  return pane.deletingPaths.has(node.path);
 }
 function getPaneRenamingPath(paneKey: TransferPaneKey): string {
   return renaming.value?.paneKey === paneKey ? renaming.value.path : "";
@@ -356,40 +209,7 @@ function selectPaneNodesByPaths(paneKey: TransferPaneKey, paths: string[]): void
   pane.lastClickedIndex = nextSelection.lastClickedIndex;
 }
 function canTransferFromPane(paneKey: TransferPaneKey): boolean {
-  const sourcePane = getPaneByKey(paneKey);
-  const targetPane = getPaneByKey(getOppositePaneKey(paneKey));
-  const selectedNodes = getSelectedNodes(sourcePane);
-  // 左右都选择本地时没有跨端传输意义，避免误走 SFTP 上传流程。
-  const hasRemoteEndpoint = !isLocalPane(sourcePane) || !isLocalPane(targetPane);
-  const canDownloadToLocal =
-    !isLocalPane(targetPane) || selectedNodes.every(node => node.type === "file");
-  const hasUnsafeSameServerTarget =
-    !isLocalPane(sourcePane) &&
-    sourcePane.serverId === targetPane.serverId &&
-    selectedNodes.some(node => {
-      const sourcePath = normalizeComparisonPath(node.path);
-      const targetDirectory = normalizeComparisonPath(targetPane.currentPath);
-      const finalTarget = normalizeComparisonPath(
-        buildRemoteChildPath(targetPane.currentPath, node.name),
-      );
-      return (
-        finalTarget === sourcePath ||
-        (node.type === "directory" &&
-          (targetDirectory === sourcePath || targetDirectory.startsWith(`${sourcePath}/`)))
-      );
-    });
-
-  return Boolean(
-    sourcePane.serverId &&
-    targetPane.serverId &&
-    targetPane.currentPath &&
-    selectedNodes.length > 0 &&
-    hasRemoteEndpoint &&
-    canDownloadToLocal &&
-    !hasUnsafeSameServerTarget &&
-    !sourcePane.loading &&
-    !targetPane.loading,
-  );
+  return canTransferBetweenPanes(getPaneByKey(paneKey), getPaneByKey(getOppositePaneKey(paneKey)));
 }
 function isContextMultiSelection(): boolean {
   return transferContextMenu.contextNodeSelected && transferContextMenu.selectedCount > 1;
@@ -424,47 +244,6 @@ function getContextDeleteNodes(): RemoteFileNode[] {
 
 function canDeleteContextNodes(): boolean {
   return getContextDeleteNodes().length > 0;
-}
-
-function createParentNode(pane: TransferPaneState): RemoteFileListNode | null {
-  if (isLocalPane(pane)) {
-    return pane.parentPath
-      ? {
-          path: pane.parentPath,
-          name: "..",
-          type: "directory",
-          loaded: true,
-          isVirtualParent: true,
-        }
-      : null;
-  }
-
-  const currentPath = pane.currentPath;
-  const normalizedPath = currentPath.replace(/\/+/g, "/").replace(/\/$/, "");
-
-  if (!normalizedPath || normalizedPath === "/") {
-    return null;
-  }
-
-  return {
-    path: getRemoteParentPath(currentPath),
-    name: "..",
-    type: "directory",
-    loaded: true,
-    isVirtualParent: true,
-  };
-}
-
-function getVisibleNodes(pane: TransferPaneState): RemoteFileListNode[] {
-  const parentNode = createParentNode(pane);
-  const sortedNodes = [...pane.nodes].sort(compareByModifyTime(pane.modifyTimeSortDirection));
-
-  return parentNode ? [parentNode, ...sortedNodes] : sortedNodes;
-}
-
-function normalizeComparisonPath(value: string): string {
-  const normalized = value.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
-  return normalized.length > 1 ? normalized.replace(/\/$/, "") : normalized;
 }
 
 function togglePaneModifyTimeSort(pane: TransferPaneState): void {
@@ -1380,7 +1159,7 @@ onUnmounted(() => {
             title="左侧位置"
             ariaLabel="左侧位置"
             placeholder="请选择位置"
-            :options="leftServerOptions"
+            :options="endpointOptions"
           />
         </header>
         <input
@@ -1466,7 +1245,7 @@ onUnmounted(() => {
             title="右侧服务器"
             ariaLabel="右侧服务器"
             placeholder="请选择连接"
-            :options="rightServerOptions"
+            :options="endpointOptions"
           />
         </header>
         <input

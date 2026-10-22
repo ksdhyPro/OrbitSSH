@@ -84,28 +84,17 @@ describe("文件传输弹窗", () => {
     );
   });
 
-  it("左右位置下拉均提供本地选项，两侧都为本地时禁止传输", () => {
+  it("左右位置下拉与传输校验委托给 transfer-panes", () => {
+    // 选项内容和传输校验的行为由 transfer-panes.test.ts 验证。
     const source = dataTransferDialog();
-    const leftOptions = source.match(
-      /const leftServerOptions[\s\S]*?const rightServerOptions/,
-    )?.[0];
-    const rightOptions = source.match(
-      /const rightServerOptions[\s\S]*?const transferMenuItems/,
-    )?.[0];
-    expect(leftOptions).toMatch(/value:\s*LOCAL_ENDPOINT_ID/);
-    expect(rightOptions).toMatch(/value:\s*LOCAL_ENDPOINT_ID/);
-
-    const transferGuard = source.match(
-      /function canTransferFromPane[\s\S]*?function isContextMultiSelection/,
-    )?.[0];
-    expect(transferGuard).toMatch(/hasRemoteEndpoint/);
-    expect(transferGuard).toMatch(/!isLocalPane\(sourcePane\)\s*\|\|\s*!isLocalPane\(targetPane\)/);
+    expect(source).toMatch(/buildEndpointOptions\(props\.servers\)/);
+    expect(source.match(/:options="endpointOptions"/g)).toHaveLength(2);
+    expect(source).toMatch(/canTransferBetweenPanes\(/);
+    expect(source).toMatch(/buildTransferMenuItems\(\{/);
   });
 
   it("左右列表可独立切换修改时间排序", () => {
     const source = dataTransferDialog();
-    expect(source).toMatch(/modifyTimeSortDirection:\s*"desc"/);
-    expect(source).toMatch(/compareByModifyTime\(pane\.modifyTimeSortDirection\)/);
     expect(source).toMatch(/togglePaneModifyTimeSort\(leftPane\)/);
     expect(source).toMatch(/togglePaneModifyTimeSort\(rightPane\)/);
     expect(source).toMatch(/左侧修改时间，当前/);
