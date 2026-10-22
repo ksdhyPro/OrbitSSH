@@ -4,16 +4,15 @@ import {
   AI_PRESET_PROMPT_MAX_CHARS,
   SFTP_TRANSFER_CONCURRENCY_MAX,
   SFTP_TRANSFER_CONCURRENCY_MIN,
-  type AiModelConfig,
   type AiSettings,
   type AppSettings,
   type AppThemeMode,
 } from "../../shared/settings";
-import type { OrbitSshMcpInstallInfo } from "../../shared/mcp";
 import { getShortcutSections } from "../config/shortcuts";
 import arrowLeftIcon from "../assets/icons/arrow-left.svg";
 import chevronRightIcon from "../assets/icons/chevron-right.svg";
-import AppDialog from "./AppDialog.vue";
+import AiModelConfigDialog from "./settings/AiModelConfigDialog.vue";
+import McpInstallDialog from "./settings/McpInstallDialog.vue";
 import AppSelect, { type AppSelectOption } from "./ui/AppSelect.vue";
 import NumberStepper from "./NumberStepper.vue";
 import AppSwitch from "./ui/AppSwitch.vue";
@@ -87,23 +86,9 @@ const aiModeSegmentedOptions: SegmentedOption<AiSettings["defaultMode"]>[] = aiM
   }),
 );
 
-const aiConfigDraft = ref<AiModelConfig[]>([]);
-// 模型列表弹窗
-const isAiConfigDialogOpen = ref(false);
+// MCP 安装提示词与模型配置各自是独立弹窗组件，这里只控制打开状态。
 const isMcpInstallDialogOpen = ref(false);
-const mcpInstallPrompt = ref("");
-const mcpInstallMessage = ref("");
-const isMcpInstallLoading = ref(false);
-// 新增/编辑表单子弹窗（与列表弹窗分离，避免常驻表单撑高弹窗）
-const isAiConfigFormDialogOpen = ref(false);
-const editingAiConfigId = ref<string | null>(null);
-const aiConfigMessage = ref("");
-const aiConfigForm = ref({
-  model: "",
-  baseUrl: "",
-  apiKey: "",
-  contextTokenLimitK: 0,
-});
+const isAiConfigDialogOpen = ref(false);
 const aiPresetPromptDraft = ref("");
 const isAiPresetPromptDirty = computed(
   () => aiPresetPromptDraft.value !== props.appSettings.ai.presetPrompt,
@@ -124,150 +109,19 @@ const aiConfigSummary = computed(() => {
     : `共 ${count} 个，未选择当前模型`;
 });
 
-const isEditingAiConfig = computed(() => Boolean(editingAiConfigId.value));
-
-const aiConfigFormDialogTitle = computed(() => (isEditingAiConfig.value ? "编辑模型" : "新增模型"));
-
-const aiConfigFormError = computed(() =>
-  validateAiConfigForm(
-    aiConfigForm.value.model,
-    aiConfigForm.value.baseUrl,
-    aiConfigForm.value.apiKey,
-    aiConfigForm.value.contextTokenLimitK,
-  ),
-);
-
-const canSaveAiConfigForm = computed(() => !aiConfigFormError.value);
-
 watch(
   () => props.open,
   open => {
     if (open) {
-      resetAiConfigDraft();
       resetAiPresetPromptDraft();
     }
   },
   { immediate: true },
 );
 
-// 复制配置草稿，避免用户输入未完成时直接写入全局设置。
-function cloneAiConfigs(configs: AiModelConfig[]): AiModelConfig[] {
-  return configs.map(config => ({ ...config }));
-}
-
-// 打开设置页时从当前设置同步一份可编辑草稿。
-function resetAiConfigDraft(): void {
-  aiConfigDraft.value = cloneAiConfigs(props.appSettings.ai.configs);
-  resetAiConfigForm();
-  aiConfigMessage.value = "";
-}
-
-// 去掉尾部斜杠，避免拼接 /chat/completions 时生成重复路径分隔符。
-function normalizeBaseUrl(value: string): string {
-  return value.trim().replace(/\/+$/, "");
-}
-
-// 校验 baseUrl 是否为可请求的 HTTP(S) 地址。
-function isValidBaseUrl(value: string): boolean {
-  if (!value || /\s/.test(value)) return false;
-
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
-}
-
-// 校验新增/编辑表单，只有完整填写后才允许保存模型配置。
-function validateAiConfigForm(
-  model: string,
-  baseUrl: string,
-  apiKey: string,
-  contextTokenLimitK: number,
-): string {
-  const normalizedModel = model.trim();
-  const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
-  const normalizedApiKey = apiKey.trim();
-
-  if (!normalizedModel || /\s/.test(normalizedModel) || normalizedModel.length > 120) {
-    return "模型名不能为空、不能包含空格，且不超过 120 个字符。";
-  }
-
-  if (!isValidBaseUrl(normalizedBaseUrl)) {
-    return "Base URL 必须是 http 或 https 地址，且不能包含空格。";
-  }
-
-  if (!normalizedApiKey || /\s/.test(normalizedApiKey) || normalizedApiKey.length < 8) {
-    return "API Key 至少 8 位，且不能包含空格。";
-  }
-
-  if (!Number.isSafeInteger(contextTokenLimitK) || contextTokenLimitK <= 0) {
-    return "上下文总 Token 限制必须是大于 0 的整数。";
-  }
-
-  return "";
-}
-
 // 预提示词只在点击保存后写入全局设置，编辑过程保持为本地草稿。
 function resetAiPresetPromptDraft(): void {
   aiPresetPromptDraft.value = props.appSettings.ai.presetPrompt;
-}
-
-function buildMcpInstallPrompt(info: OrbitSshMcpInstallInfo): string {
-  return [
-    "请帮我将 OrbitSSH 的 Skill 和 MCP 安装到当前 AI 客户端，保存为当前用户的持久配置，让以后新建的会话也能使用。",
-    "",
-    "OrbitSSH MCP 信息：",
-    `- 名称：${info.name}`,
-    `- 传输方式：${info.transport}`,
-    `- 启动命令：${JSON.stringify(info.command)}`,
-    `- 启动参数：${JSON.stringify(info.args)}`,
-    `- Skill 目录：${JSON.stringify(info.skillDirectory)}`,
-    "",
-    "请完成以下操作：",
-    "1. 判断当前 AI 客户端是否支持本地 STDIO MCP，并确认它实际使用的用户级配置位置。",
-    "2. 在保留全部现有配置的前提下，注册名为 orbitssh 的 MCP；不得删除或覆盖其他 MCP 服务。",
-    "3. 如果客户端支持 Skill，把上述 Skill 目录安装到用户级 Skill 目录；如果不支持，则将 SKILL.md 中的规则转换成当前客户端支持的 Agent 指令。",
-    "4. 验证 MCP 是否能发现 get_status、list_connections、execute_command、upload_file、download_file、get_transfer_status 六个工具。",
-    "5. 不得读取、导出或询问 SSH 密码、私钥和口令，也不得替我开启 OrbitSSH 设置中的 SSH/SFTP MCP 授权开关。",
-    "6. 如果当前客户端不支持本地 MCP，或你没有本地文件修改能力，请明确说明，并给出适用于当前客户端的完整手动配置，不要声称已经安装成功。",
-    "7. 完成后说明修改了哪些配置，以及是否需要重启客户端或新建会话。",
-    "",
-    "OrbitSSH 必须保持运行；实际使用 SSH 或 SFTP 前，我会在 OrbitSSH 的“设置 → AI”中手动开启对应授权。",
-  ].join("\n");
-}
-
-async function openMcpInstallDialog(): Promise<void> {
-  isMcpInstallDialogOpen.value = true;
-  isMcpInstallLoading.value = true;
-  mcpInstallMessage.value = "";
-  mcpInstallPrompt.value = "";
-
-  try {
-    const info = await window.orbitSSH.getMcpInstallInfo();
-    mcpInstallPrompt.value = buildMcpInstallPrompt(info);
-  } catch (error) {
-    mcpInstallMessage.value = `生成安装提示词失败：${error instanceof Error ? error.message : String(error)}`;
-  } finally {
-    isMcpInstallLoading.value = false;
-  }
-}
-
-function closeMcpInstallDialog(): void {
-  isMcpInstallDialogOpen.value = false;
-  mcpInstallMessage.value = "";
-}
-
-async function copyMcpInstallPrompt(): Promise<void> {
-  if (!mcpInstallPrompt.value) return;
-
-  try {
-    await window.orbitSSH.clipboard.writeText(mcpInstallPrompt.value);
-    mcpInstallMessage.value = "安装提示词已复制。";
-  } catch (error) {
-    mcpInstallMessage.value = `复制失败：${error instanceof Error ? error.message : String(error)}`;
-  }
 }
 
 function saveAiPresetPrompt(): void {
@@ -277,126 +131,12 @@ function saveAiPresetPrompt(): void {
   emit("updateAiSetting", "presetPrompt", aiPresetPromptDraft.value);
 }
 
-function resetAiConfigForm(): void {
-  editingAiConfigId.value = null;
-  aiConfigForm.value = {
-    model: "",
-    baseUrl: "",
-    apiKey: "",
-    contextTokenLimitK: 0,
-  };
+function openMcpInstallDialog(): void {
+  isMcpInstallDialogOpen.value = true;
 }
 
 function openAiConfigDialog(): void {
-  resetAiConfigDraft();
   isAiConfigDialogOpen.value = true;
-}
-
-function closeAiConfigDialog(): void {
-  isAiConfigDialogOpen.value = false;
-  resetAiConfigForm();
-  isAiConfigFormDialogOpen.value = false;
-  aiConfigMessage.value = "";
-}
-
-// 关闭新增/编辑子弹窗并清空表单。
-function closeAiConfigFormDialog(): void {
-  isAiConfigFormDialogOpen.value = false;
-  resetAiConfigForm();
-}
-
-function startAddAiConfig(): void {
-  editingAiConfigId.value = null;
-  aiConfigForm.value = {
-    model: "",
-    baseUrl: "",
-    apiKey: "",
-    contextTokenLimitK: 0,
-  };
-  aiConfigMessage.value = "";
-  isAiConfigFormDialogOpen.value = true;
-}
-
-function startEditAiConfig(config: AiModelConfig): void {
-  editingAiConfigId.value = config.id;
-  aiConfigForm.value = {
-    model: config.model,
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
-    contextTokenLimitK: config.contextTokenLimitK,
-  };
-  aiConfigMessage.value = "";
-  isAiConfigFormDialogOpen.value = true;
-}
-
-function maskApiKey(apiKey: string): string {
-  const value = apiKey.trim();
-  if (!value) return "-";
-  if (value.length <= 8) return "*".repeat(value.length);
-
-  return `${value.slice(0, 3)}${"*".repeat(Math.min(value.length - 6, 12))}${value.slice(-3)}`;
-}
-
-function persistAiConfigs(configs: AiModelConfig[], activeConfigId: string): void {
-  emit("updateAiSettings", {
-    ...props.appSettings.ai,
-    activeConfigId,
-    configs,
-  });
-  aiConfigDraft.value = cloneAiConfigs(configs);
-}
-
-function saveAiConfigForm(): void {
-  const error = validateAiConfigForm(
-    aiConfigForm.value.model,
-    aiConfigForm.value.baseUrl,
-    aiConfigForm.value.apiKey,
-    aiConfigForm.value.contextTokenLimitK,
-  );
-  if (error) {
-    aiConfigMessage.value = error;
-    return;
-  }
-
-  const normalizedConfig: AiModelConfig = {
-    id: editingAiConfigId.value ?? `ai-${crypto.randomUUID()}`,
-    name: aiConfigForm.value.model.trim(),
-    provider: "other",
-    baseUrl: normalizeBaseUrl(aiConfigForm.value.baseUrl),
-    apiKey: aiConfigForm.value.apiKey.trim(),
-    model: aiConfigForm.value.model.trim(),
-    contextTokenLimitK: aiConfigForm.value.contextTokenLimitK,
-  };
-  const nextConfigs = editingAiConfigId.value
-    ? aiConfigDraft.value.map(config =>
-        config.id === editingAiConfigId.value ? normalizedConfig : config,
-      )
-    : [...aiConfigDraft.value, normalizedConfig];
-  const nextActiveConfigId = props.appSettings.ai.activeConfigId || normalizedConfig.id;
-
-  persistAiConfigs(nextConfigs, nextActiveConfigId);
-  isAiConfigFormDialogOpen.value = false;
-  resetAiConfigForm();
-  aiConfigMessage.value = "模型配置已保存。";
-}
-
-function selectAiConfig(configId: string): void {
-  persistAiConfigs(aiConfigDraft.value, configId);
-  aiConfigMessage.value = "当前模型已更新。";
-}
-
-function removeAiConfig(configId: string): void {
-  const nextConfigs = aiConfigDraft.value.filter(config => config.id !== configId);
-  const nextActiveConfigId =
-    props.appSettings.ai.activeConfigId === configId
-      ? (nextConfigs[0]?.id ?? "")
-      : props.appSettings.ai.activeConfigId;
-
-  persistAiConfigs(nextConfigs, nextActiveConfigId);
-  if (editingAiConfigId.value === configId) {
-    resetAiConfigForm();
-  }
-  aiConfigMessage.value = "模型配置已删除。";
 }
 </script>
 
@@ -738,199 +478,12 @@ function removeAiConfig(configId: string): void {
     </section>
   </Teleport>
 
-  <AppDialog
-    v-if="isMcpInstallDialogOpen"
-    title="如何安装到 Agent？"
-    description="复制下面的提示词并发送给你的 AI 客户端。"
-    width="large"
-    @close="closeMcpInstallDialog"
-  >
-    <div class="mcp-install-dialog">
-      <p class="mcp-install-tip">
-        适用于支持本地 STDIO MCP 的 AI 客户端。安装完成后，通常需要重启客户端或新建会话。
-      </p>
-      <textarea
-        class="mcp-install-prompt"
-        :value="mcpInstallPrompt"
-        readonly
-        spellcheck="false"
-        aria-label="OrbitSSH Agent 安装提示词"
-        :placeholder="isMcpInstallLoading ? '正在生成安装提示词…' : ''"
-      />
-      <div class="mcp-install-actions">
-        <span :class="{ 'is-error': mcpInstallMessage.includes('失败') }">
-          {{ mcpInstallMessage }}
-        </span>
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="isMcpInstallLoading || !mcpInstallPrompt"
-          @click="copyMcpInstallPrompt"
-        >
-          复制提示词
-        </button>
-      </div>
-    </div>
-  </AppDialog>
+  <McpInstallDialog :open="isMcpInstallDialogOpen" @close="isMcpInstallDialogOpen = false" />
 
-  <AppDialog
-    v-if="isAiConfigDialogOpen"
-    title="模型配置"
-    width="large"
-    @close="closeAiConfigDialog"
-  >
-    <div class="ai-config-dialog">
-      <div class="ai-config-toolbar">
-        <p>API Key 仅加密保存在本机。</p>
-        <div class="ai-config-actions">
-          <button type="button" class="btn btn-primary" @click="startAddAiConfig">新增模型</button>
-        </div>
-      </div>
-
-      <div v-if="aiConfigMessage" class="ai-config-status">
-        <p v-if="aiConfigMessage" class="ai-config-form-tip">
-          {{ aiConfigMessage }}
-        </p>
-      </div>
-
-      <div class="ai-config-table-wrap">
-        <table class="ai-config-table">
-          <thead>
-            <tr>
-              <th>模型名</th>
-              <th>提供商</th>
-              <th>连接信息</th>
-              <th>上下文限制</th>
-              <th>当前</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="aiConfigDraft.length === 0">
-              <td colspan="6" class="empty-state ai-config-empty">
-                暂无模型配置，点击「新增」开始配置
-              </td>
-            </tr>
-            <tr
-              v-for="config in aiConfigDraft"
-              :key="config.id"
-              :class="{
-                'ai-config-row-active': config.id === appSettings.ai.activeConfigId,
-              }"
-            >
-              <td>
-                {{ config.model }}
-              </td>
-              <td>OpenAI 兼容</td>
-              <td>
-                {{ maskApiKey(config.apiKey) }}
-              </td>
-              <td>
-                {{ config.contextTokenLimitK > 0 ? `${config.contextTokenLimitK}K` : "未设置" }}
-              </td>
-              <td>
-                <span
-                  v-if="config.id === appSettings.ai.activeConfigId"
-                  class="ai-config-current-badge"
-                >
-                  当前
-                </span>
-                <button
-                  v-else
-                  type="button"
-                  class="btn btn-secondary btn-sm"
-                  @click="selectAiConfig(config.id)"
-                >
-                  使用
-                </button>
-              </td>
-              <td>
-                <div class="ai-config-actions">
-                  <button
-                    type="button"
-                    class="btn btn-secondary btn-sm"
-                    @click="startEditAiConfig(config)"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-danger-soft btn-sm"
-                    @click="removeAiConfig(config.id)"
-                  >
-                    删除
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </AppDialog>
-
-  <!-- 新增/编辑模型：独立子弹窗，避免常驻表单撑高列表弹窗 -->
-  <AppDialog
-    v-if="isAiConfigFormDialogOpen"
-    :title="aiConfigFormDialogTitle"
-    width="medium"
-    @close="closeAiConfigFormDialog"
-  >
-    <form class="ai-config-form" @submit.prevent="saveAiConfigForm">
-      <p class="ai-config-form-tip" :class="{ 'is-error': aiConfigFormError }">
-        {{ aiConfigFormError || "填写完整后保存，API Key 仅本地保存。" }}
-      </p>
-
-      <label>
-        <span>模型名</span>
-        <input
-          v-model="aiConfigForm.model"
-          class="settings-text-input"
-          type="text"
-          placeholder="deepseek-chat"
-        />
-      </label>
-
-      <label>
-        <span>Base URL</span>
-        <input
-          v-model="aiConfigForm.baseUrl"
-          class="settings-text-input"
-          type="url"
-          placeholder="https://api.example.com"
-        />
-      </label>
-
-      <label>
-        <span>API Key</span>
-        <input
-          v-model="aiConfigForm.apiKey"
-          class="settings-text-input"
-          type="password"
-          autocomplete="off"
-          placeholder="sk-..."
-        />
-      </label>
-
-      <label>
-        <span>上下文总 Token 限制</span>
-        <div class="ai-config-number-input">
-          <input
-            v-model.number="aiConfigForm.contextTokenLimitK"
-            class="settings-text-input"
-            type="number"
-            min="1"
-            step="1"
-            placeholder="128"
-          />
-          <span>K</span>
-        </div>
-      </label>
-
-      <div class="ai-config-form-actions">
-        <button type="button" class="btn btn-ghost" @click="closeAiConfigFormDialog">取消</button>
-        <button type="submit" class="btn btn-primary" :disabled="!canSaveAiConfigForm">保存</button>
-      </div>
-    </form>
-  </AppDialog>
+  <AiModelConfigDialog
+    :open="isAiConfigDialogOpen"
+    :ai-settings="appSettings.ai"
+    @close="isAiConfigDialogOpen = false"
+    @update-ai-settings="emit('updateAiSettings', $event)"
+  />
 </template>
