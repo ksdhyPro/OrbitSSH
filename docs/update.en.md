@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.10.15
+
+1. Fixed long AI conversations becoming unable to continue when accumulated command output filled the context window. Historical commands now count toward the context budget: recent results are retained, older results are reduced to redacted output tails, and the oldest records are removed when the budget is exhausted.
+2. Improved AI context compression. Unnecessary summary requests are skipped when trimming command history brings the context back within budget or the conversation history is too short. When the model reports a context limit error, command history is reduced further to avoid blocking the conversation because too little room remains for a summary.
+3. Refined token estimation to distinguish English and code, CJK characters, and other characters, reducing premature compression caused by overestimating English command output. Historical and current command results now follow the same truncation rules to keep context prefixes stable.
+4. Added development collaboration, domain documentation, diagram authoring guidelines, and a Windows installer directory guide, and updated the AI architecture and workflow documentation.
+
 ## v1.10.14
 
 1. Added SSH host key verification. On the first connection to a server, the host fingerprint is shown and credentials are sent only after confirmation. If the key later changes, the old and new fingerprints are shown and the connection is closed by default; the new key is trusted only on explicit choice. This applies to terminals, SFTP, file transfers, port forwarding, custom commands, AI cross-server commands, and MCP connections.
