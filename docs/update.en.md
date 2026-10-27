@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.10.16
+
+1. Fixed AI conversations returning HTTP 400 when forced tool selection conflicted with DeepSeek thinking mode. Tool selection now uses automatic mode while retaining thinking capabilities and local command safety checks.
+2. Updated DeepSeek protocol selection to prefer the supported Responses API, falling back to Chat Completions when the endpoint is confirmed unsupported and remembering the result.
+3. Improved AI parameter compatibility fallback with broader unsupported-parameter detection and safeguards against falling back on unrelated parameter, authentication, rate-limit, or server errors. Failure logs now include redacted provider error details for troubleshooting.
+
 ## v1.10.15
 
 1. Fixed long AI conversations becoming unable to continue when accumulated command output filled the context window. Historical commands now count toward the context budget: recent results are retained, older results are reduced to redacted output tails, and the oldest records are removed when the budget is exhausted.

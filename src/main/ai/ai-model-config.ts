@@ -13,7 +13,7 @@ const knownProviderDomains: ReadonlyArray<[AiProvider, readonly string[]]> = [
 
 /**
  * 设置界面新增的模型统一保存为 other，这里按 Base URL 识别 DeepSeek 与 GLM，
- * 让它们直接使用 Chat Completions，不必先请求一次不存在的 Responses 接口。
+ * 以便请求层应用官方服务的协议选择与参数兼容规则。
  */
 export function inferAiProvider(baseUrl: string): AiProvider {
   let hostname: string;

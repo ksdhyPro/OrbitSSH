@@ -13,22 +13,35 @@ function isUnsupportedParameterError(
   parameterPattern: RegExp,
 ): boolean {
   if (status !== 400 && status !== 422) return false;
-  if (!parameterPattern.test(responseText)) return false;
+  // 只检查错误说明及参数名，避免请求回显中的同名字段造成误回退。
+  let errorText = responseText;
+  try {
+    const payload = JSON.parse(responseText);
+    const error = payload?.error ?? payload;
+    errorText =
+      typeof error === "string"
+        ? error
+        : [error?.message, error?.param].filter(value => typeof value === "string").join(" ");
+  } catch {
+    // 部分兼容网关直接返回纯文本错误，继续按原说明判断。
+  }
+  if (!parameterPattern.test(errorText)) return false;
 
-  return /(?:not\s+supported|unsupported|unknown\s+parameter|unrecognized|unexpected|invalid\s+(?:parameter|value)|extra\s+inputs?|not\s+permitted|not\s+allowed)/i.test(
-    responseText,
+  // DeepSeek 思考模式使用 does not support，而不是 not supported。
+  return /(?:not\s+supported|(?:does\s+not|do\s+not|doesn't|don't)\s+support|unsupported|unknown\s+parameter|unrecognized|unexpected|invalid\s+(?:parameter|value)|extra\s+inputs?|not\s+permitted|not\s+allowed)/i.test(
+    errorText,
   );
 }
 
 export function isToolChoiceUnsupported(status: number, responseText: string): boolean {
-  return isUnsupportedParameterError(status, responseText, /tool[_ -]?choice/i);
+  return isUnsupportedParameterError(status, responseText, /\btool[_ -]?choice\b/i);
 }
 
 function isStreamOptionsUnsupported(status: number, responseText: string): boolean {
   return isUnsupportedParameterError(
     status,
     responseText,
-    /stream[_ -]?options|include[_ -]?usage/i,
+    /\b(?:stream[_ -]?options|include[_ -]?usage)\b/i,
   );
 }
 

@@ -219,6 +219,7 @@ async function requestAiTurnOnce(
           tabId: input.tabId,
           status: response.status,
           api: protocol,
+          providerError: extractProviderErrorMessage(rawResponseText),
         },
       });
       return toFailureResult(

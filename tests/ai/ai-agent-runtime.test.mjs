@@ -527,14 +527,18 @@ test("API Key 无效时不重试，并直接说明原因", async () => {
   assert.match(result.messages.at(-1).content, /invalid api key/);
 });
 
-test("DeepSeek 直接使用 Chat Completions，其他服务探测一次后记住结果", async () => {
+test("DeepSeek 优先尝试 Responses，不支持时回退，其他服务记住探测结果", async () => {
   reset();
   model.responses.push(finish("ok"));
   await runtime.runAiChat(
     createInput(),
     createSettings({ provider: "deepseek", baseUrl: "http://deepseek.local/v1" }),
   );
-  assert.deepEqual(model.urls, ["http://deepseek.local/v1/chat/completions"]);
+  assert.deepEqual(model.urls, [
+    "http://deepseek.local/v1/responses",
+    "http://deepseek.local/v1/chat/completions",
+  ]);
+  assert.equal(model.requests[0].tool_choice, "auto");
 
   reset();
   model.responses.push(finish("ok"), finish("ok"));
@@ -548,11 +552,16 @@ test("DeepSeek 直接使用 Chat Completions，其他服务探测一次后记住
   ]);
 });
 
-test("界面新增的 DeepSeek 与 GLM 模型按 Base URL 识别，直接使用 Chat Completions", async () => {
+test("界面新增的 DeepSeek 与 GLM 模型按 Base URL 识别并应用各自协议规则", async () => {
   for (const baseUrl of ["https://api.deepseek.com/v1", "https://open.bigmodel.cn/api/paas/v4"]) {
     reset();
     model.responses.push(finish("ok"));
     await runtime.runAiChat(createInput(), createSettings({ provider: "other", baseUrl }));
-    assert.deepEqual(model.urls, [`${baseUrl}/chat/completions`]);
+    assert.deepEqual(
+      model.urls,
+      baseUrl.includes("deepseek.com")
+        ? [`${baseUrl}/responses`, `${baseUrl}/chat/completions`]
+        : [`${baseUrl}/chat/completions`],
+    );
   }
 });

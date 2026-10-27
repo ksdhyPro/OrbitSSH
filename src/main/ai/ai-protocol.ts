@@ -16,16 +16,16 @@ import { isResponsesApiUnsupported } from "./ai-responses-adapter.js";
 export type { AiApiProtocol } from "../storage/ai-protocol-store.js";
 
 /**
- * 选择并发起模型请求：DeepSeek 与 GLM 直接使用 Chat Completions，其他服务优先尝试 Responses，
+ * 选择并发起模型请求：GLM 直接使用 Chat Completions，其他服务优先尝试 Responses，
  * 确认不支持后记住结果；不支持的兼容参数（如 tool_choice）同样跨重启记住。
  */
 export function getCompatibilityKey(config: AiModelConfig): string {
   return `${config.baseUrl}\n${config.model}`;
 }
 
-/** DeepSeek 与 GLM 只提供 Chat Completions 兼容接口；其他服务按记住的探测结果选择。 */
+/** DeepSeek 已支持 Responses；GLM 仍直接使用 Chat，其余按已确认的探测结果选择。 */
 function getPreferredProtocol(config: AiModelConfig): AiApiProtocol | undefined {
-  if (config.provider === "deepseek" || config.provider === "glm") return "chat_completions";
+  if (config.provider === "glm") return "chat_completions";
   return getRememberedProtocol(getCompatibilityKey(config));
 }
 
@@ -49,6 +49,11 @@ export async function requestPreferredApi(
     "Content-Type": "application/json",
   };
   const compatibilityKey = getCompatibilityKey(activeConfig);
+  if (activeConfig.provider === "deepseek") {
+    // DeepSeek 默认启用思考，不支持 required；保留工具与思考能力，由本地协议校验动作。
+    if (responsesBody.tool_choice === "required") responsesBody.tool_choice = "auto";
+    if (chatBody.tool_choice === "required") chatBody.tool_choice = "auto";
+  }
   const createCompatibilityFallbackHandler =
     (protocol: AiApiProtocol) => (parameter: AiCompatibilityFallbackParameter) => {
       if (parameter === "tool_choice") {
