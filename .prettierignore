@@ -6,7 +6,6 @@ build/
 packaging/
 coverage/
 .agents/
-.workflow/
 *.md
 package-lock.json
 src/renderer/assets/
